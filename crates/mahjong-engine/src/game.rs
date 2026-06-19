@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::action::{CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction};
 use crate::game::GameError::{InvalidAction, WallExhausted};
-use crate::player::{wind_from_index, Player};
+use crate::player::{wind_from_index, FuritenState, Player};
 
 const RINSHAN: usize = 135;
 const DORA_INDICATOR: usize = 131;
@@ -239,7 +239,8 @@ impl GameState {
             player.riichi_declaration_tile = None;
             player.has_made_first_action = false;
             player.is_double_riichi = false;
-            player.is_furiten = false;
+            player.furiten = FuritenState::default();
+            player.all_discarded_types.clear();
         }
 
         for _ in 0..3 {
@@ -282,6 +283,7 @@ impl GameState {
         let tile = self.wall[self.current_index];
         self.current_index += 1;
         self.drawn_tile = Some(tile);
+        self.update_discard_furiten(self.current_player);
         self.events.push(GameEvent::PlayerDrew {
             player: self.current_player,
             tile,
@@ -297,6 +299,7 @@ impl GameState {
         }
         let tile = self.wall[RINSHAN - self.get_kan_count()];
         self.drawn_tile = Some(tile);
+        self.update_discard_furiten(self.current_player);
         self.events.push(GameEvent::PlayerDrew {
             player: self.current_player,
             tile,
@@ -366,8 +369,9 @@ impl GameState {
             if player.is_riichi && player.riichi_declaration_tile.is_none() {
                 player.riichi_declaration_tile = Some(tile);
             }
-            // 食替限制在打出牌后自然解除
             player.forbidden.clear();
+            player.all_discarded_types.insert(tile.tile_type());
+            player.furiten.clear_round();
         }
 
         self.events.push(GameEvent::PlayerDiscarded {
@@ -591,17 +595,29 @@ impl GameState {
     ) -> Result<(), GameError> {
         match action {
             ResponseAction::Pass => {
-                // 所有人 Pass → 打出的牌正式落河
                 self.players[discarder.0].discards.push(discarded_tile);
+
+                for idx in 0..4 {
+                    let pid = PlayerId(idx);
+                    if pid == discarder { continue; }
+                    let waiting = self.get_waiting_tile_types(pid);
+                    if waiting.contains(&discarded_tile.tile_type()) {
+                        if self.players[idx].is_riichi {
+                            self.players[idx].furiten.riichi = true;
+                        } else {
+                            self.players[idx].furiten.round = true;
+                        }
+                    }
+                }
+
+                self.update_all_discard_furiten();
                 self.advance_turn();
                 self.phase = GamePhase::DrawPhase;
             }
             ResponseAction::Ron => {
                 self.clear_ippatsu();
-                // 不要先加牌到手牌，让 check_win 自己构建 tiles
                 let result = self.check_win(player, false, discarded_tile, Some(discarder), false);
                 if let Some((changes, yaku_names)) = result {
-                    // 荣和成立，将牌加入手牌
                     self.players[player.0].hand.add(discarded_tile);
                     new_events.push(GameEvent::PlayerWon {
                         player,
@@ -613,6 +629,11 @@ impl GameState {
                         winner: player,
                         is_tsumo: false,
                     });
+                } else {
+                    self.players[discarder.0].discards.push(discarded_tile);
+                    self.update_all_discard_furiten();
+                    self.advance_turn();
+                    self.phase = GamePhase::DrawPhase;
                 }
             }
             ResponseAction::Pon { hand_tiles } => {
@@ -634,6 +655,7 @@ impl GameState {
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
+                self.update_discard_furiten(player);
                 new_events.push(GameEvent::PlayerCalledPon {
                     player,
                     tiles: hand_tiles.to_vec(),
@@ -642,7 +664,6 @@ impl GameState {
             }
             ResponseAction::Chi { hand_tiles } => {
                 self.clear_ippatsu();
-                // 牌直接从 ResponsePhase 取走，无需 pop
                 {
                     let p = &mut self.players[player.0];
                     for &tile in &hand_tiles {
@@ -659,6 +680,7 @@ impl GameState {
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
+                self.update_discard_furiten(player);
                 new_events.push(GameEvent::PlayerCalledChi {
                     player,
                     tiles: hand_tiles.to_vec(),
@@ -1184,8 +1206,8 @@ impl GameState {
         ctx.loser = loser.map(|id| id.0);
         ctx.is_rinshan = self.is_rinshan_tile(winning_tile);
 
-        let is_furiten = self.players[player.0].is_furiten;
-        let result = win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten)?;
+        let is_furiten = self.players[player.0].furiten.is_furiten();
+        let result = win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten, winning_tile)?;
         let yaku_names: Vec<String> = result.yaku_results.iter().map(|y| format!("{:?}", y.yaku)).collect();
         Some((result.points, yaku_names))
     }
@@ -1209,6 +1231,25 @@ impl GameState {
     pub fn clear_ippatsu(&mut self) {
         for player in &mut self.players {
             player.is_ippatsu = false;
+        }
+    }
+
+    fn get_waiting_tile_types(&self, player: PlayerId) -> HashSet<TileType> {
+        analyze_wait_tiles(self.players[player.0].hand.tiles())
+            .iter()
+            .map(|w| w.tile_type)
+            .collect()
+    }
+
+    fn update_discard_furiten(&mut self, player: PlayerId) {
+        let waiting = self.get_waiting_tile_types(player);
+        let discarded = &self.players[player.0].all_discarded_types;
+        self.players[player.0].furiten.discard = waiting.iter().any(|tt| discarded.contains(tt));
+    }
+
+    fn update_all_discard_furiten(&mut self) {
+        for idx in 0..4 {
+            self.update_discard_furiten(PlayerId(idx));
         }
     }
 
@@ -2695,5 +2736,161 @@ mod tests {
         assert_eq!(game.round, 8); // 连庄
         assert_eq!(game.honba, 1);
         assert!(!game.is_game_over());
+    }
+
+    // ─── 振听测试 ──────────────────────────────────────────
+
+    /// 舍牌振听：听牌中有自己打出过的牌 → 振听
+    #[test]
+    fn test_discard_furiten_enter() {
+        let mut game = GameState::new();
+        // 手牌：1m2m3m 4m5m6m 7m8m9m 1p1p 2p → 听 1p/3p
+        let hand_tiles = vec![
+            Tile::new(Suit::Man, Rank(1), 0),
+            Tile::new(Suit::Man, Rank(2), 0),
+            Tile::new(Suit::Man, Rank(3), 0),
+            Tile::new(Suit::Man, Rank(4), 0),
+            Tile::new(Suit::Man, Rank(5), 0),
+            Tile::new(Suit::Man, Rank(6), 0),
+            Tile::new(Suit::Man, Rank(7), 0),
+            Tile::new(Suit::Man, Rank(8), 0),
+            Tile::new(Suit::Man, Rank(9), 0),
+            Tile::new(Suit::Pin, Rank(1), 0),
+            Tile::new(Suit::Pin, Rank(1), 1),
+            Tile::new(Suit::Pin, Rank(2), 0),
+            Tile::new(Suit::Pin, Rank(3), 0),
+        ];
+        setup_hand(&mut game, PlayerId(0), hand_tiles);
+        game.players[0].all_discarded_types.insert(TileType(9)); // 1p
+
+        game.update_discard_furiten(PlayerId(0));
+        assert!(game.players[0].furiten.discard, "听 1p/3p 且打出过 1p → 舍牌振听");
+    }
+
+    /// 舍牌振听解除：听牌变化后不再包含打出过的牌
+    #[test]
+    fn test_discard_furiten_release() {
+        let mut game = GameState::new();
+        game.players[0].all_discarded_types.insert(TileType(9)); // 打出过 1p
+
+        // 手牌改为只听 7s：1m2m3m 4m5m6m 7m8m9m 1p1p 2p → 换掉 2p 3p
+        // 改为：1m2m3m 4m5m6m 7m8m9m 5s5s 6s → 听 4s/7s
+        let hand_tiles = vec![
+            Tile::new(Suit::Man, Rank(1), 0),
+            Tile::new(Suit::Man, Rank(2), 0),
+            Tile::new(Suit::Man, Rank(3), 0),
+            Tile::new(Suit::Man, Rank(4), 0),
+            Tile::new(Suit::Man, Rank(5), 0),
+            Tile::new(Suit::Man, Rank(6), 0),
+            Tile::new(Suit::Man, Rank(7), 0),
+            Tile::new(Suit::Man, Rank(8), 0),
+            Tile::new(Suit::Man, Rank(9), 0),
+            Tile::new(Suit::Sou, Rank(5), 0),
+            Tile::new(Suit::Sou, Rank(5), 1),
+            Tile::new(Suit::Sou, Rank(6), 0),
+            Tile::new(Suit::Sou, Rank(7), 0),
+        ];
+        setup_hand(&mut game, PlayerId(0), hand_tiles);
+
+        game.update_discard_furiten(PlayerId(0));
+        assert!(!game.players[0].furiten.discard, "听 4s/7s，没打出过 → 无舍牌振听");
+    }
+
+    /// 同巡振听：别家打出听牌但不荣和 → 振听
+    #[test]
+    fn test_round_furiten_enter() {
+        let mut game = GameState::new();
+        // 玩家1手牌：1m2m3m 4m5m6m 7m8m9m 1p1p 2p → 听 1p/3p
+        let hand_tiles = vec![
+            Tile::new(Suit::Man, Rank(1), 0),
+            Tile::new(Suit::Man, Rank(2), 0),
+            Tile::new(Suit::Man, Rank(3), 0),
+            Tile::new(Suit::Man, Rank(4), 0),
+            Tile::new(Suit::Man, Rank(5), 0),
+            Tile::new(Suit::Man, Rank(6), 0),
+            Tile::new(Suit::Man, Rank(7), 0),
+            Tile::new(Suit::Man, Rank(8), 0),
+            Tile::new(Suit::Man, Rank(9), 0),
+            Tile::new(Suit::Pin, Rank(1), 0),
+            Tile::new(Suit::Pin, Rank(1), 1),
+            Tile::new(Suit::Pin, Rank(2), 0),
+            Tile::new(Suit::Pin, Rank(3), 0),
+        ];
+        setup_hand(&mut game, PlayerId(1), hand_tiles);
+
+        let discarded = Tile::new(Suit::Pin, Rank(4), 0); // 4p
+        game.players[0].discards.push(discarded);
+
+        let waiting = game.get_waiting_tile_types(PlayerId(1));
+        assert!(waiting.contains(&TileType(12)), "玩家1应听 4p");
+
+        if waiting.contains(&discarded.tile_type()) {
+            game.players[1].furiten.round = true;
+        }
+        assert!(game.players[1].furiten.round, "玩家1应进入同巡振听");
+    }
+
+    /// 同巡振听解除：自己打出一张牌后解除
+    #[test]
+    fn test_round_furiten_release() {
+        let mut game = GameState::new();
+        game.players[0].furiten.round = true;
+        assert!(game.players[0].furiten.is_furiten());
+
+        game.players[0].furiten.clear_round();
+        assert!(!game.players[0].furiten.is_furiten());
+    }
+
+    /// 立直振听：立直后不荣和 → 永久振听
+    #[test]
+    fn test_riichi_furiten_enter() {
+        let mut game = GameState::new();
+        game.players[0].is_riichi = true;
+        game.players[0].furiten.riichi = true;
+        assert!(game.players[0].furiten.is_furiten());
+
+        game.players[0].furiten.clear_round();
+        assert!(game.players[0].furiten.is_furiten(), "立直振听不因打牌解除");
+    }
+
+    /// 振听不影响自摸
+    #[test]
+    fn test_furiten_allows_tsumo() {
+        use mahjong_yaku::win_check;
+        use mahjong_yaku::types::WinContext;
+
+        let hand_tile_types = vec![
+            TileType(0), TileType(0), TileType(1), TileType(1), TileType(2), TileType(2),
+            TileType(9), TileType(9), TileType(10), TileType(10), TileType(11), TileType(11),
+            TileType(18), TileType(18),
+        ];
+        let all_tiles: Vec<Tile> = hand_tile_types.iter()
+            .enumerate()
+            .map(|(i, &tt)| Tile::from_raw(tt.0 * 4 + (i as u8 % 4)))
+            .collect();
+        let ctx = WinContext {
+            is_tsumo: true,
+            is_riichi: false,
+            is_double_riichi: false,
+            is_ippatsu: false,
+            is_rinshan: false,
+            is_chankan: false,
+            is_haitei: false,
+            is_houtei: false,
+            seat_wind: TileType::EAST,
+            field_wind: TileType::EAST,
+            dora_indicators: vec![],
+            ura_dora_indicators: vec![],
+            melds: vec![],
+            dealer: 0,
+            winner: 0,
+            loser: None,
+            honba: 0,
+            riichi_sticks: 0,
+        };
+        let winning_tile = all_tiles[0];
+
+        let result = win_check::check_win(&all_tiles, &hand_tile_types, &ctx, true, winning_tile);
+        assert!(result.is_some(), "振听不应阻止自摸");
     }
 }
