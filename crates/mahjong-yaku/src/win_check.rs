@@ -21,6 +21,7 @@ pub fn check_win(
     hand_tiles: &[TileType],
     ctx: &WinContext,
     is_furiten: bool,
+    winning_tile: Tile,
 ) -> Option<WinResult> {
     // ── Step 1: 判振 ──
     if is_furiten && !ctx.is_tsumo {
@@ -129,12 +130,12 @@ pub fn decompose_hand(hand_tiles: &[TileType]) -> Vec<WinningHand> {
 // ═══════════════════════════════════════════════════════════════
 
 /// 对所有拆解计算符数，返回最高符数
-fn calculate_best_fu(
-    decompositions: &[WinningHand],
+fn calculate_best_fu<'a>(
+    decompositions: &'a [WinningHand],
     melds: &[Meld],
     yaku_results: &[YakuResult],
     ctx: &WinContext,
-) -> (u32, &WinningHand) {
+) -> (u32, &'a WinningHand) {
     let mut best_fu = 0u32;
     let mut best_hand = &decompositions[0];
 
@@ -736,7 +737,8 @@ mod tests {
         };
 
         // 振听 + 荣和 → None
-        let result = check_win(&all_tiles, &hand_tile_types, &ctx, true);
+        let winning_tile = Tile::from_raw(hand_tile_types.last().unwrap().0 * 4);
+        let result = check_win(&all_tiles, &hand_tile_types, &ctx, true, winning_tile);
         assert!(result.is_none());
     }
 }
