@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use mahjong_ai::analysis::analyze_discard;
+use mahjong_ai::analysis::{analyze_discard, VisibleTiles};
 use mahjong_ai::shanten::ShantenCalculator;
 use mahjong_core::player::PlayerId;
 use mahjong_core::tile::{Tile, TileType};
@@ -77,21 +77,23 @@ fn play_round(game: &mut GameState, rng: &mut StdRng, calc: &mut ShantenCalculat
                         }
                     }
                 } else {
+                    let visible = build_visible_tiles(game, player);
                     let hand = &game.players[player.0].hand;
-                    let analysis = analyze_discard(calc, hand.tiles());
-                    let best = analysis.iter()
-                        .max_by_key(|a| a.acceptance + a.improvement)
-                        .unwrap();
+                    let analysis = analyze_discard(calc, hand.tiles(), &visible);
+                    let best = analysis.first().unwrap();
                     let tile = best.tile;
                     match game.execute_action(TurnAction::Discard(tile)) {
                         Ok(_) => {
                             let wind = game.players[player.0].wind;
                             println!(
-                                "  {}({}) 打出 {}  (进张:{}, 向听:{})",
+                                "  {}({}) 打出 {}  (进张:{}种{}张, 改良:{}种{}张, 向听:{})",
                                 wind_display(wind),
                                 player_name(player.0),
                                 ct(tile),
-                                best.acceptance,
+                                best.acceptance_types,
+                                best.acceptance_copies,
+                                best.improvement_types,
+                                best.improvement_copies,
                                 best.shanten,
                             );
                         }
@@ -201,6 +203,38 @@ fn round_display(wind: TileType, round: u32) -> String {
     };
     let round_in_wind = ((round - 1) % 4) + 1;
     format!("{}{}局", wind_str, round_in_wind)
+}
+
+fn build_visible_tiles(game: &GameState, player: PlayerId) -> VisibleTiles {
+    let mut visible = VisibleTiles::new();
+
+    for meld in &game.players[player.0].melds {
+        for t in &meld.tiles {
+            visible.hand_melds.inc(t.tile_type());
+        }
+    }
+
+    for i in 0..4 {
+        let pid = mahjong_core::player::PlayerId(i);
+        if pid == player { continue; }
+        for meld in &game.players[i].melds {
+            for t in &meld.tiles {
+                visible.all_melds.inc(t.tile_type());
+            }
+        }
+    }
+
+    for i in 0..4 {
+        for &t in &game.players[i].discards {
+            visible.all_discards.inc(t.tile_type());
+        }
+    }
+
+    for &tt in &game.dora_indicators {
+        visible.dora_indicators.inc(tt);
+    }
+
+    visible
 }
 
 // ═══════════════════════════════════════════════════════════════
