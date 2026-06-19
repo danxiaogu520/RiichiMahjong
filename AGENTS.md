@@ -74,6 +74,5 @@ This is a Japanese Riichi Mahjong (日麻) engine. All comments are in Chinese.
 ## Known Gaps
 
 - `fu.rs`: wait type fu (单骑/边张/坎张 +2) is not implemented (marked TODO)
-- `game.rs`: `is_furiten` field exists but real-time furiten update logic is not implemented
 - `server/src/main.rs`: AI players use random discard — no strategy
 - Several `#[ignore]` tests in `engine/src/game.rs` depend on `start_round` (marked TODO)

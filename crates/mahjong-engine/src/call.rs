@@ -26,10 +26,12 @@ pub fn detect_calls(
         test_tiles.push(discarded_tile);
         let mut counts = mahjong_yaku::types::TileCounts::from_tiles(&test_tiles);
         if mahjong_yaku::analysis::is_winning(&mut counts) {
-            options.push(CallOption {
-                player: pid,
-                call_type: CallType::Ron,
-            });
+            if !player.furiten.is_furiten() {
+                options.push(CallOption {
+                    player: pid,
+                    call_type: CallType::Ron,
+                });
+            }
             continue;
         }
 

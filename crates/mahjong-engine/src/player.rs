@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use mahjong_core::hand::Hand;
 use mahjong_core::meld::Meld;
 use mahjong_core::player::PlayerId;
@@ -40,6 +42,24 @@ pub fn wind_display(wind: TileType) -> &'static str {
     }
 }
 
+// ─── 振听状态 ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FuritenState {
+    pub discard: bool,
+    pub round: bool,
+    pub riichi: bool,
+}
+
+impl FuritenState {
+    pub fn is_furiten(&self) -> bool {
+        self.discard || self.round || self.riichi
+    }
+    pub fn clear_round(&mut self) {
+        self.round = false;
+    }
+}
+
 // ─── 玩家状态 ──────────────────────────────────────────────
 
 /// 玩家状态
@@ -55,12 +75,10 @@ pub struct Player {
     pub is_ippatsu: bool,
     pub forbidden: Vec<TileType>,
     pub riichi_declaration_tile: Option<Tile>,
-    /// 本局是否尚未进行过任何操作（用于判定双立直）
     pub has_made_first_action: bool,
-    /// 是否为双立直
     pub is_double_riichi: bool,
-    /// 是否振听（打出过的牌在别人的弃牌中，或同巡内打出的牌是自己的听牌）
-    pub is_furiten: bool,
+    pub furiten: FuritenState,
+    pub all_discarded_types: HashSet<TileType>,
 }
 
 impl Player {
@@ -78,7 +96,8 @@ impl Player {
             is_ippatsu: false,
             has_made_first_action: false,
             is_double_riichi: false,
-            is_furiten: false,
+            furiten: FuritenState::default(),
+            all_discarded_types: HashSet::new(),
         }
     }
 
