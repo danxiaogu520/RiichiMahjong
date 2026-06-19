@@ -23,6 +23,7 @@ cargo build                    # build all crates
 cargo test -p mahjong-core     # test a single crate
 cargo test -p mahjong-yaku
 cargo test -p mahjong-engine
+cargo test -p mahjong-ai
 cargo test -- --ignored        # run ignored tests (marked with #[ignore])
 ```
 
@@ -35,10 +36,11 @@ crates/
   mahjong-core/     # tile, hand, meld, wall, player data types
   mahjong-yaku/     # win detection, yaku detection, fu/scoring calculation
   mahjong-engine/   # game state machine, turn flow, call handling
+  mahjong-ai/       # shanten calculation, discard analysis
   mahjong-server/   # CLI interactive game (human vs 3 AI)
 ```
 
-**Dependency graph**: `core` ← `yaku` ← `engine` ← `server`
+**Dependency graph**: `core` ← `yaku` ← `engine` ← `server`, `core` ← `yaku` ← `ai` ← `server`
 
 `mahjong-yaku` does NOT depend on `rand`. Only `core`, `engine`, and `server` use `rand 0.8`.
 
@@ -74,5 +76,5 @@ This is a Japanese Riichi Mahjong (日麻) engine. All comments are in Chinese.
 ## Known Gaps
 
 - `fu.rs`: wait type fu (单骑/边张/坎张 +2) is not implemented (marked TODO)
-- `server/src/main.rs`: AI players use random discard — no strategy
+- `server/src/main.rs`: AI players use shanten-based strategy (basic, no call decisions)
 - Several `#[ignore]` tests in `engine/src/game.rs` depend on `start_round` (marked TODO)

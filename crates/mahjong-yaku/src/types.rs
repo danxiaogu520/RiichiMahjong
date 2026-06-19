@@ -244,7 +244,7 @@ pub type WaitInfo = Vec<WaitTileInfo>;
 // ═══════════════════════════════════════════════════════════════
 
 /// 牌种计数数组的包装体
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TileCounts([u8; 34]);
 
 impl TileCounts {

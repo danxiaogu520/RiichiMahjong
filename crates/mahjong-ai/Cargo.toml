@@ -1,11 +1,8 @@
 [package]
-name = "mahjong-server"
+name = "mahjong-ai"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 mahjong-core = { path = "../mahjong-core" }
-mahjong-engine = { path = "../mahjong-engine" }
 mahjong-yaku = { path = "../mahjong-yaku" }
-mahjong-ai = { path = "../mahjong-ai" }
-rand = "0.8"
