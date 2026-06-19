@@ -1,5 +1,21 @@
 # AGENTS.md
 
+## 协作规范 (Collaboration Rules)
+
+**每次修改必须 git commit + git push。** 不要留本地未推送的提交。
+
+```bash
+# 标准工作流
+git add <changed-files>
+git commit -m "<concise description>"
+git push
+```
+
+- commit message 用中文或英文均可，但要简洁描述改了什么
+- 不要提交 `target/` 目录（已在 .gitignore 中）
+- 每个逻辑改动一个 commit，不要把无关改动混在一起
+- 推送前确认 `cargo build` 编译通过
+
 ## Build & Test
 
 ```bash
