@@ -26,6 +26,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "mahjong-ai"
+version = "0.1.0"
+dependencies = [
+ "mahjong-core",
+ "mahjong-yaku",
+]
+
+[[package]]
 name = "mahjong-core"
 version = "0.1.0"
 dependencies = [
@@ -48,6 +56,7 @@ dependencies = [
 name = "mahjong-server"
 version = "0.1.0"
 dependencies = [
+ "mahjong-ai",
  "mahjong-core",
  "mahjong-engine",
  "mahjong-yaku",
