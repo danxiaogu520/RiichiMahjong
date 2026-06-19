@@ -1,0 +1,8 @@
+[package]
+name = "mahjong-yaku"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mahjong-core = { path = "../mahjong-core" }
+serde = { version = "1", features = ["derive"] }
