@@ -1,23 +1,29 @@
+use std::collections::HashSet;
+
 use mahjong_core::tile::{Tile, TileType};
 use mahjong_yaku::types::TileCounts;
 
 use crate::shanten::ShantenCalculator;
 
 #[derive(Debug, Clone)]
-pub struct DiscardAnalysis {
+pub struct DiscardOption {
     pub tile: Tile,
-    pub acceptance: usize,
-    pub improvement: usize,
     pub shanten: i8,
+    pub acceptance_types: usize,
+    pub acceptance_copies: usize,
+    pub improvement_types: usize,
+    pub improvement_copies: usize,
 }
 
-pub fn analyze_discard(calculator: &mut ShantenCalculator, hand: &[Tile]) -> Vec<DiscardAnalysis> {
-    let mut results = Vec::new();
+pub fn analyze_discard(
+    calculator: &mut ShantenCalculator,
+    hand: &[Tile],
+    visible: &VisibleTiles,
+) -> Vec<DiscardOption> {
     let current_counts = TileCounts::from_tiles(hand);
-    let current_shanten = calculator.calculate_from_counts(&current_counts);
-
-    // 去重：同类型牌只分析一次
-    let mut seen_types = std::collections::HashSet::new();
+    let current_shanten = calculator.lookup(&current_counts);
+    let mut results = Vec::new();
+    let mut seen_types = HashSet::new();
 
     for &tile in hand {
         let tt = tile.tile_type();
@@ -25,78 +31,109 @@ pub fn analyze_discard(calculator: &mut ShantenCalculator, hand: &[Tile]) -> Vec
             continue;
         }
 
-        // 模拟打出这张牌
         let mut after_discard = current_counts;
         after_discard.dec(tt);
+        let new_shanten = calculator.lookup(&after_discard);
 
-        let new_shanten = calculator.calculate_from_counts(&after_discard);
+        let mut acceptance_types = 0usize;
+        let mut acceptance_copies = 0usize;
+        let acceptance_tiles = find_acceptance(calculator, &after_discard, new_shanten);
 
-        // 计算进张：遍历 34 种牌，看哪些能减少向听数
-        let mut acceptance = 0usize;
-        let mut acceptance_tiles = Vec::new();
-
-        for i in 0..34u8 {
-            let draw_tt = TileType(i);
-            if after_discard.get(draw_tt) >= 4 {
-                continue;
-            }
-
-            let mut after_draw = after_discard;
-            after_draw.inc(draw_tt);
-
-            let draw_shanten = calculator.calculate_from_counts(&after_draw);
-            if draw_shanten < new_shanten {
-                let copies = 4 - after_discard.get(draw_tt) as usize;
-                acceptance += copies;
-                acceptance_tiles.push(draw_tt);
+        for &att in &acceptance_tiles {
+            let remaining = remaining_copies(att, &after_discard, visible);
+            if remaining > 0 {
+                acceptance_types += 1;
+                acceptance_copies += remaining;
             }
         }
 
-        // 计算改良：进张数比打出前更多的打牌选择
-        // 这里简化处理：如果打出后向听数不变，计算进张数作为改良参考
-        let improvement = if new_shanten == current_shanten {
-            // 向听数不变，看进张是否比平均更多（简化：直接用进张数）
-            acceptance
-        } else {
-            0
-        };
+        let mut improvement_types = 0usize;
+        let mut improvement_copies = 0usize;
 
-        results.push(DiscardAnalysis {
+        if new_shanten == current_shanten {
+            for i in 0..34u8 {
+                let draw_tt = TileType(i);
+                let rem = remaining_copies(draw_tt, &after_discard, visible);
+                if rem == 0 {
+                    continue;
+                }
+
+                let mut after_draw = after_discard;
+                after_draw.inc(draw_tt);
+
+                let new_acceptance = find_acceptance(calculator, &after_draw, new_shanten);
+                let old_acceptance_count = acceptance_tiles.len();
+
+                if new_acceptance.len() > old_acceptance_count {
+                    improvement_types += 1;
+                    improvement_copies += rem;
+                }
+            }
+        }
+
+        results.push(DiscardOption {
             tile,
-            acceptance,
-            improvement,
             shanten: new_shanten,
+            acceptance_types,
+            acceptance_copies,
+            improvement_types,
+            improvement_copies,
         });
     }
+
+    results.sort_by(|a, b| {
+        b.acceptance_copies
+            .cmp(&a.acceptance_copies)
+            .then(b.improvement_copies.cmp(&a.improvement_copies))
+    });
 
     results
 }
 
-pub fn count_acceptance(
+fn find_acceptance(
     calculator: &mut ShantenCalculator,
-    hand: &[Tile],
-) -> (usize, Vec<TileType>) {
-    let counts = TileCounts::from_tiles(hand);
-    let current_shanten = calculator.calculate_from_counts(&counts);
-
-    let mut total = 0usize;
-    let mut tiles = Vec::new();
-
+    counts: &TileCounts,
+    current_shanten: i8,
+) -> Vec<TileType> {
+    let mut result = Vec::new();
     for i in 0..34u8 {
         let tt = TileType(i);
         if counts.get(tt) >= 4 {
             continue;
         }
-
-        let mut after_draw = counts;
-        after_draw.inc(tt);
-
-        let draw_shanten = calculator.calculate_from_counts(&after_draw);
-        if draw_shanten < current_shanten {
-            total += 4 - counts.get(tt) as usize;
-            tiles.push(tt);
+        let mut after = *counts;
+        after.inc(tt);
+        if calculator.lookup(&after) < current_shanten {
+            result.push(tt);
         }
     }
+    result
+}
 
-    (total, tiles)
+fn remaining_copies(tt: TileType, hand_counts: &TileCounts, visible: &VisibleTiles) -> usize {
+    let total = 4usize;
+    let used = hand_counts.get(tt) as usize
+        + visible.hand_melds.get(tt) as usize
+        + visible.all_discards.get(tt) as usize
+        + visible.all_melds.get(tt) as usize
+        + visible.dora_indicators.get(tt) as usize;
+    total.saturating_sub(used)
+}
+
+pub struct VisibleTiles {
+    pub hand_melds: TileCounts,
+    pub all_discards: TileCounts,
+    pub all_melds: TileCounts,
+    pub dora_indicators: TileCounts,
+}
+
+impl VisibleTiles {
+    pub fn new() -> Self {
+        Self {
+            hand_melds: TileCounts::new(),
+            all_discards: TileCounts::new(),
+            all_melds: TileCounts::new(),
+            dora_indicators: TileCounts::new(),
+        }
+    }
 }
