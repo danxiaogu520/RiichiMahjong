@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 
+use mahjong_ai::analysis::analyze_discard;
+use mahjong_ai::shanten::ShantenCalculator;
 use mahjong_core::player::PlayerId;
 use mahjong_core::tile::{Tile, TileType};
 use mahjong_engine::action::{CallType, GameEvent, RoundEndReason, ResponseAction, TurnAction};
@@ -31,6 +33,7 @@ fn ctt(tt: TileType) -> String {
 fn main() {
     let mut rng = StdRng::seed_from_u64(rand::thread_rng().gen());
     let mut game = GameState::new();
+    let mut calc = ShantenCalculator::new();
 
     println!("╔══════════════════════════════════╗");
     println!("║       日麻 - 四人麻将            ║");
@@ -41,10 +44,8 @@ fn main() {
         display_round_header(&game);
         game.start_round(&mut rng);
 
-        // 单局循环
-        let round_reason = play_round(&mut game, &mut rng);
+        let round_reason = play_round(&mut game, &mut rng, &mut calc);
 
-        // 显示局结果
         display_round_result(&game, &round_reason);
     }
 
@@ -53,7 +54,7 @@ fn main() {
 }
 
 /// 进行一局，返回结束原因
-fn play_round(game: &mut GameState, rng: &mut StdRng) -> RoundEndReason {
+fn play_round(game: &mut GameState, rng: &mut StdRng, calc: &mut ShantenCalculator) -> RoundEndReason {
     loop {
         match game.phase {
             GamePhase::DrawPhase => {
@@ -76,18 +77,22 @@ fn play_round(game: &mut GameState, rng: &mut StdRng) -> RoundEndReason {
                         }
                     }
                 } else {
-                    // AI 玩家：简单策略，直接打牌
                     let hand = &game.players[player.0].hand;
-                    let idx = rng.gen_range(0..hand.len());
-                    let tile = hand.tiles()[idx];
+                    let analysis = analyze_discard(calc, hand.tiles());
+                    let best = analysis.iter()
+                        .max_by_key(|a| a.acceptance + a.improvement)
+                        .unwrap();
+                    let tile = best.tile;
                     match game.execute_action(TurnAction::Discard(tile)) {
                         Ok(_) => {
                             let wind = game.players[player.0].wind;
                             println!(
-                                "  {}({}) 打出 {}",
+                                "  {}({}) 打出 {}  (进张:{}, 向听:{})",
                                 wind_display(wind),
                                 player_name(player.0),
-                                ct(tile)
+                                ct(tile),
+                                best.acceptance,
+                                best.shanten,
                             );
                         }
                         Err(_) => continue,
