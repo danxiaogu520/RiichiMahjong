@@ -268,7 +268,55 @@ impl App {
                 None
             }
         });
-        self.round_end_reason = reason;
+        self.round_end_reason = reason.clone();
+
+        if let Some(reason) = &reason {
+            match reason {
+                RoundEndReason::ExhaustiveDraw => {
+                    self.messages.push("═══ 荒牌流局 ═══".to_string());
+                    if let Some(GameEvent::ExhaustiveDrawResult { tenpai, payments }) =
+                        self.game.events.iter().rev().find(|e| matches!(e, GameEvent::ExhaustiveDrawResult { .. }))
+                    {
+                        for i in 0..4 {
+                            let name = self.player_name(i).to_string();
+                            let status = if tenpai[i] { "听牌" } else { "不听" };
+                            let pay = payments[i];
+                            if pay > 0 {
+                                self.messages.push(format!("  {} {} +{}", name, status, pay));
+                            } else if pay < 0 {
+                                self.messages.push(format!("  {} {} {}", name, status, pay));
+                            } else {
+                                self.messages.push(format!("  {} {}", name, status));
+                            }
+                        }
+                    }
+                }
+                RoundEndReason::Win { winner, is_tsumo } => {
+                    let name = self.player_name(winner.0).to_string();
+                    let win_type = if *is_tsumo { "自摸" } else { "荣和" };
+                    if let Some(GameEvent::PlayerWon { yaku_names, points, .. }) =
+                        self.game.events.iter().rev().find(|e| matches!(e, GameEvent::PlayerWon { .. }))
+                    {
+                        self.messages.push(format!("═══ {} {} {}点 ═══", name, win_type, points.abs()));
+                        for yaku in yaku_names {
+                            self.messages.push(format!("  {}", yaku));
+                        }
+                    }
+                }
+                _ => {
+                    self.messages.push(format!("═══ {:?} ═══", reason));
+                }
+            }
+
+            let round = self.game.round;
+            let dealer = self.game.get_dealer();
+            let dealer_name = self.player_name(dealer.0).to_string();
+            self.messages.push(format!(
+                "下一局: 庄家 {} ({}局)",
+                dealer_name,
+                self.round_display_for(round)
+            ));
+        }
 
         if self.game.is_game_over() {
             self.show_result = true;
@@ -279,9 +327,14 @@ impl App {
             self.acceptance = acc;
             self.improvement = imp;
             self.acceptance_shanten = shanten;
-            self.messages.clear();
             self.selected = 0;
         }
+    }
+
+    fn round_display_for(&self, round: u32) -> String {
+        let wind = if round <= 4 { "东" } else { "南" };
+        let num = ((round - 1) % 4) + 1;
+        format!("{}{}局", wind, num)
     }
 
     pub fn execute_discard(&mut self, tile: Tile) {
