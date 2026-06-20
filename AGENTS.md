@@ -24,6 +24,7 @@ cargo test -p mahjong-core     # test a single crate
 cargo test -p mahjong-yaku
 cargo test -p mahjong-engine
 cargo test -p mahjong-ai
+cargo run -p mahjong-tui       # launch terminal UI
 cargo test -- --ignored        # run ignored tests (marked with #[ignore])
 ```
 
@@ -38,9 +39,10 @@ crates/
   mahjong-engine/   # game state machine, turn flow, call handling
   mahjong-ai/       # shanten calculation, discard analysis
   mahjong-server/   # CLI interactive game (human vs 3 AI)
+  mahjong-tui/      # ratatui terminal UI
 ```
 
-**Dependency graph**: `core` ← `yaku` ← `engine` ← `server`, `core` ← `yaku` ← `ai` ← `server`
+**Dependency graph**: `core` ← `yaku` ← `engine` ← `server`/`tui`, `core` ← `yaku` ← `ai` ← `server`/`tui`
 
 `mahjong-yaku` does NOT depend on `rand`. Only `core`, `engine`, and `server` use `rand 0.8`.
 
