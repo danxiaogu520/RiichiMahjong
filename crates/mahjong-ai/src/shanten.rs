@@ -10,17 +10,21 @@ const ENTRY_LEN: usize = 10;
 
 /// Base-5 编码：将 N 种牌的计数数组映射为查找表索引
 fn encode_base5<const N: usize>(counts: &[u8]) -> usize {
-    counts.iter().take(N).fold(0, |acc, &c| acc * 5 + c as usize)
+    counts.iter().take(N).fold(0, |acc, &c| acc * 5 + (c.min(4)) as usize)
 }
 
 fn lookup_suit(counts: &[u8]) -> [u8; 10] {
     let idx = encode_base5::<9>(counts) * ENTRY_LEN;
-    SUIT_TABLE[idx..idx + ENTRY_LEN].try_into().unwrap()
+    SUIT_TABLE.get(idx..idx + ENTRY_LEN)
+        .map(|s| <[u8; 10]>::try_from(s).unwrap())
+        .unwrap_or([14u8; 10])
 }
 
 fn lookup_honor(counts: &[u8]) -> [u8; 10] {
     let idx = encode_base5::<7>(counts) * ENTRY_LEN;
-    HONOR_TABLE[idx..idx + ENTRY_LEN].try_into().unwrap()
+    HONOR_TABLE.get(idx..idx + ENTRY_LEN)
+        .map(|s| <[u8; 10]>::try_from(s).unwrap())
+        .unwrap_or([14u8; 10])
 }
 
 /// 合并两组花色的部分置换数（雀头可来自任一方）
@@ -28,8 +32,8 @@ fn lookup_honor(counts: &[u8]) -> [u8; 10] {
 /// acc[0..5]: u_0..u_4（无雀头）
 /// acc[5..10]: t_0..t_4（有雀头）
 fn merge_with_pair(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
-    // 有雀头部分：t[j] = min over k of (t[k]+u[j-k], u[k]+t[j-k])
-    for j in (5..=num_melds + 5).rev() {
+    let max_j = (num_melds + 5).min(9);
+    for j in (5..=max_j).rev() {
         let mut best = std::cmp::min(acc[j] as i32 + other[0] as i32, acc[0] as i32 + other[j] as i32);
         for k in 5..j {
             best = std::cmp::min(best, std::cmp::min(
@@ -39,8 +43,7 @@ fn merge_with_pair(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
         }
         acc[j] = best as u8;
     }
-    // 无雀头部分：u[j] = min over k of u[k]+u[j-k]
-    for j in (0..=num_melds).rev() {
+    for j in (0..=num_melds.min(4)).rev() {
         let mut best = acc[j] as i32 + other[0] as i32;
         for k in 0..j {
             best = std::cmp::min(best, acc[k] as i32 + other[j - k] as i32);
@@ -51,7 +54,7 @@ fn merge_with_pair(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
 
 /// 合并最后一组花色（雀头已在前面确定，只更新有雀头部分）
 fn merge_final(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
-    let j = num_melds + 5;
+    let j = (num_melds + 5).min(9);
     let mut best = std::cmp::min(acc[j] as i32 + other[0] as i32, acc[0] as i32 + other[j] as i32);
     for k in 5..j {
         best = std::cmp::min(best, std::cmp::min(
@@ -64,11 +67,12 @@ fn merge_final(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
 
 /// 标准形（四面子一雀头）向听数
 fn calc_standard(counts: &[u8; 34], num_melds: usize) -> i8 {
+    let m = num_melds.min(4);
     let mut dist = lookup_honor(&counts[27..34]);
-    merge_with_pair(&mut dist, &lookup_suit(&counts[18..27]), num_melds);
-    merge_with_pair(&mut dist, &lookup_suit(&counts[9..18]), num_melds);
-    merge_final(&mut dist, &lookup_suit(&counts[0..9]), num_melds);
-    dist[num_melds + 5] as i8 - 1
+    merge_with_pair(&mut dist, &lookup_suit(&counts[18..27]), m);
+    merge_with_pair(&mut dist, &lookup_suit(&counts[9..18]), m);
+    merge_final(&mut dist, &lookup_suit(&counts[0..9]), m);
+    dist[m + 5] as i8 - 1
 }
 
 /// 七对子向听数
