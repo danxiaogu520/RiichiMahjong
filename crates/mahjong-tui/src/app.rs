@@ -353,11 +353,15 @@ impl App {
     fn compute_analysis(calc: &mut ShantenCalculator, game: &GameState) -> Vec<DiscardOption> {
         let player = &game.players[0];
         let hand = &player.hand;
-        if hand.len() < 2 {
+        let mut tiles: Vec<Tile> = hand.tiles().to_vec();
+        if let Some(drawn) = game.drawn_tile {
+            tiles.push(drawn);
+        }
+        if tiles.len() < 2 {
             return Vec::new();
         }
         let visible = Self::build_visible_tiles_static(game, PlayerId(0));
-        analyze_discard(calc, hand.tiles(), &visible)
+        analyze_discard(calc, &tiles, &visible)
     }
 
     fn compute_acceptance(calc: &mut ShantenCalculator, game: &GameState) -> (Vec<AcceptanceInfo>, Vec<AcceptanceInfo>, i8) {
