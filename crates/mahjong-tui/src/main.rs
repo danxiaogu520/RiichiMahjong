@@ -68,16 +68,21 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             continue;
         }
 
-        if !app.is_human_turn() {
+        if app.is_human_turn() {
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let event::Event::Key(key) = event::read()? {
+                    input::handle_input(app, key);
+                }
+            }
+        } else if app.needs_human_response() {
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let event::Event::Key(key) = event::read()? {
+                    input::handle_call_input(app, key);
+                }
+            }
+        } else {
             std::thread::sleep(std::time::Duration::from_millis(300));
             app.execute_ai_turn();
-            continue;
-        }
-
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let event::Event::Key(key) = event::read()? {
-                input::handle_input(app, key);
-            }
         }
     }
 }
