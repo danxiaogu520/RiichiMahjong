@@ -120,6 +120,7 @@ impl App {
                 }
 
                 self.ai_discard(player);
+                self.process_ai_responses();
             }
             GamePhase::RoundOver => {
                 self.handle_round_end();
