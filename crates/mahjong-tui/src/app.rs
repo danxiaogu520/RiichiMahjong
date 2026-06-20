@@ -132,7 +132,10 @@ impl App {
     pub fn process_ai_responses(&mut self) {
         loop {
             match self.game.phase {
-                GamePhase::ResponsePhase { discarder, .. } | GamePhase::ChankanResponse { kakan_player: discarder, .. } => {
+                GamePhase::ResponsePhase { discarder, .. }
+                | GamePhase::ChankanResponse {
+                    kakan_player: discarder, ..
+                } => {
                     self.refresh_call_options();
                     if self.needs_human_response() {
                         return;
@@ -152,8 +155,15 @@ impl App {
                         match self.game.execute_call(pid, ResponseAction::Ron) {
                             Ok(events) => {
                                 for e in &events {
-                                    if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
-                                        self.messages.push(format!("{} 荣和！ {} 点", name, points.abs()));
+                                    if let GameEvent::PlayerWon {
+                                        yaku_names, points, ..
+                                    } = e
+                                    {
+                                        self.messages.push(format!(
+                                            "{} 荣和！ {} 点",
+                                            name,
+                                            points.abs()
+                                        ));
                                         for yaku in yaku_names {
                                             self.messages.push(format!("  {}", yaku));
                                         }
@@ -166,16 +176,14 @@ impl App {
                         }
                     }
 
-                    let human_ron = call_options.iter().find(|o| {
-                        o.player == PlayerId(0) && matches!(o.call_type, CallType::Ron)
-                    });
+                    let human_ron = call_options
+                        .iter()
+                        .find(|o| o.player == PlayerId(0) && matches!(o.call_type, CallType::Ron));
                     if human_ron.is_some() && self.needs_human_response() {
                         return;
                     }
 
-                    if self.game.players[0].hand.len() + if self.game.drawn_tile.is_some() { 1 } else { 0 } > 0 {
-                        let _ = self.game.execute_call(discarder, ResponseAction::Pass);
-                    }
+                    let _ = self.game.execute_call(discarder, ResponseAction::Pass);
 
                     if matches!(self.game.phase, GamePhase::DrawPhase) {
                         if self.game.draw().is_err() {
@@ -210,9 +218,15 @@ impl App {
                 }
                 Err(_) => {
                     let hand = &self.game.players[player.0].hand;
-                    let tile = hand.tiles()[0];
-                    let _ = self.game.execute_action(TurnAction::Discard(tile));
+                    if let Some(&tile) = hand.tiles().first() {
+                        let _ = self.game.execute_action(TurnAction::Discard(tile));
+                    }
                 }
+            }
+        } else {
+            let hand = &self.game.players[player.0].hand;
+            if let Some(&tile) = hand.tiles().first() {
+                let _ = self.game.execute_action(TurnAction::Discard(tile));
             }
         }
     }
