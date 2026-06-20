@@ -29,8 +29,7 @@ pub fn check_win(
     }
 
     // ── Step 2: 判形 ──
-    let tile_types: Vec<TileType> = all_tiles.iter().map(|t| t.tile_type()).collect();
-    if !is_win_shape(&tile_types) {
+    if !is_win_shape(hand_tiles) {
         return None;
     }
 
