@@ -51,6 +51,8 @@ pub fn analyze_discard(
         let mut improvement_copies = 0usize;
 
         if new_shanten == current_shanten {
+            let old_acceptance_copies = count_acceptance_copies(calculator, &after_discard, visible, new_shanten);
+
             for i in 0..34u8 {
                 let draw_tt = TileType(i);
                 let rem = remaining_copies(draw_tt, &after_discard, visible);
@@ -61,10 +63,9 @@ pub fn analyze_discard(
                 let mut after_draw = after_discard;
                 after_draw.inc(draw_tt);
 
-                let new_acceptance = find_acceptance(calculator, &after_draw, new_shanten);
-                let old_acceptance_count = acceptance_tiles.len();
+                let new_acceptance_copies = count_acceptance_copies(calculator, &after_draw, visible, new_shanten);
 
-                if new_acceptance.len() > old_acceptance_count {
+                if new_acceptance_copies > old_acceptance_copies {
                     improvement_types += 1;
                     improvement_copies += rem;
                 }
@@ -127,15 +128,36 @@ pub fn analyze_acceptance(
         if new_shanten < current_shanten {
             acceptance.push(AcceptanceInfo { tile: tt, copies: rem, new_shanten });
         } else if new_shanten == current_shanten {
-            let current_acceptance_count = find_acceptance(calculator, &counts, current_shanten).len();
-            let new_acceptance_count = find_acceptance(calculator, &after, current_shanten).len();
-            if new_acceptance_count > current_acceptance_count {
+            let old_copies = count_acceptance_copies(calculator, &counts, visible, current_shanten);
+            let new_copies = count_acceptance_copies(calculator, &after, visible, current_shanten);
+            if new_copies > old_copies {
                 improvement.push(AcceptanceInfo { tile: tt, copies: rem, new_shanten });
             }
         }
     }
 
     (acceptance, improvement, current_shanten)
+}
+
+fn count_acceptance_copies(
+    calculator: &mut ShantenCalculator,
+    counts: &TileCounts,
+    visible: &VisibleTiles,
+    shanten: i8,
+) -> usize {
+    let mut total = 0usize;
+    for i in 0..34u8 {
+        let tt = TileType(i);
+        if counts.get(tt) >= 4 {
+            continue;
+        }
+        let mut after = *counts;
+        after.inc(tt);
+        if calculator.lookup(&after) < shanten {
+            total += remaining_copies(tt, counts, visible);
+        }
+    }
+    total
 }
 
 fn find_acceptance(
