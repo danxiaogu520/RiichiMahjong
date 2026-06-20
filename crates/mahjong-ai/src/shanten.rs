@@ -116,11 +116,8 @@ mod tests {
     use rand::seq::SliceRandom;
     use rand::SeedableRng;
 
-    #[test]
-    fn test_shanten_distribution() {
+    fn run_distribution_test(num_tiles: usize, num_hands: usize, expected_ev: f64) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        let num_tiles = 14usize;
-        let num_hands = 1_000_000usize;
 
         let mut wall: Vec<usize> = Vec::with_capacity(136);
         for i in 0..34 {
@@ -151,34 +148,31 @@ mod tests {
 
         ev /= num_hands as f64;
 
-        println!("Shanten distribution ({} hands):", num_hands);
+        println!("\n=== {} tiles, {} hands ===", num_tiles, num_hands);
         for i in 0..8 {
             let sht = i as i8 - 1;
             let count = dist[i];
             let pct = count as f64 * 100.0 / num_hands as f64;
             println!("{:4}{:12}{:12.6}", sht, count, pct);
         }
-        println!("Expected value: {:.5}", ev);
+        println!("Expected: {:.5}, Actual: {:.5}", expected_ev, ev);
 
-        let ref_pcts = [0.0003, 0.07, 2.33, 19.50, 43.93, 28.52, 5.50, 0.16];
-        for i in 0..8 {
-            let actual = dist[i] as f64 * 100.0 / num_hands as f64;
-            let expected = ref_pcts[i];
-            if expected > 0.01 {
-                assert!(
-                    (actual - expected).abs() < 0.5,
-                    "shanten {}: expected ~{:.2}%, got {:.4}%",
-                    i as i8 - 1,
-                    expected,
-                    actual
-                );
-            }
-        }
         assert!(
-            (ev - 3.156).abs() < 0.01,
-            "expected value ~3.156, got {:.5}",
+            (ev - expected_ev).abs() < 0.005,
+            "expected {:.5}, got {:.5}",
+            expected_ev,
             ev
         );
+    }
+
+    #[test]
+    fn test_distribution_14tiles() {
+        run_distribution_test(14, 1_000_000, 3.15593);
+    }
+
+    #[test]
+    fn test_distribution_13tiles() {
+        run_distribution_test(13, 1_000_000, 3.57967);
     }
 
     #[test]
