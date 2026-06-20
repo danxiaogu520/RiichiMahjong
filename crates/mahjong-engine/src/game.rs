@@ -4,6 +4,7 @@ use mahjong_core::hand::Hand;
 use mahjong_core::meld::{Meld, MeldKind};
 use mahjong_core::player::PlayerId;
 use mahjong_core::tile::{Tile, TileType};
+use mahjong_ai::shanten::ShantenCalculator;
 use mahjong_yaku::analysis::{analyze_wait_tiles, is_standard_win};
 use mahjong_yaku::types::{TileCounts, WinContext};
 use mahjong_yaku::win_check;
@@ -972,16 +973,20 @@ impl GameState {
 impl GameState {
     /// 检测玩家是否听牌（手牌 13 张时调用）
     pub fn is_tenpai(&self, player: PlayerId) -> bool {
-        !analyze_wait_tiles(self.players[player.0].hand.tiles()).is_empty()
+        let calc = ShantenCalculator::new();
+        let hand = &self.players[player.0].hand;
+        let counts = mahjong_yaku::types::TileCounts::from_tiles(hand.tiles());
+        calc.lookup(&counts) == 0
     }
 
     /// 检测玩家是否可以听牌（手牌 14 张时调用）
     pub fn can_tenpai(&self, player: PlayerId) -> bool {
+        let calc = ShantenCalculator::new();
         let hand = &self.players[player.0].hand;
-        for tile in hand.tiles() {
-            let mut simulated_hand = hand.clone();
-            simulated_hand.remove(*tile).ok();
-            if !analyze_wait_tiles(simulated_hand.tiles()).is_empty() {
+        for &tile in hand.tiles() {
+            let mut after = mahjong_yaku::types::TileCounts::from_tiles(hand.tiles());
+            after.dec(tile.tile_type());
+            if calc.lookup(&after) == 0 {
                 return true;
             }
         }
@@ -998,12 +1003,13 @@ impl GameState {
 
     /// 获取玩家可以导致听牌的打牌列表（手牌 14 张时调用）
     pub fn get_tenpai_discard_options(&self, player: PlayerId) -> Vec<Tile> {
+        let calc = ShantenCalculator::new();
         let hand = &self.players[player.0].hand;
         let mut options = Vec::new();
         for &tile in hand.tiles() {
-            let mut simulated_hand = hand.clone();
-            simulated_hand.remove(tile).ok();
-            if !analyze_wait_tiles(simulated_hand.tiles()).is_empty() {
+            let mut after = mahjong_yaku::types::TileCounts::from_tiles(hand.tiles());
+            after.dec(tile.tile_type());
+            if calc.lookup(&after) == 0 {
                 options.push(tile);
             }
         }
