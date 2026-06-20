@@ -971,12 +971,37 @@ impl GameState {
 // ═══════════════════════════════════════════════════════════════
 
 impl GameState {
-    /// 检测玩家是否听牌（手牌 13 张时调用）
+    /// 检测玩家是否听牌（考虑 drawn_tile 缓冲区）
     pub fn is_tenpai(&self, player: PlayerId) -> bool {
         let calc = ShantenCalculator::new();
         let hand = &self.players[player.0].hand;
-        let counts = mahjong_yaku::types::TileCounts::from_tiles(hand.tiles());
+        let mut counts = mahjong_yaku::types::TileCounts::from_tiles(hand.tiles());
+        if let Some(drawn) = self.drawn_tile {
+            if player == self.current_player {
+                counts.inc(drawn.tile_type());
+            }
+        }
         calc.lookup(&counts) == 0
+    }
+
+    /// 获取玩家可以导致听牌的打牌列表（手牌 14 张时调用，含 drawn_tile）
+    pub fn get_tenpai_discard_options(&self, player: PlayerId) -> Vec<Tile> {
+        let calc = ShantenCalculator::new();
+        let hand = &self.players[player.0].hand;
+        let mut full_tiles: Vec<Tile> = hand.tiles().to_vec();
+        if let Some(drawn) = self.drawn_tile {
+            full_tiles.push(drawn);
+        }
+        let full_counts = mahjong_yaku::types::TileCounts::from_tiles(&full_tiles);
+        let mut options = Vec::new();
+        for &tile in &full_tiles {
+            let mut after = full_counts;
+            after.dec(tile.tile_type());
+            if calc.lookup(&after) == 0 {
+                options.push(tile);
+            }
+        }
+        options
     }
 
     /// 检测玩家是否可以听牌（手牌 14 张时调用）
@@ -999,21 +1024,6 @@ impl GameState {
             .iter()
             .map(|w| w.tile_type)
             .collect()
-    }
-
-    /// 获取玩家可以导致听牌的打牌列表（手牌 14 张时调用）
-    pub fn get_tenpai_discard_options(&self, player: PlayerId) -> Vec<Tile> {
-        let calc = ShantenCalculator::new();
-        let hand = &self.players[player.0].hand;
-        let mut options = Vec::new();
-        for &tile in hand.tiles() {
-            let mut after = mahjong_yaku::types::TileCounts::from_tiles(hand.tiles());
-            after.dec(tile.tile_type());
-            if calc.lookup(&after) == 0 {
-                options.push(tile);
-            }
-        }
-        options
     }
 
     /// 检测玩家是否可以宣告立直
