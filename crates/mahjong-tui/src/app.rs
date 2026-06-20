@@ -27,7 +27,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let mut game = GameState::new();
-        let mut rng = StdRng::seed_from_u64(rand::random::<u64>());
+        let mut rng = StdRng::from_entropy();
         let mut calc = ShantenCalculator::new();
         game.start_round(&mut rng);
         let analysis = Self::compute_analysis(&mut calc, &game);
