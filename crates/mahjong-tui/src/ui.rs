@@ -43,11 +43,12 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray));
 
+    let max_lines = area.height.saturating_sub(2) as usize;
+    let skip = app.messages.len().saturating_sub(max_lines);
     let messages: Vec<Line> = app
         .messages
         .iter()
-        .rev()
-        .take(area.height.saturating_sub(2) as usize)
+        .skip(skip)
         .map(|m| Line::from(Span::raw(m.clone())))
         .collect();
 
@@ -56,6 +57,17 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
+    let hand_len = app.game.players[0].hand.len();
+    let is_3n2 = hand_len % 3 == 2;
+
+    if is_3n2 {
+        render_discard_analysis(f, app, area);
+    } else {
+        render_acceptance_analysis(f, app, area);
+    }
+}
+
+fn render_discard_analysis(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title("打牌分析")
         .borders(Borders::ALL)
@@ -82,10 +94,7 @@ fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
 
         let tile_str = format_tile_type(opt.tile.tile_type());
         let line = Line::from(vec![
-            Span::styled(
-                format!("{:>4}", tile_str),
-                style,
-            ),
+            Span::styled(format!("{:>4}", tile_str), style),
             Span::styled(
                 format!("  {:>2}种{:>2}张   {:>2}种{:>2}张  {:>2}",
                     opt.acceptance_types, opt.acceptance_copies,
@@ -95,6 +104,73 @@ fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
             ),
         ]);
         lines.push(line);
+    }
+
+    let para = Paragraph::new(lines).block(block);
+    f.render_widget(para, area);
+}
+
+fn render_acceptance_analysis(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .title(format!("进张分析 (向听:{})", app.acceptance_shanten))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    if app.acceptance.is_empty() && app.improvement.is_empty() {
+        let para = Paragraph::new("无进张").block(block);
+        f.render_widget(para, area);
+        return;
+    }
+
+    let mut lines = Vec::new();
+
+    if !app.acceptance.is_empty() {
+        let total_types = app.acceptance.len();
+        let total_copies: usize = app.acceptance.iter().map(|a| a.copies).sum();
+        lines.push(Line::from(Span::styled(
+            format!("进张: {}种 {}张", total_types, total_copies),
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        )));
+        let mut spans = Vec::new();
+        for (i, acc) in app.acceptance.iter().enumerate() {
+            let tile_str = format_tile_type(acc.tile);
+            spans.push(Span::styled(
+                format!("{}×{} ", tile_str, acc.copies),
+                Style::default().fg(tile_color(acc.tile)),
+            ));
+            if (i + 1) % 6 == 0 {
+                lines.push(Line::from(spans.clone()));
+                spans.clear();
+            }
+        }
+        if !spans.is_empty() {
+            lines.push(Line::from(spans));
+        }
+    }
+
+    if !app.improvement.is_empty() {
+        lines.push(Line::from(Span::raw("")));
+        let total_types = app.improvement.len();
+        let total_copies: usize = app.improvement.iter().map(|a| a.copies).sum();
+        lines.push(Line::from(Span::styled(
+            format!("改良: {}种 {}张", total_types, total_copies),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )));
+        let mut spans = Vec::new();
+        for (i, imp) in app.improvement.iter().enumerate() {
+            let tile_str = format_tile_type(imp.tile);
+            spans.push(Span::styled(
+                format!("{}×{} ", tile_str, imp.copies),
+                Style::default().fg(tile_color(imp.tile)),
+            ));
+            if (i + 1) % 6 == 0 {
+                lines.push(Line::from(spans.clone()));
+                spans.clear();
+            }
+        }
+        if !spans.is_empty() {
+            lines.push(Line::from(spans));
+        }
     }
 
     let para = Paragraph::new(lines).block(block);

@@ -95,6 +95,49 @@ pub fn analyze_discard(
     results
 }
 
+#[derive(Debug, Clone)]
+pub struct AcceptanceInfo {
+    pub tile: TileType,
+    pub copies: usize,
+    pub new_shanten: i8,
+}
+
+pub fn analyze_acceptance(
+    calculator: &mut ShantenCalculator,
+    hand: &[Tile],
+    visible: &VisibleTiles,
+) -> (Vec<AcceptanceInfo>, Vec<AcceptanceInfo>, i8) {
+    let counts = TileCounts::from_tiles(hand);
+    let current_shanten = calculator.lookup(&counts);
+
+    let mut acceptance = Vec::new();
+    let mut improvement = Vec::new();
+
+    for i in 0..34u8 {
+        let tt = TileType(i);
+        let rem = remaining_copies(tt, &counts, visible);
+        if rem == 0 {
+            continue;
+        }
+
+        let mut after = counts;
+        after.inc(tt);
+        let new_shanten = calculator.lookup(&after);
+
+        if new_shanten < current_shanten {
+            acceptance.push(AcceptanceInfo { tile: tt, copies: rem, new_shanten });
+        } else if new_shanten == current_shanten {
+            let current_acceptance_count = find_acceptance(calculator, &counts, current_shanten).len();
+            let new_acceptance_count = find_acceptance(calculator, &after, current_shanten).len();
+            if new_acceptance_count > current_acceptance_count {
+                improvement.push(AcceptanceInfo { tile: tt, copies: rem, new_shanten });
+            }
+        }
+    }
+
+    (acceptance, improvement, current_shanten)
+}
+
 fn find_acceptance(
     calculator: &mut ShantenCalculator,
     counts: &TileCounts,

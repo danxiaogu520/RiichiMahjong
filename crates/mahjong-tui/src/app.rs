@@ -1,4 +1,4 @@
-use mahjong_ai::analysis::{analyze_discard, DiscardOption, VisibleTiles};
+use mahjong_ai::analysis::{analyze_acceptance, analyze_discard, AcceptanceInfo, DiscardOption, VisibleTiles};
 use mahjong_ai::shanten::ShantenCalculator;
 use mahjong_core::player::PlayerId;
 use mahjong_core::tile::{Tile, TileType};
@@ -18,6 +18,9 @@ pub struct App {
     pub call_selected: usize,
     pub messages: Vec<String>,
     pub analysis: Vec<DiscardOption>,
+    pub acceptance: Vec<AcceptanceInfo>,
+    pub improvement: Vec<AcceptanceInfo>,
+    pub acceptance_shanten: i8,
     pub round_end_reason: Option<RoundEndReason>,
 }
 
@@ -28,6 +31,7 @@ impl App {
         let mut calc = ShantenCalculator::new();
         game.start_round(&mut rng);
         let analysis = Self::compute_analysis(&mut calc, &game);
+        let (acceptance, improvement, acceptance_shanten) = Self::compute_acceptance(&mut calc, &game);
 
         Self {
             game,
@@ -40,6 +44,9 @@ impl App {
             call_selected: 0,
             messages: Vec::new(),
             analysis,
+            acceptance,
+            improvement,
+            acceptance_shanten,
             round_end_reason: None,
         }
     }
@@ -220,6 +227,10 @@ impl App {
         } else {
             self.game.start_round(&mut self.rng);
             self.analysis = Self::compute_analysis(&mut self.calc, &self.game);
+            let (acc, imp, shanten) = Self::compute_acceptance(&mut self.calc, &self.game);
+            self.acceptance = acc;
+            self.improvement = imp;
+            self.acceptance_shanten = shanten;
             self.messages.clear();
             self.selected = 0;
         }
@@ -310,6 +321,10 @@ impl App {
 
     pub fn refresh_analysis(&mut self) {
         self.analysis = Self::compute_analysis(&mut self.calc, &self.game);
+        let (acc, imp, shanten) = Self::compute_acceptance(&mut self.calc, &self.game);
+        self.acceptance = acc;
+        self.improvement = imp;
+        self.acceptance_shanten = shanten;
     }
 
     fn compute_analysis(calc: &mut ShantenCalculator, game: &GameState) -> Vec<DiscardOption> {
@@ -320,6 +335,16 @@ impl App {
         }
         let visible = Self::build_visible_tiles_static(game, PlayerId(0));
         analyze_discard(calc, hand.tiles(), &visible)
+    }
+
+    fn compute_acceptance(calc: &mut ShantenCalculator, game: &GameState) -> (Vec<AcceptanceInfo>, Vec<AcceptanceInfo>, i8) {
+        let player = &game.players[0];
+        let hand = &player.hand;
+        if hand.is_empty() {
+            return (Vec::new(), Vec::new(), -1);
+        }
+        let visible = Self::build_visible_tiles_static(game, PlayerId(0));
+        analyze_acceptance(calc, hand.tiles(), &visible)
     }
 
     fn build_visible_tiles(&self, player: PlayerId) -> VisibleTiles {
