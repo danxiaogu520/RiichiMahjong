@@ -262,6 +262,20 @@ mod tests {
     }
 
     #[test]
+    fn test_tenpai_pair_wait_4melds() {
+        let mut calc = ShantenCalculator::new();
+        // 1m2m3m 4m5m6m 7m8m9m 1p2p3p 4p → 听 4p 做雀头 → shanten=0
+        let hand = make_tiles(&[
+            (Suit::Man, Rank(1), 0), (Suit::Man, Rank(2), 0), (Suit::Man, Rank(3), 0),
+            (Suit::Man, Rank(4), 0), (Suit::Man, Rank(5), 0), (Suit::Man, Rank(6), 0),
+            (Suit::Man, Rank(7), 0), (Suit::Man, Rank(8), 0), (Suit::Man, Rank(9), 0),
+            (Suit::Pin, Rank(1), 0), (Suit::Pin, Rank(2), 0), (Suit::Pin, Rank(3), 0),
+            (Suit::Pin, Rank(4), 0),
+        ]);
+        assert_eq!(calc.calculate(&hand), 0, "4面子+单张等雀头应为0向听");
+    }
+
+    #[test]
     fn test_cache_works() {
         let mut calc = ShantenCalculator::new();
         let hand = make_tiles(&[
