@@ -1,112 +1,89 @@
 use mahjong_core::tile::Tile;
 use mahjong_yaku::types::TileCounts;
 
-static INDEX_S: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index_s.bin"));
-static INDEX_H: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index_h.bin"));
+/// 数牌（9种）查找表：每条目10字节，存储0~4面子无雀头/有雀头的部分置换数
+static SUIT_TABLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index_s.bin"));
+/// 字牌（7种）查找表
+static HONOR_TABLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index_h.bin"));
 
-const ENTRY_SIZE: usize = 10;
+const ENTRY_LEN: usize = 10;
 
-fn hash_base5<const N: usize>(counts: &[u8]) -> usize {
-    let mut h: usize = 0;
-    for i in 0..N {
-        h = h * 5 + counts[i] as usize;
-    }
-    h
+/// Base-5 编码：将 N 种牌的计数数组映射为查找表索引
+fn encode_base5<const N: usize>(counts: &[u8]) -> usize {
+    counts.iter().take(N).fold(0, |acc, &c| acc * 5 + c as usize)
 }
 
-fn lookup_s(counts: &[u8]) -> [u8; 10] {
-    let idx = hash_base5::<9>(counts) * ENTRY_SIZE;
-    let mut entry = [0u8; 10];
-    entry.copy_from_slice(&INDEX_S[idx..idx + ENTRY_SIZE]);
-    entry
+fn lookup_suit(counts: &[u8]) -> [u8; 10] {
+    let idx = encode_base5::<9>(counts) * ENTRY_LEN;
+    SUIT_TABLE[idx..idx + ENTRY_LEN].try_into().unwrap()
 }
 
-fn lookup_h(counts: &[u8]) -> [u8; 10] {
-    let idx = hash_base5::<7>(counts) * ENTRY_SIZE;
-    let mut entry = [0u8; 10];
-    entry.copy_from_slice(&INDEX_H[idx..idx + ENTRY_SIZE]);
-    entry
+fn lookup_honor(counts: &[u8]) -> [u8; 10] {
+    let idx = encode_base5::<7>(counts) * ENTRY_LEN;
+    HONOR_TABLE[idx..idx + ENTRY_LEN].try_into().unwrap()
 }
 
-fn add1(lhs: &mut [u8; 10], rhs: &[u8; 10], m: usize) {
-    for j in (5..=m + 5).rev() {
-        let mut sht = std::cmp::min(
-            lhs[j] as i32 + rhs[0] as i32,
-            lhs[0] as i32 + rhs[j] as i32,
-        );
+/// 合并两组花色的部分置换数（雀头可来自任一方）
+///
+/// acc[0..5]: u_0..u_4（无雀头）
+/// acc[5..10]: t_0..t_4（有雀头）
+fn merge_with_pair(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
+    // 有雀头部分：t[j] = min over k of (t[k]+u[j-k], u[k]+t[j-k])
+    for j in (5..=num_melds + 5).rev() {
+        let mut best = std::cmp::min(acc[j] as i32 + other[0] as i32, acc[0] as i32 + other[j] as i32);
         for k in 5..j {
-            sht = std::cmp::min(
-                sht,
-                std::cmp::min(
-                    lhs[k] as i32 + rhs[j - k] as i32,
-                    lhs[j - k] as i32 + rhs[k] as i32,
-                ),
-            );
+            best = std::cmp::min(best, std::cmp::min(
+                acc[k] as i32 + other[j - k] as i32,
+                acc[j - k] as i32 + other[k] as i32,
+            ));
         }
-        lhs[j] = sht as u8;
+        acc[j] = best as u8;
     }
-    for j in (0..=m).rev() {
-        let mut sht = lhs[j] as i32 + rhs[0] as i32;
+    // 无雀头部分：u[j] = min over k of u[k]+u[j-k]
+    for j in (0..=num_melds).rev() {
+        let mut best = acc[j] as i32 + other[0] as i32;
         for k in 0..j {
-            sht = std::cmp::min(sht, lhs[k] as i32 + rhs[j - k] as i32);
+            best = std::cmp::min(best, acc[k] as i32 + other[j - k] as i32);
         }
-        lhs[j] = sht as u8;
+        acc[j] = best as u8;
     }
 }
 
-fn add2(lhs: &mut [u8; 10], rhs: &[u8; 10], m: usize) {
-    let j = m + 5;
-    let mut sht = std::cmp::min(
-        lhs[j] as i32 + rhs[0] as i32,
-        lhs[0] as i32 + rhs[j] as i32,
-    );
+/// 合并最后一组花色（雀头已在前面确定，只更新有雀头部分）
+fn merge_final(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
+    let j = num_melds + 5;
+    let mut best = std::cmp::min(acc[j] as i32 + other[0] as i32, acc[0] as i32 + other[j] as i32);
     for k in 5..j {
-        sht = std::cmp::min(
-            sht,
-            std::cmp::min(
-                lhs[k] as i32 + rhs[j - k] as i32,
-                lhs[j - k] as i32 + rhs[k] as i32,
-            ),
-        );
+        best = std::cmp::min(best, std::cmp::min(
+            acc[k] as i32 + other[j - k] as i32,
+            acc[j - k] as i32 + other[k] as i32,
+        ));
     }
-    lhs[j] = sht as u8;
+    acc[j] = best as u8;
 }
 
-fn calc_lh(counts: &[u8; 34], m: usize) -> i8 {
-    let mut ret = lookup_h(&counts[27..34]);
-    add1(&mut ret, &lookup_s(&counts[18..27]), m);
-    add1(&mut ret, &lookup_s(&counts[9..18]), m);
-    add2(&mut ret, &lookup_s(&counts[0..9]), m);
-    ret[m + 5] as i8 - 1
+/// 标准形（四面子一雀头）向听数
+fn calc_standard(counts: &[u8; 34], num_melds: usize) -> i8 {
+    let mut dist = lookup_honor(&counts[27..34]);
+    merge_with_pair(&mut dist, &lookup_suit(&counts[18..27]), num_melds);
+    merge_with_pair(&mut dist, &lookup_suit(&counts[9..18]), num_melds);
+    merge_final(&mut dist, &lookup_suit(&counts[0..9]), num_melds);
+    dist[num_melds + 5] as i8 - 1
 }
 
-fn calc_sp(counts: &[u8; 34]) -> i8 {
-    let mut pair = 0i8;
-    let mut kind = 0i8;
-    for i in 0..34 {
-        if counts[i] > 0 {
-            kind += 1;
-            if counts[i] >= 2 {
-                pair += 1;
-            }
-        }
-    }
-    7 - pair + if kind < 7 { 7 - kind } else { 0 } - 1
+/// 七对子向听数
+fn calc_seven_pairs(counts: &[u8; 34]) -> i8 {
+    let pairs = counts.iter().filter(|&&c| c >= 2).count() as i8;
+    let kinds = counts.iter().filter(|&&c| c > 0).count() as i8;
+    7 - pairs + if kinds < 7 { 7 - kinds } else { 0 } - 1
 }
 
-fn calc_to(counts: &[u8; 34]) -> i8 {
+/// 国士无双向听数
+fn calc_thirteen_orphans(counts: &[u8; 34]) -> i8 {
     let yaochuuhai = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
-    let mut pair = 0i8;
-    let mut kind = 0i8;
-    for &i in &yaochuuhai {
-        if counts[i] > 0 {
-            kind += 1;
-            if counts[i] >= 2 {
-                pair += 1;
-            }
-        }
-    }
-    14 - kind - if pair > 0 { 1 } else { 0 } - 1
+    let kinds = yaochuuhai.iter().filter(|&&i| counts[i] > 0).count() as i8;
+    let has_pair = yaochuuhai.iter().any(|&i| counts[i] >= 2);
+    14 - kinds - if has_pair { 1 } else { 0 } - 1
 }
 
 pub struct ShantenCalculator;
@@ -123,14 +100,13 @@ impl ShantenCalculator {
 
     pub fn lookup(&self, counts: &TileCounts) -> i8 {
         let c = counts.inner();
-        let total: u8 = c.iter().sum();
-        let m = total as usize / 3;
+        let num_melds = c.iter().sum::<u8>() as usize / 3;
 
-        let lh = calc_lh(c, m);
-        let sp = if m == 4 { calc_sp(c) } else { i8::MAX };
-        let to = if m == 4 { calc_to(c) } else { i8::MAX };
+        let standard = calc_standard(c, num_melds);
+        let seven_pairs = if num_melds == 4 { calc_seven_pairs(c) } else { i8::MAX };
+        let thirteen_orphans = if num_melds == 4 { calc_thirteen_orphans(c) } else { i8::MAX };
 
-        lh.min(sp).min(to)
+        standard.min(seven_pairs).min(thirteen_orphans)
     }
 }
 
@@ -162,10 +138,10 @@ mod tests {
             for j in 0..num_tiles {
                 counts[wall[j]] += 1;
             }
-            let sht = calc_lh(&counts, num_tiles / 3);
-            let sp = calc_sp(&counts);
-            let to = calc_to(&counts);
-            let result = sht.min(sp).min(to);
+            let s = calc_standard(&counts, num_tiles / 3);
+            let sp = calc_seven_pairs(&counts);
+            let to = calc_thirteen_orphans(&counts);
+            let result = s.min(sp).min(to);
             let idx = (result + 1) as usize;
             if idx < dist.len() {
                 dist[idx] += 1;
@@ -184,7 +160,6 @@ mod tests {
         }
         println!("Expected value: {:.5}", ev);
 
-        // Verify against reference values (tolerance ±0.5%)
         let ref_pcts = [0.0003, 0.07, 2.33, 19.50, 43.93, 28.52, 5.50, 0.16];
         for i in 0..8 {
             let actual = dist[i] as f64 * 100.0 / num_hands as f64;
@@ -210,7 +185,6 @@ mod tests {
     fn test_specific_hands() {
         let calc = ShantenCalculator::new();
 
-        // 1m2m3m 4m5m6m 7m8m9m 1p2p3p 4p → tenpai
         let hand = make_tiles(&[
             (Suit::Man, Rank(1), 0), (Suit::Man, Rank(2), 0), (Suit::Man, Rank(3), 0),
             (Suit::Man, Rank(4), 0), (Suit::Man, Rank(5), 0), (Suit::Man, Rank(6), 0),
@@ -220,7 +194,6 @@ mod tests {
         ]);
         assert_eq!(calc.calculate(&hand), 0, "tenpai hand");
 
-        // 1m2m3m 4m5m6m 7m8m9m 1p1p 2p3p → tenpai (ryanmen)
         let hand = make_tiles(&[
             (Suit::Man, Rank(1), 0), (Suit::Man, Rank(2), 0), (Suit::Man, Rank(3), 0),
             (Suit::Man, Rank(4), 0), (Suit::Man, Rank(5), 0), (Suit::Man, Rank(6), 0),
@@ -230,7 +203,6 @@ mod tests {
         ]);
         assert_eq!(calc.calculate(&hand), 0, "tenpai ryanmen");
 
-        // 1m1m 2m2m 3m3m 4m4m 5m5m 6m6m 7m → tenpai (7 pairs)
         let hand = make_tiles(&[
             (Suit::Man, Rank(1), 0), (Suit::Man, Rank(1), 1),
             (Suit::Man, Rank(2), 0), (Suit::Man, Rank(2), 1),
@@ -242,7 +214,6 @@ mod tests {
         ]);
         assert_eq!(calc.calculate(&hand), 0, "7 pairs tenpai");
 
-        // 1m 9m 1p 9p 1s 9s 1z2z3z4z 5z6z7z → tenpai (kokushi)
         let hand = make_tiles(&[
             (Suit::Man, Rank(1), 0), (Suit::Man, Rank(9), 0),
             (Suit::Pin, Rank(1), 0), (Suit::Pin, Rank(9), 0),
@@ -254,7 +225,6 @@ mod tests {
         ]);
         assert_eq!(calc.calculate(&hand), 0, "kokushi tenpai");
 
-        // 9m9m 1p2p 3p3p4p 7p8p9p 3s4s5s → tenpai (3p4p taatsu)
         let hand = make_tiles(&[
             (Suit::Man, Rank(9), 0), (Suit::Man, Rank(9), 1),
             (Suit::Pin, Rank(1), 0), (Suit::Pin, Rank(2), 0),
@@ -264,7 +234,6 @@ mod tests {
         ]);
         assert_eq!(calc.calculate(&hand), 0, "taatsu tenpai");
 
-        // 1m 4m 7m 2p 5p 8p 3s 6s 9s 1z 3z 5z 7z → high shanten
         let hand = make_tiles(&[
             (Suit::Man, Rank(1), 0), (Suit::Man, Rank(4), 0), (Suit::Man, Rank(7), 0),
             (Suit::Pin, Rank(2), 0), (Suit::Pin, Rank(5), 0), (Suit::Pin, Rank(8), 0),
