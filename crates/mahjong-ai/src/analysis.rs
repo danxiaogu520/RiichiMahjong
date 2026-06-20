@@ -82,10 +82,15 @@ pub fn analyze_discard(
     }
 
     results.sort_by(|a, b| {
-        b.acceptance_copies
-            .cmp(&a.acceptance_copies)
+        a.shanten
+            .cmp(&b.shanten)
+            .then(b.acceptance_copies.cmp(&a.acceptance_copies))
             .then(b.improvement_copies.cmp(&a.improvement_copies))
     });
+
+    if let Some(min_shanten) = results.first().map(|r| r.shanten) {
+        results.retain(|r| r.shanten == min_shanten);
+    }
 
     results
 }
