@@ -249,6 +249,7 @@ version = "0.1.0"
 dependencies = [
  "mahjong-core",
  "mahjong-yaku",
+ "rand",
 ]
 
 [[package]]
