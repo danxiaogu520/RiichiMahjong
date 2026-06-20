@@ -2,7 +2,7 @@ use mahjong_ai::analysis::{analyze_discard, DiscardOption, VisibleTiles};
 use mahjong_ai::shanten::ShantenCalculator;
 use mahjong_core::player::PlayerId;
 use mahjong_core::tile::{Tile, TileType};
-use mahjong_engine::action::{CallOption, GameEvent, ResponseAction, RoundEndReason, TurnAction};
+use mahjong_engine::action::{CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction};
 use mahjong_engine::game::{GamePhase, GameState};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -61,6 +61,7 @@ impl App {
     }
 
     pub fn execute_ai_turn(&mut self) {
+        let player = self.game.current_player;
         match self.game.phase {
             GamePhase::DrawPhase => {
                 if self.game.draw().is_err() {
@@ -68,37 +69,137 @@ impl App {
                 }
             }
             GamePhase::ActionPhase => {
-                let player = self.game.current_player;
-                let visible = self.build_visible_tiles(player);
-                let hand = &self.game.players[player.0].hand;
-                let analysis = analyze_discard(&mut self.calc, hand.tiles(), &visible);
-                let best = analysis.first().cloned();
-                if let Some(best) = best {
-                    match self.game.execute_action(TurnAction::Discard(best.tile)) {
-                        Ok(_) => {
-                            let name = self.player_name(player.0);
-                            self.messages.push(format!(
-                                "{} 打出 {} (进张:{}种{}张)",
-                                name, best.tile, best.acceptance_types, best.acceptance_copies
-                            ));
+                if self.game.check_tsumo(player).is_some() {
+                    let name = self.player_name(player.0).to_string();
+                    match self.game.execute_action(TurnAction::Tsumo) {
+                        Ok(events) => {
+                            for e in &events {
+                                if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
+                                    self.messages.push(format!("{} 自摸！ {} 点", name, points.abs()));
+                                    for yaku in yaku_names {
+                                        self.messages.push(format!("  {}", yaku));
+                                    }
+                                }
+                            }
+                            self.handle_round_end();
                         }
                         Err(_) => {
-                            let hand = &self.game.players[player.0].hand;
-                            let tile = hand.tiles()[0];
-                            let _ = self.game.execute_action(TurnAction::Discard(tile));
+                            self.ai_discard(player);
                         }
                     }
+                    return;
                 }
+
+                if self.game.can_declare_riichi(player) {
+                    let best_tile = self.ai_choose_riichi_tile(player);
+                    if let Some(tile) = best_tile {
+                        let name = self.player_name(player.0).to_string();
+                        match self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
+                            Ok(_) => {
+                                self.messages.push(format!("{} 立直！打出 {}", name, tile));
+                                self.advance_after_action();
+                            }
+                            Err(_) => {
+                                self.ai_discard(player);
+                            }
+                        }
+                        return;
+                    }
+                }
+
+                self.ai_discard(player);
             }
             GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
-                let _ = self.game.execute_call(self.game.current_player, ResponseAction::Pass);
-                if matches!(self.game.phase, GamePhase::DrawPhase) {
-                    if self.game.draw().is_err() {
-                        self.handle_round_end();
+                let call_options = self.game.get_call_options();
+                let ron_option = call_options.iter().find(|o| {
+                    o.player == player && matches!(o.call_type, CallType::Ron)
+                });
+
+                if ron_option.is_some() {
+                    let name = self.player_name(player.0).to_string();
+                    match self.game.execute_call(player, ResponseAction::Ron) {
+                        Ok(events) => {
+                            for e in &events {
+                                if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
+                                    self.messages.push(format!("{} 荣和！ {} 点", name, points.abs()));
+                                    for yaku in yaku_names {
+                                        self.messages.push(format!("  {}", yaku));
+                                    }
+                                }
+                            }
+                            self.handle_round_end();
+                        }
+                        Err(_) => {
+                            let _ = self.game.execute_call(player, ResponseAction::Pass);
+                            self.advance_after_pass();
+                        }
                     }
+                } else {
+                    let _ = self.game.execute_call(player, ResponseAction::Pass);
+                    self.advance_after_pass();
                 }
             }
             GamePhase::RoundOver => {
+                self.handle_round_end();
+            }
+        }
+    }
+
+    fn ai_discard(&mut self, player: PlayerId) {
+        let visible = self.build_visible_tiles(player);
+        let hand = &self.game.players[player.0].hand;
+        let analysis = analyze_discard(&mut self.calc, hand.tiles(), &visible);
+        let best = analysis.first().cloned();
+        if let Some(best) = best {
+            match self.game.execute_action(TurnAction::Discard(best.tile)) {
+                Ok(_) => {
+                    let name = self.player_name(player.0);
+                    self.messages.push(format!(
+                        "{} 打出 {} (进张:{}种{}张)",
+                        name, best.tile, best.acceptance_types, best.acceptance_copies
+                    ));
+                }
+                Err(_) => {
+                    let hand = &self.game.players[player.0].hand;
+                    let tile = hand.tiles()[0];
+                    let _ = self.game.execute_action(TurnAction::Discard(tile));
+                }
+            }
+        }
+    }
+
+    fn ai_choose_riichi_tile(&mut self, player: PlayerId) -> Option<Tile> {
+        let hand = &self.game.players[player.0].hand;
+        let mut full_hand = hand.clone();
+        if let Some(drawn) = self.game.drawn_tile {
+            full_hand.add(drawn);
+        }
+
+        let options = self.game.get_tenpai_discard_options(player);
+        if options.is_empty() {
+            return None;
+        }
+
+        let mut best_tile = options[0];
+        let mut best_wait_count = 0usize;
+
+        for &tile in &options {
+            let mut simulated = full_hand.clone();
+            simulated.remove(tile).ok();
+            let waits = mahjong_yaku::analysis::analyze_wait_tiles(simulated.tiles());
+            let wait_count = waits.len();
+            if wait_count > best_wait_count {
+                best_wait_count = wait_count;
+                best_tile = tile;
+            }
+        }
+
+        Some(best_tile)
+    }
+
+    fn advance_after_pass(&mut self) {
+        if matches!(self.game.phase, GamePhase::DrawPhase) {
+            if self.game.draw().is_err() {
                 self.handle_round_end();
             }
         }
