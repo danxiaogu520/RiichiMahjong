@@ -58,7 +58,9 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
     let hand_len = app.game.players[0].hand.len();
-    let is_3n2 = hand_len % 3 == 2;
+    let has_drawn = app.game.drawn_tile.is_some();
+    let total = hand_len + if has_drawn { 1 } else { 0 };
+    let is_3n2 = total % 3 == 2;
 
     if is_3n2 {
         render_discard_analysis(f, app, area);
