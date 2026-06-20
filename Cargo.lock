@@ -264,6 +264,7 @@ dependencies = [
 name = "mahjong-engine"
 version = "0.1.0"
 dependencies = [
+ "mahjong-ai",
  "mahjong-core",
  "mahjong-yaku",
  "rand",
