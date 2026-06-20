@@ -1265,7 +1265,7 @@ impl GameState {
 
     /// 正常摸牌区剩余可摸牌数
     pub fn remaining_tiles(&self) -> usize {
-        HAITEI.saturating_sub(self.current_index)
+        HAITEI.saturating_sub(self.current_index + self.get_kan_count())
     }
 
     pub fn take_events(&mut self) -> Vec<GameEvent> {
