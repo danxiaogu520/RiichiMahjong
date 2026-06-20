@@ -131,21 +131,24 @@ impl App {
     pub fn process_ai_responses(&mut self) {
         loop {
             match self.game.phase {
-                GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
+                GamePhase::ResponsePhase { discarder, .. } | GamePhase::ChankanResponse { kakan_player: discarder, .. } => {
                     self.refresh_call_options();
                     if self.needs_human_response() {
                         return;
                     }
 
                     let call_options = self.game.get_call_options();
-                    let current = self.game.current_player;
-                    let ron_option = call_options.iter().find(|o| {
-                        o.player == current && matches!(o.call_type, CallType::Ron)
+
+                    let ai_ron = call_options.iter().find(|o| {
+                        o.player != discarder
+                            && o.player != PlayerId(0)
+                            && matches!(o.call_type, CallType::Ron)
                     });
 
-                    if ron_option.is_some() {
-                        let name = self.player_name(current.0).to_string();
-                        match self.game.execute_call(current, ResponseAction::Ron) {
+                    if let Some(r) = ai_ron {
+                        let pid = r.player;
+                        let name = self.player_name(pid.0).to_string();
+                        match self.game.execute_call(pid, ResponseAction::Ron) {
                             Ok(events) => {
                                 for e in &events {
                                     if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
@@ -158,12 +161,19 @@ impl App {
                                 self.handle_round_end();
                                 return;
                             }
-                            Err(_) => {
-                                let _ = self.game.execute_call(current, ResponseAction::Pass);
-                            }
+                            Err(_) => {}
                         }
-                    } else {
-                        let _ = self.game.execute_call(current, ResponseAction::Pass);
+                    }
+
+                    let human_ron = call_options.iter().find(|o| {
+                        o.player == PlayerId(0) && matches!(o.call_type, CallType::Ron)
+                    });
+                    if human_ron.is_some() && self.needs_human_response() {
+                        return;
+                    }
+
+                    if self.game.players[0].hand.len() + if self.game.drawn_tile.is_some() { 1 } else { 0 } > 0 {
+                        let _ = self.game.execute_call(discarder, ResponseAction::Pass);
                     }
 
                     if matches!(self.game.phase, GamePhase::DrawPhase) {
@@ -171,6 +181,10 @@ impl App {
                             self.handle_round_end();
                         }
                         self.refresh_analysis();
+                        return;
+                    }
+                    if matches!(self.game.phase, GamePhase::RoundOver) {
+                        self.handle_round_end();
                         return;
                     }
                 }
