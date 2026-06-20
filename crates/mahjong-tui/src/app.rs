@@ -398,6 +398,13 @@ impl App {
                 self.messages.push("副露成功".to_string());
                 self.call_options.clear();
                 self.call_selected = 0;
+                self.process_ai_responses();
+                if matches!(self.game.phase, GamePhase::DrawPhase) {
+                    if self.game.draw().is_err() {
+                        self.handle_round_end();
+                    }
+                    self.refresh_analysis();
+                }
             }
             Err(e) => {
                 self.messages.push(format!("错误: {}", e));
