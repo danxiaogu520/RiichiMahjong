@@ -38,9 +38,9 @@ impl ShantenCalculator {
 
     fn standard_shanten(&self, counts: &TileCounts) -> i8 {
         let mut work = *counts;
-        let mut best = (0usize, false);
-        self.search(&mut work, 0, 0, false, &mut best);
-        8 - 2 * best.0 as i8 - if best.1 { 1 } else { 0 }
+        let mut best_score = 0usize;
+        self.search(&mut work, 0, 0, 0, &mut best_score);
+        8 - best_score as i8
     }
 
     fn search(
@@ -48,47 +48,51 @@ impl ShantenCalculator {
         counts: &mut TileCounts,
         start: u8,
         mentsu: usize,
-        has_pair: bool,
-        best: &mut (usize, bool),
+        pairs: usize,
+        best_score: &mut usize,
     ) {
         let idx = match (start..34).find(|&i| counts.get(TileType(i)) > 0) {
             Some(i) => i,
             None => {
-                let score = mentsu * 2 + if has_pair { 1 } else { 0 };
-                let best_score = best.0 * 2 + if best.1 { 1 } else { 0 };
-                if score > best_score {
-                    *best = (mentsu, has_pair);
+                // All tiles consumed — check for partial meld in leftover
+                let has_partial = self.has_partial_meld(counts);
+                let score = mentsu * 2 + pairs + if has_partial { 1 } else { 0 };
+                if score > *best_score {
+                    *best_score = score;
                 }
                 return;
             }
         };
 
-        let tt = TileType(idx);
         let remaining: u8 = (idx..34).map(|i| counts.get(TileType(i))).sum();
-        let cur_score = mentsu * 2 + if has_pair { 1 } else { 0 };
-        let best_score = best.0 * 2 + if best.1 { 1 } else { 0 };
-        if cur_score + (remaining as usize) <= best_score {
+        let cur_score = mentsu * 2 + pairs;
+        if cur_score + (remaining as usize) <= *best_score {
             return;
         }
 
-        if !has_pair && counts.get(tt) >= 2 {
+        let tt = TileType(idx);
+
+        // Try pair (only one pair allowed)
+        if pairs == 0 && counts.get(tt) >= 2 {
             counts.dec(tt);
             counts.dec(tt);
-            self.search(counts, idx, mentsu, true, best);
+            self.search(counts, idx, mentsu, 1, best_score);
             counts.inc(tt);
             counts.inc(tt);
         }
 
+        // Try triplet
         if counts.get(tt) >= 3 {
             counts.dec(tt);
             counts.dec(tt);
             counts.dec(tt);
-            self.search(counts, idx, mentsu + 1, has_pair, best);
+            self.search(counts, idx, mentsu + 1, pairs, best_score);
             counts.inc(tt);
             counts.inc(tt);
             counts.inc(tt);
         }
 
+        // Try sequence (number tiles, rank <= 7)
         if tt.is_number() && tt.rank().0 <= 7 {
             let tt1 = TileType(idx + 1);
             let tt2 = TileType(idx + 2);
@@ -101,14 +105,43 @@ impl ShantenCalculator {
                 counts.dec(tt);
                 counts.dec(tt1);
                 counts.dec(tt2);
-                self.search(counts, idx, mentsu + 1, has_pair, best);
+                self.search(counts, idx, mentsu + 1, pairs, best_score);
                 counts.inc(tt);
                 counts.inc(tt1);
                 counts.inc(tt2);
             }
         }
 
-        self.search(counts, idx + 1, mentsu, has_pair, best);
+        // Skip this tile
+        self.search(counts, idx + 1, mentsu, pairs, best_score);
+    }
+
+    fn has_partial_meld(&self, counts: &TileCounts) -> bool {
+        for i in 0..34u8 {
+            let tt = TileType(i);
+            if counts.get(tt) == 0 {
+                continue;
+            }
+            // Pair wait
+            if counts.get(tt) >= 2 {
+                return true;
+            }
+            // Two-sided or middle wait with adjacent tile
+            if tt.is_number() && i + 1 < 34 {
+                let tt1 = TileType(i + 1);
+                if tt.suit() == tt1.suit() && counts.get(tt1) > 0 {
+                    return true;
+                }
+            }
+            // Gap wait (e.g., 3p and 5p waiting for 4p)
+            if tt.is_number() && tt.rank().0 <= 7 && i + 2 < 34 {
+                let tt2 = TileType(i + 2);
+                if tt.suit() == tt2.suit() && counts.get(tt2) > 0 {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn seven_pairs_shanten(&self, counts: &TileCounts) -> i8 {
@@ -135,6 +168,21 @@ mod tests {
 
     fn make_tiles(spec: &[(Suit, Rank, u8)]) -> Vec<Tile> {
         spec.iter().map(|&(s, r, c)| Tile::new(s, r, c)).collect()
+    }
+
+    #[test]
+    fn test_user_hand_tenpai() {
+        let mut calc = ShantenCalculator::new();
+        let hand = make_tiles(&[
+            (Suit::Man, Rank(9), 0), (Suit::Man, Rank(9), 1),
+            (Suit::Pin, Rank(1), 0), (Suit::Pin, Rank(2), 0),
+            (Suit::Pin, Rank(3), 0), (Suit::Pin, Rank(3), 1),
+            (Suit::Pin, Rank(4), 0),
+            (Suit::Pin, Rank(7), 0), (Suit::Pin, Rank(8), 0), (Suit::Pin, Rank(9), 0),
+            (Suit::Sou, Rank(3), 0), (Suit::Sou, Rank(4), 0), (Suit::Sou, Rank(5), 0),
+        ]);
+        let s = calc.calculate(&hand);
+        assert_eq!(s, 0, "should be tenpai (shanten=0), got {}", s);
     }
 
     #[test]
