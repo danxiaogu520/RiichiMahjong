@@ -10,27 +10,6 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    if !app.call_options.is_empty() {
-        handle_call_input(app, key);
-        return;
-    }
-
-    match app.game.phase {
-        mahjong_engine::game::GamePhase::ActionPhase => handle_action_input(app, key),
-        mahjong_engine::game::GamePhase::ResponsePhase { .. }
-        | mahjong_engine::game::GamePhase::ChankanResponse { .. } => {
-            app.refresh_call_options();
-            if !app.call_options.is_empty() {
-                handle_call_input(app, key);
-            } else {
-                app.pass_call();
-            }
-        }
-        _ => {}
-    }
-}
-
-fn handle_action_input(app: &mut App, key: KeyEvent) {
     let tiles = app.hand_tiles();
     let tile_count = tiles.len();
 
@@ -85,7 +64,12 @@ fn handle_action_input(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn handle_call_input(app: &mut App, key: KeyEvent) {
+pub fn handle_call_input(app: &mut App, key: KeyEvent) {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+        app.should_quit = true;
+        return;
+    }
+
     let option_count = app.call_options.len();
 
     match key.code {

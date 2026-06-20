@@ -53,10 +53,14 @@ impl App {
 
     pub fn is_human_turn(&self) -> bool {
         self.game.current_player == PlayerId(0)
-            && matches!(
-                self.game.phase,
-                GamePhase::ActionPhase | GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. }
-            )
+            && matches!(self.game.phase, GamePhase::ActionPhase)
+    }
+
+    pub fn needs_human_response(&self) -> bool {
+        matches!(
+            self.game.phase,
+            GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. }
+        ) && !self.call_options.is_empty()
     }
 
     pub fn hand_tiles(&self) -> Vec<Tile> {
@@ -74,6 +78,7 @@ impl App {
                 if self.game.draw().is_err() {
                     self.handle_round_end();
                 }
+                self.refresh_analysis();
             }
             GamePhase::ActionPhase => {
                 if self.game.check_tsumo(player).is_some() {
@@ -104,7 +109,7 @@ impl App {
                         match self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
                             Ok(_) => {
                                 self.messages.push(format!("{} 立直！打出 {}", name, tile));
-                                self.advance_after_action();
+                                self.process_ai_responses();
                             }
                             Err(_) => {
                                 self.ai_discard(player);
@@ -116,38 +121,60 @@ impl App {
 
                 self.ai_discard(player);
             }
-            GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
-                let call_options = self.game.get_call_options();
-                let ron_option = call_options.iter().find(|o| {
-                    o.player == player && matches!(o.call_type, CallType::Ron)
-                });
-
-                if ron_option.is_some() {
-                    let name = self.player_name(player.0).to_string();
-                    match self.game.execute_call(player, ResponseAction::Ron) {
-                        Ok(events) => {
-                            for e in &events {
-                                if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
-                                    self.messages.push(format!("{} 荣和！ {} 点", name, points.abs()));
-                                    for yaku in yaku_names {
-                                        self.messages.push(format!("  {}", yaku));
-                                    }
-                                }
-                            }
-                            self.handle_round_end();
-                        }
-                        Err(_) => {
-                            let _ = self.game.execute_call(player, ResponseAction::Pass);
-                            self.advance_after_pass();
-                        }
-                    }
-                } else {
-                    let _ = self.game.execute_call(player, ResponseAction::Pass);
-                    self.advance_after_pass();
-                }
-            }
             GamePhase::RoundOver => {
                 self.handle_round_end();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn process_ai_responses(&mut self) {
+        loop {
+            match self.game.phase {
+                GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
+                    self.refresh_call_options();
+                    if self.needs_human_response() {
+                        return;
+                    }
+
+                    let call_options = self.game.get_call_options();
+                    let current = self.game.current_player;
+                    let ron_option = call_options.iter().find(|o| {
+                        o.player == current && matches!(o.call_type, CallType::Ron)
+                    });
+
+                    if ron_option.is_some() {
+                        let name = self.player_name(current.0).to_string();
+                        match self.game.execute_call(current, ResponseAction::Ron) {
+                            Ok(events) => {
+                                for e in &events {
+                                    if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
+                                        self.messages.push(format!("{} 荣和！ {} 点", name, points.abs()));
+                                        for yaku in yaku_names {
+                                            self.messages.push(format!("  {}", yaku));
+                                        }
+                                    }
+                                }
+                                self.handle_round_end();
+                                return;
+                            }
+                            Err(_) => {
+                                let _ = self.game.execute_call(current, ResponseAction::Pass);
+                            }
+                        }
+                    } else {
+                        let _ = self.game.execute_call(current, ResponseAction::Pass);
+                    }
+
+                    if matches!(self.game.phase, GamePhase::DrawPhase) {
+                        if self.game.draw().is_err() {
+                            self.handle_round_end();
+                        }
+                        self.refresh_analysis();
+                        return;
+                    }
+                }
+                _ => return,
             }
         }
     }
@@ -204,14 +231,6 @@ impl App {
         Some(best_tile)
     }
 
-    fn advance_after_pass(&mut self) {
-        if matches!(self.game.phase, GamePhase::DrawPhase) {
-            if self.game.draw().is_err() {
-                self.handle_round_end();
-            }
-        }
-    }
-
     pub fn handle_round_end(&mut self) {
         let reason = self.game.events.iter().rev().find_map(|e| {
             if let GameEvent::RoundEnded { reason } = e {
@@ -240,7 +259,8 @@ impl App {
         match self.game.execute_action(TurnAction::Discard(tile)) {
             Ok(_) => {
                 self.messages.push(format!("你打出 {}", tile));
-                self.advance_after_action();
+                self.refresh_analysis();
+                self.process_ai_responses();
             }
             Err(e) => {
                 self.messages.push(format!("错误: {}", e));
@@ -277,7 +297,8 @@ impl App {
                 match self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
                     Ok(_) => {
                         self.messages.push(format!("立直！打出 {}", tile));
-                        self.advance_after_action();
+                        self.refresh_analysis();
+                        self.process_ai_responses();
                     }
                     Err(e) => {
                         self.messages.push(format!("错误: {}", e));
@@ -306,10 +327,12 @@ impl App {
         let _ = self.game.execute_call(PlayerId(0), ResponseAction::Pass);
         self.call_options.clear();
         self.call_selected = 0;
+        self.process_ai_responses();
         if matches!(self.game.phase, GamePhase::DrawPhase) {
             if self.game.draw().is_err() {
                 self.handle_round_end();
             }
+            self.refresh_analysis();
         }
     }
 
@@ -376,21 +399,6 @@ impl App {
             visible.dora_indicators.inc(tt);
         }
         visible
-    }
-
-    fn advance_after_action(&mut self) {
-        match self.game.phase {
-            GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
-                self.refresh_call_options();
-            }
-            GamePhase::DrawPhase => {
-                if self.game.draw().is_err() {
-                    self.handle_round_end();
-                }
-                self.refresh_analysis();
-            }
-            _ => {}
-        }
     }
 
     pub fn player_name(&self, idx: usize) -> &str {
