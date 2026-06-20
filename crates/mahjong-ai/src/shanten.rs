@@ -2,9 +2,9 @@ use mahjong_core::tile::Tile;
 use mahjong_yaku::types::TileCounts;
 
 /// 数牌（9种）查找表：每条目10字节，存储0~4面子无雀头/有雀头的部分置换数
-static SUIT_TABLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index_s.bin"));
+static SUIT_TABLE: &[u8] = include_bytes!("../data/index_s.bin");
 /// 字牌（7种）查找表
-static HONOR_TABLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index_h.bin"));
+static HONOR_TABLE: &[u8] = include_bytes!("../data/index_h.bin");
 
 const ENTRY_LEN: usize = 10;
 
