@@ -10,12 +10,12 @@ use crate::app::App;
 use crate::ui::format_tile_type;
 
 pub fn render_status(f: &mut Frame, app: &App, area: Rect) {
-    let dora_str: Vec<String> = app.game.dora.iter().map(|tt| format_tile_type(*tt)).collect();
+    let dora_str: Vec<String> = app.dora.iter().map(|tt| format_tile_type(*tt)).collect();
 
     let round = app.round_display();
-    let remaining = app.game.remaining_tiles();
-    let honba = app.game.honba;
-    let riichi_sticks = app.game.riichi_sticks;
+    let remaining = app.remaining_tiles;
+    let honba = app.honba;
+    let riichi_sticks = app.riichi_sticks;
 
     let status_text = format!(
         "  {}  本场:{}  宝牌:{}  残:{}  供托:{}",

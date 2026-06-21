@@ -1,466 +1,158 @@
-use riichi_logic::acceptance::{analyze_acceptance, analyze_discard, AcceptanceInfo, DiscardOption};
-use riichi_logic::shanten::ShantenCalculator;
+use riichi_core::game_types::{CallOption, GameEvent};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_engine::action::{CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction};
-use riichi_engine::game::{GamePhase, GameState};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
+use riichi_engine::game::GamePhase;
+use tokio::sync::mpsc;
+
+use riichi_server::channel::{PlayerAction, ServerEvent, TurnActionMsg, CallResponseMsg};
 
 pub struct App {
-    pub game: GameState,
-    pub calc: ShantenCalculator,
-    pub rng: StdRng,
+    pub event_rx: mpsc::Receiver<ServerEvent>,
+    pub action_tx: mpsc::Sender<PlayerAction>,
+
+    pub phase: GamePhase,
+    pub current_player: PlayerId,
+    pub hand_tiles: Vec<Tile>,
+    pub hand_count: usize,
+    pub points: [i32; 4],
+    pub discards: [Vec<Tile>; 4],
+    pub melds_count: [usize; 4],
+    pub dora: Vec<TileType>,
+    pub remaining_tiles: usize,
+    pub round: u32,
+    pub honba: u32,
+    pub riichi_sticks: u32,
+    pub recent_events: Vec<GameEvent>,
+
+    pub can_tsumo: bool,
+    pub can_riichi: bool,
+    pub call_options: Vec<CallOption>,
+
+    pub messages: Vec<String>,
+    pub selected: usize,
+    pub call_selected: usize,
     pub should_quit: bool,
     pub show_result: bool,
-    pub selected: usize,
-    pub call_options: Vec<CallOption>,
-    pub call_selected: usize,
-    pub messages: Vec<String>,
-    pub analysis: Vec<DiscardOption>,
-    pub acceptance: Vec<AcceptanceInfo>,
-    pub improvement: Vec<AcceptanceInfo>,
-    pub acceptance_shanten: i8,
-    pub round_end_reason: Option<RoundEndReason>,
+    pub game_over: bool,
+    pub scores: [i32; 4],
 }
 
 impl App {
-    pub fn new() -> Self {
-        let mut game = GameState::new();
-        let mut rng = StdRng::from_entropy();
-        let mut calc = ShantenCalculator::new();
-        game.start_round(&mut rng);
-        let analysis = Self::compute_analysis(&mut calc, &game);
-        let (acceptance, improvement, acceptance_shanten) = Self::compute_acceptance(&mut calc, &game);
-
+    pub fn new(
+        event_rx: mpsc::Receiver<ServerEvent>,
+        action_tx: mpsc::Sender<PlayerAction>,
+    ) -> Self {
         Self {
-            game,
-            calc,
-            rng,
+            event_rx,
+            action_tx,
+            phase: GamePhase::ActionPhase,
+            current_player: PlayerId(0),
+            hand_tiles: Vec::new(),
+            hand_count: 0,
+            points: [25000; 4],
+            discards: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+            melds_count: [0; 4],
+            dora: Vec::new(),
+            remaining_tiles: 0,
+            round: 1,
+            honba: 0,
+            riichi_sticks: 0,
+            recent_events: Vec::new(),
+            can_tsumo: false,
+            can_riichi: false,
+            call_options: Vec::new(),
+            messages: Vec::new(),
+            selected: 0,
+            call_selected: 0,
             should_quit: false,
             show_result: false,
-            selected: 0,
-            call_options: Vec::new(),
-            call_selected: 0,
-            messages: Vec::new(),
-            analysis,
-            acceptance,
-            improvement,
-            acceptance_shanten,
-            round_end_reason: None,
+            game_over: false,
+            scores: [0; 4],
+        }
+    }
+
+    pub async fn process_server_events(&mut self) {
+        while let Ok(event) = self.event_rx.try_recv() {
+            match event {
+                ServerEvent::StateUpdate {
+                    phase,
+                    current_player,
+                    hand_tiles,
+                    hand_count,
+                    points,
+                    discards,
+                    melds_count,
+                    dora,
+                    remaining_tiles,
+                    round,
+                    honba,
+                    riichi_sticks,
+                    recent_events,
+                    ..
+                } => {
+                    self.phase = phase;
+                    self.current_player = current_player;
+                    self.hand_tiles = hand_tiles;
+                    self.hand_count = hand_count;
+                    self.points = points;
+                    self.discards = discards;
+                    self.melds_count = melds_count;
+                    self.dora = dora;
+                    self.remaining_tiles = remaining_tiles;
+                    self.round = round;
+                    self.honba = honba;
+                    self.riichi_sticks = riichi_sticks;
+                    self.recent_events = recent_events;
+                    if self.selected >= self.hand_tiles.len() {
+                        self.selected = 0;
+                    }
+                }
+                ServerEvent::ActionRequired { can_tsumo, can_riichi } => {
+                    self.can_tsumo = can_tsumo;
+                    self.can_riichi = can_riichi;
+                    self.call_options.clear();
+                }
+                ServerEvent::CallRequired { options } => {
+                    self.call_options = options;
+                    self.call_selected = 0;
+                }
+                ServerEvent::GameOver { scores } => {
+                    self.scores = scores;
+                    self.game_over = true;
+                    self.show_result = true;
+                }
+            }
         }
     }
 
     pub fn is_human_turn(&self) -> bool {
-        self.game.current_player == PlayerId(0)
-            && matches!(self.game.phase, GamePhase::ActionPhase)
+        self.current_player == PlayerId(0)
+            && matches!(self.phase, GamePhase::ActionPhase)
+            && self.call_options.is_empty()
     }
 
     pub fn needs_human_response(&self) -> bool {
-        matches!(
-            self.game.phase,
-            GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. }
-        ) && !self.call_options.is_empty()
+        !self.call_options.is_empty()
     }
 
-    pub fn hand_tiles(&self) -> Vec<Tile> {
-        let mut tiles: Vec<Tile> = self.game.players[0].hand.tiles().to_vec();
-        if let Some(drawn) = self.game.drawn_tile {
-            tiles.push(drawn);
-        }
-        tiles
+    pub fn send_discard(&self, tile: Tile) {
+        let _ = self.action_tx.try_send(PlayerAction::TurnAction(TurnActionMsg::Discard(tile)));
     }
 
-    pub fn execute_ai_turn(&mut self) {
-        let player = self.game.current_player;
-        match self.game.phase {
-            GamePhase::DrawPhase => {
-                if self.game.draw().is_err() {
-                    self.handle_round_end();
-                }
-                self.refresh_analysis();
-            }
-            GamePhase::ActionPhase => {
-                if self.game.check_tsumo(player).is_some() {
-                    let name = self.player_name(player.0).to_string();
-                    match self.game.execute_action(TurnAction::Tsumo) {
-                        Ok(events) => {
-                            for e in &events {
-                                if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
-                                    self.messages.push(format!("{} 自摸！ {} 点", name, points.abs()));
-                                    for yaku in yaku_names {
-                                        self.messages.push(format!("  {}", yaku));
-                                    }
-                                }
-                            }
-                            self.handle_round_end();
-                        }
-                        Err(_) => {
-                            self.ai_discard(player);
-                        }
-                    }
-                    return;
-                }
-
-                if self.game.can_declare_riichi(player) {
-                    let best_tile = self.ai_choose_riichi_tile(player);
-                    if let Some(tile) = best_tile {
-                        let name = self.player_name(player.0).to_string();
-                        match self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
-                            Ok(_) => {
-                                self.messages.push(format!("{} 立直！打出 {}", name, tile));
-                                self.process_ai_responses();
-                            }
-                            Err(_) => {
-                                self.ai_discard(player);
-                            }
-                        }
-                        return;
-                    }
-                }
-
-                self.ai_discard(player);
-                self.process_ai_responses();
-            }
-            GamePhase::RoundOver => {
-                self.handle_round_end();
-            }
-            _ => {}
-        }
+    pub fn send_tsumo(&self) {
+        let _ = self.action_tx.try_send(PlayerAction::TurnAction(TurnActionMsg::Tsumo));
     }
 
-    pub fn process_ai_responses(&mut self) {
-        loop {
-            match self.game.phase {
-                GamePhase::ResponsePhase { discarder, .. }
-                | GamePhase::ChankanResponse {
-                    kakan_player: discarder, ..
-                } => {
-                    self.refresh_call_options();
-                    if self.needs_human_response() {
-                        return;
-                    }
-
-                    let call_options = self.game.get_call_options();
-
-                    let ai_ron = call_options.iter().find(|o| {
-                        o.player != discarder
-                            && o.player != PlayerId(0)
-                            && matches!(o.call_type, CallType::Ron)
-                    });
-
-                    if let Some(r) = ai_ron {
-                        let pid = r.player;
-                        let name = self.player_name(pid.0).to_string();
-                        match self.game.execute_call(pid, ResponseAction::Ron) {
-                            Ok(events) => {
-                                for e in &events {
-                                    if let GameEvent::PlayerWon {
-                                        yaku_names, points, ..
-                                    } = e
-                                    {
-                                        self.messages.push(format!(
-                                            "{} 荣和！ {} 点",
-                                            name,
-                                            points.abs()
-                                        ));
-                                        for yaku in yaku_names {
-                                            self.messages.push(format!("  {}", yaku));
-                                        }
-                                    }
-                                }
-                                self.handle_round_end();
-                                return;
-                            }
-                            Err(_) => {}
-                        }
-                    }
-
-                    let human_ron = call_options
-                        .iter()
-                        .find(|o| o.player == PlayerId(0) && matches!(o.call_type, CallType::Ron));
-                    if human_ron.is_some() && self.needs_human_response() {
-                        return;
-                    }
-
-                    let _ = self.game.execute_call(discarder, ResponseAction::Pass);
-
-                    if matches!(self.game.phase, GamePhase::DrawPhase) {
-                        if self.game.draw().is_err() {
-                            self.handle_round_end();
-                        }
-                        self.refresh_analysis();
-                        return;
-                    }
-                    if matches!(self.game.phase, GamePhase::RoundOver) {
-                        self.handle_round_end();
-                        return;
-                    }
-                }
-                _ => return,
-            }
-        }
+    pub fn send_riichi(&self) {
+        let _ = self.action_tx.try_send(PlayerAction::TurnAction(TurnActionMsg::Riichi));
     }
 
-    fn ai_discard(&mut self, player: PlayerId) {
-        let visible = self.game.build_visible_tiles(player);
-        let hand = &self.game.players[player.0].hand;
-        let analysis = analyze_discard(&mut self.calc, hand.tiles(), &visible);
-        let best = analysis.first().cloned();
-        if let Some(best) = best {
-            match self.game.execute_action(TurnAction::Discard(best.tile)) {
-                Ok(_) => {
-                    let name = self.player_name(player.0);
-                    self.messages.push(format!(
-                        "{} 打出 {} (进张:{}种{}张)",
-                        name, best.tile, best.acceptance_types, best.acceptance_copies
-                    ));
-                }
-                Err(_) => {
-                    let hand = &self.game.players[player.0].hand;
-                    if let Some(&tile) = hand.tiles().first() {
-                        let _ = self.game.execute_action(TurnAction::Discard(tile));
-                    }
-                }
-            }
-        } else {
-            let hand = &self.game.players[player.0].hand;
-            if let Some(&tile) = hand.tiles().first() {
-                let _ = self.game.execute_action(TurnAction::Discard(tile));
-            }
-        }
+    pub fn send_call_ron(&self) {
+        let _ = self.action_tx.try_send(PlayerAction::CallResponse(CallResponseMsg::Ron));
     }
 
-    fn ai_choose_riichi_tile(&mut self, player: PlayerId) -> Option<Tile> {
-        let hand = &self.game.players[player.0].hand;
-        let mut full_hand = hand.clone();
-        if let Some(drawn) = self.game.drawn_tile {
-            full_hand.add(drawn);
-        }
-
-        let options = self.game.get_tenpai_discard_options(player);
-        if options.is_empty() {
-            return None;
-        }
-
-        let mut best_tile = options[0];
-        let mut best_wait_count = 0usize;
-
-        for &tile in &options {
-            let mut simulated = full_hand.clone();
-            simulated.remove(tile).ok();
-            let waits = riichi_logic::analysis::analyze_wait_tiles(simulated.tiles());
-            let wait_count = waits.len();
-            if wait_count > best_wait_count {
-                best_wait_count = wait_count;
-                best_tile = tile;
-            }
-        }
-
-        Some(best_tile)
-    }
-
-    pub fn handle_round_end(&mut self) {
-        let reason = self.game.events.iter().rev().find_map(|e| {
-            if let GameEvent::RoundEnded { reason } = e {
-                Some(reason.clone())
-            } else {
-                None
-            }
-        });
-        self.round_end_reason = reason.clone();
-
-        if let Some(reason) = &reason {
-            match reason {
-                RoundEndReason::ExhaustiveDraw => {
-                    self.messages.push("═══ 荒牌流局 ═══".to_string());
-                    if let Some(GameEvent::ExhaustiveDrawResult { tenpai, payments }) =
-                        self.game.events.iter().rev().find(|e| matches!(e, GameEvent::ExhaustiveDrawResult { .. }))
-                    {
-                        for i in 0..4 {
-                            let name = self.player_name(i).to_string();
-                            let status = if tenpai[i] { "听牌" } else { "不听" };
-                            let pay = payments[i];
-                            if pay > 0 {
-                                self.messages.push(format!("  {} {} +{}", name, status, pay));
-                            } else if pay < 0 {
-                                self.messages.push(format!("  {} {} {}", name, status, pay));
-                            } else {
-                                self.messages.push(format!("  {} {}", name, status));
-                            }
-                        }
-                    }
-                }
-                RoundEndReason::Win { winner, is_tsumo } => {
-                    let name = self.player_name(winner.0).to_string();
-                    let win_type = if *is_tsumo { "自摸" } else { "荣和" };
-                    if let Some(GameEvent::PlayerWon { yaku_names, points, .. }) =
-                        self.game.events.iter().rev().find(|e| matches!(e, GameEvent::PlayerWon { .. }))
-                    {
-                        self.messages.push(format!("═══ {} {} {}点 ═══", name, win_type, points.abs()));
-                        for yaku in yaku_names {
-                            self.messages.push(format!("  {}", yaku));
-                        }
-                    }
-                }
-                _ => {
-                    self.messages.push(format!("═══ {:?} ═══", reason));
-                }
-            }
-
-            let round = self.game.round;
-            let dealer = self.game.get_dealer();
-            let dealer_name = self.player_name(dealer.0).to_string();
-            self.messages.push(format!(
-                "下一局: 庄家 {} ({}局)",
-                dealer_name,
-                self.round_display_for(round)
-            ));
-        }
-
-        if self.game.is_game_over() {
-            self.show_result = true;
-        } else {
-            self.game.start_round(&mut self.rng);
-            self.analysis = Self::compute_analysis(&mut self.calc, &self.game);
-            let (acc, imp, shanten) = Self::compute_acceptance(&mut self.calc, &self.game);
-            self.acceptance = acc;
-            self.improvement = imp;
-            self.acceptance_shanten = shanten;
-            self.selected = 0;
-        }
-    }
-
-    fn round_display_for(&self, round: u32) -> String {
-        let wind = if round <= 4 { "东" } else { "南" };
-        let num = ((round - 1) % 4) + 1;
-        format!("{}{}局", wind, num)
-    }
-
-    pub fn execute_discard(&mut self, tile: Tile) {
-        match self.game.execute_action(TurnAction::Discard(tile)) {
-            Ok(_) => {
-                self.messages.push(format!("你打出 {}", tile));
-                self.refresh_analysis();
-                self.process_ai_responses();
-            }
-            Err(e) => {
-                self.messages.push(format!("错误: {}", e));
-            }
-        }
-    }
-
-    pub fn execute_tsumo(&mut self) {
-        match self.game.execute_action(TurnAction::Tsumo) {
-            Ok(events) => {
-                for e in &events {
-                    if let GameEvent::PlayerWon { yaku_names, points, .. } = e {
-                        self.messages.push(format!("自摸！ {} 点", points.abs()));
-                        for name in yaku_names {
-                            self.messages.push(format!("  {}", name));
-                        }
-                    }
-                }
-                self.handle_round_end();
-            }
-            Err(e) => {
-                self.messages.push(format!("错误: {}", e));
-            }
-        }
-    }
-
-    pub fn execute_riichi(&mut self) {
-        let hand = &self.game.players[0].hand;
-        if let Some(drawn) = self.game.drawn_tile {
-            let mut full = hand.clone();
-            full.add(drawn);
-            let options = self.game.get_tenpai_discard_options(PlayerId(0));
-            if let Some(&tile) = options.first() {
-                match self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
-                    Ok(_) => {
-                        self.messages.push(format!("立直！打出 {}", tile));
-                        self.refresh_analysis();
-                        self.process_ai_responses();
-                    }
-                    Err(e) => {
-                        self.messages.push(format!("错误: {}", e));
-                    }
-                }
-            } else {
-                self.messages.push("无法立直：没有听牌打牌选项".to_string());
-            }
-        }
-    }
-
-    pub fn execute_call(&mut self, action: ResponseAction) {
-        match self.game.execute_call(PlayerId(0), action) {
-            Ok(_) => {
-                self.messages.push("副露成功".to_string());
-                self.call_options.clear();
-                self.call_selected = 0;
-                self.process_ai_responses();
-                if matches!(self.game.phase, GamePhase::DrawPhase) {
-                    if self.game.draw().is_err() {
-                        self.handle_round_end();
-                    }
-                    self.refresh_analysis();
-                }
-            }
-            Err(e) => {
-                self.messages.push(format!("错误: {}", e));
-            }
-        }
-    }
-
-    pub fn pass_call(&mut self) {
-        let _ = self.game.execute_call(PlayerId(0), ResponseAction::Pass);
-        self.call_options.clear();
-        self.call_selected = 0;
-        self.process_ai_responses();
-        if matches!(self.game.phase, GamePhase::DrawPhase) {
-            if self.game.draw().is_err() {
-                self.handle_round_end();
-            }
-            self.refresh_analysis();
-        }
-    }
-
-    pub fn refresh_call_options(&mut self) {
-        self.call_options = self.game.get_call_options();
-        self.call_options.retain(|o| o.player == PlayerId(0));
-        self.call_selected = 0;
-    }
-
-    pub fn refresh_analysis(&mut self) {
-        self.analysis = Self::compute_analysis(&mut self.calc, &self.game);
-        let (acc, imp, shanten) = Self::compute_acceptance(&mut self.calc, &self.game);
-        self.acceptance = acc;
-        self.improvement = imp;
-        self.acceptance_shanten = shanten;
-    }
-
-    fn compute_analysis(calc: &mut ShantenCalculator, game: &GameState) -> Vec<DiscardOption> {
-        let player = &game.players[0];
-        let hand = &player.hand;
-        let mut tiles: Vec<Tile> = hand.tiles().to_vec();
-        if let Some(drawn) = game.drawn_tile {
-            tiles.push(drawn);
-        }
-        if tiles.len() < 2 {
-            return Vec::new();
-        }
-        let visible = game.build_visible_tiles(PlayerId(0));
-        analyze_discard(calc, &tiles, &visible)
-    }
-
-    fn compute_acceptance(calc: &mut ShantenCalculator, game: &GameState) -> (Vec<AcceptanceInfo>, Vec<AcceptanceInfo>, i8) {
-        let player = &game.players[0];
-        let hand = &player.hand;
-        if hand.is_empty() {
-            return (Vec::new(), Vec::new(), -1);
-        }
-        let visible = game.build_visible_tiles(PlayerId(0));
-        analyze_acceptance(calc, hand.tiles(), &visible)
+    pub fn send_call_pass(&self) {
+        let _ = self.action_tx.try_send(PlayerAction::CallResponse(CallResponseMsg::Pass));
     }
 
     pub fn player_name(&self, idx: usize) -> &str {
@@ -474,12 +166,8 @@ impl App {
     }
 
     pub fn round_display(&self) -> String {
-        let wind_str = match self.game.wind {
-            TileType::EAST => "东",
-            TileType::SOUTH => "南",
-            _ => "?",
-        };
-        let round_in_wind = ((self.game.round) % 4) + 1;
-        format!("{}{}局", wind_str, round_in_wind)
+        let wind = if self.round <= 4 { "东" } else { "南" };
+        let num = ((self.round - 1) % 4) + 1;
+        format!("{}{}局", wind, num)
     }
 }
