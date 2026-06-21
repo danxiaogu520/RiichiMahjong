@@ -1,0 +1,8 @@
+[package]
+name = "riichi-logic"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+riichi-core = { path = "../riichi-core" }
+serde = { version = "1", features = ["derive"] }

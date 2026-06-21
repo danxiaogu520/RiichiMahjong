@@ -244,67 +244,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mahjong-ai"
-version = "0.1.0"
-dependencies = [
- "mahjong-core",
- "mahjong-yaku",
- "rand",
-]
-
-[[package]]
-name = "mahjong-core"
-version = "0.1.0"
-dependencies = [
- "rand",
- "serde",
-]
-
-[[package]]
-name = "mahjong-engine"
-version = "0.1.0"
-dependencies = [
- "mahjong-ai",
- "mahjong-core",
- "mahjong-yaku",
- "rand",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "mahjong-server"
-version = "0.1.0"
-dependencies = [
- "mahjong-ai",
- "mahjong-core",
- "mahjong-engine",
- "mahjong-yaku",
- "rand",
-]
-
-[[package]]
-name = "mahjong-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "mahjong-ai",
- "mahjong-core",
- "mahjong-engine",
- "mahjong-yaku",
- "rand",
- "ratatui",
-]
-
-[[package]]
-name = "mahjong-yaku"
-version = "0.1.0"
-dependencies = [
- "mahjong-core",
- "serde",
-]
-
-[[package]]
 name = "mio"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -430,6 +369,75 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "riichi-ai"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "riichi-core",
+ "riichi-logic",
+]
+
+[[package]]
+name = "riichi-client"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "rand",
+ "ratatui",
+ "riichi-ai",
+ "riichi-core",
+ "riichi-engine",
+ "riichi-logic",
+]
+
+[[package]]
+name = "riichi-core"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "serde",
+]
+
+[[package]]
+name = "riichi-engine"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "riichi-ai",
+ "riichi-core",
+ "riichi-logic",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "riichi-logic"
+version = "0.1.0"
+dependencies = [
+ "riichi-core",
+ "serde",
+]
+
+[[package]]
+name = "riichi-proto"
+version = "0.1.0"
+dependencies = [
+ "riichi-core",
+ "serde",
+]
+
+[[package]]
+name = "riichi-server"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "riichi-ai",
+ "riichi-core",
+ "riichi-engine",
+ "riichi-logic",
 ]
 
 [[package]]
