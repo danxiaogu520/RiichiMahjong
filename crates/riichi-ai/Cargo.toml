@@ -1,0 +1,11 @@
+[package]
+name = "riichi-ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+riichi-core = { path = "../riichi-core" }
+riichi-logic = { path = "../riichi-logic" }
+
+[dev-dependencies]
+rand = "0.8"

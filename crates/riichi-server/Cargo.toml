@@ -1,0 +1,11 @@
+[package]
+name = "riichi-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+riichi-core = { path = "../riichi-core" }
+riichi-engine = { path = "../riichi-engine" }
+riichi-logic = { path = "../riichi-logic" }
+riichi-ai = { path = "../riichi-ai" }
+rand = "0.8"
