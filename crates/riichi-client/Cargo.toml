@@ -9,6 +9,8 @@ riichi-core = { path = "../riichi-core" }
 riichi-engine = { path = "../riichi-engine" }
 riichi-logic = { path = "../riichi-logic" }
 riichi-ai = { path = "../riichi-ai" }
+riichi-server = { path = "../riichi-server" }
 ratatui = "0.29"
 crossterm = "0.28"
 rand = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
