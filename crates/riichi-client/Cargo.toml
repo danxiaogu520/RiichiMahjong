@@ -1,0 +1,14 @@
+[package]
+name = "riichi-client"
+version = "0.1.0"
+edition = "2021"
+default-run = "riichi-client"
+
+[dependencies]
+riichi-core = { path = "../riichi-core" }
+riichi-engine = { path = "../riichi-engine" }
+riichi-logic = { path = "../riichi-logic" }
+riichi-ai = { path = "../riichi-ai" }
+ratatui = "0.29"
+crossterm = "0.28"
+rand = "0.8"

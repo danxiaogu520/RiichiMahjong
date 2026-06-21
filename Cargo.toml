@@ -1,4 +1,4 @@
 [workspace]
 members = ["crates/*"]
-default-members = ["crates/mahjong-tui"]
+default-members = ["crates/riichi-client"]
 resolver = "2"
