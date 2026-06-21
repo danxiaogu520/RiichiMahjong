@@ -5,7 +5,7 @@ use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
-use riichi_ai::shanten::ShantenCalculator;
+use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::analysis::{analyze_wait_tiles, is_standard_win};
 use riichi_logic::types::{TileCounts, WinContext};
 use riichi_logic::win_check;
@@ -1203,6 +1203,39 @@ impl GameState {
 
     pub fn take_events(&mut self) -> Vec<GameEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// 构建指定玩家视角的 VisibleTiles（用于向听/进张分析）
+    pub fn build_visible_tiles(&self, player: PlayerId) -> riichi_logic::acceptance::VisibleTiles {
+        let mut visible = riichi_logic::acceptance::VisibleTiles::new();
+
+        for meld in &self.players[player.0].melds {
+            for t in &meld.tiles {
+                visible.hand_melds.inc(t.tile_type());
+            }
+        }
+
+        for i in 0..4 {
+            let pid = PlayerId(i);
+            if pid == player { continue; }
+            for meld in &self.players[i].melds {
+                for t in &meld.tiles {
+                    visible.all_melds.inc(t.tile_type());
+                }
+            }
+        }
+
+        for i in 0..4 {
+            for &t in &self.players[i].discards {
+                visible.all_discards.inc(t.tile_type());
+            }
+        }
+
+        for &tt in &self.dora_indicators {
+            visible.dora_indicators.inc(tt);
+        }
+
+        visible
     }
 }
 

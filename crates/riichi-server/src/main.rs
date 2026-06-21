@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use riichi_logic::acceptance::{analyze_discard, VisibleTiles};
+use riichi_logic::acceptance::analyze_discard;
 use riichi_logic::shanten::ShantenCalculator;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -77,7 +77,7 @@ fn play_round(game: &mut GameState, rng: &mut StdRng, calc: &mut ShantenCalculat
                         }
                     }
                 } else {
-                    let visible = build_visible_tiles(game, player);
+                    let visible = game.build_visible_tiles(player);
                     let hand = &game.players[player.0].hand;
                     let analysis = analyze_discard(calc, hand.tiles(), &visible);
                     let best = analysis.first().unwrap();
@@ -203,38 +203,6 @@ fn round_display(wind: TileType, round: u32) -> String {
     };
     let round_in_wind = ((round - 1) % 4) + 1;
     format!("{}{}局", wind_str, round_in_wind)
-}
-
-fn build_visible_tiles(game: &GameState, player: PlayerId) -> VisibleTiles {
-    let mut visible = VisibleTiles::new();
-
-    for meld in &game.players[player.0].melds {
-        for t in &meld.tiles {
-            visible.hand_melds.inc(t.tile_type());
-        }
-    }
-
-    for i in 0..4 {
-        let pid = riichi_core::player::PlayerId(i);
-        if pid == player { continue; }
-        for meld in &game.players[i].melds {
-            for t in &meld.tiles {
-                visible.all_melds.inc(t.tile_type());
-            }
-        }
-    }
-
-    for i in 0..4 {
-        for &t in &game.players[i].discards {
-            visible.all_discards.inc(t.tile_type());
-        }
-    }
-
-    for &tt in &game.dora_indicators {
-        visible.dora_indicators.inc(tt);
-    }
-
-    visible
 }
 
 // ═══════════════════════════════════════════════════════════════

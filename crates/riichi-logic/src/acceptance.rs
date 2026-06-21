@@ -206,4 +206,36 @@ impl VisibleTiles {
             dora_indicators: TileCounts::new(),
         }
     }
+
+    /// 从玩家副露/舍牌/宝牌指示牌数据构建 VisibleTiles。
+    ///
+    /// - `player_melds`: 当前玩家的副露
+    /// - `all_melds`: 其他玩家的副露
+    /// - `all_discards`: 所有玩家的舍牌
+    /// - `dora_indicator_types`: 宝牌指示牌类型列表
+    pub fn from_data(
+        player_melds: &[Vec<riichi_core::tile::Tile>],
+        other_melds: &[Vec<riichi_core::tile::Tile>],
+        all_discards: &[riichi_core::tile::Tile],
+        dora_indicator_types: &[riichi_core::tile::TileType],
+    ) -> Self {
+        let mut visible = Self::new();
+        for tiles in player_melds {
+            for t in tiles {
+                visible.hand_melds.inc(t.tile_type());
+            }
+        }
+        for tiles in other_melds {
+            for t in tiles {
+                visible.all_melds.inc(t.tile_type());
+            }
+        }
+        for t in all_discards {
+            visible.all_discards.inc(t.tile_type());
+        }
+        for &tt in dora_indicator_types {
+            visible.dora_indicators.inc(tt);
+        }
+        visible
+    }
 }
