@@ -43,7 +43,7 @@
 
 ### riichi-engine（状态机）
 
-游戏状态管理，回合流程控制。
+游戏状态管理，回合流程控制。仅依赖 riichi-core + riichi-logic，不依赖 riichi-ai。
 
 | 模块 | 内容 |
 |------|------|

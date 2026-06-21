@@ -406,7 +406,6 @@ name = "riichi-engine"
 version = "0.1.0"
 dependencies = [
  "rand",
- "riichi-ai",
  "riichi-core",
  "riichi-logic",
  "serde",
