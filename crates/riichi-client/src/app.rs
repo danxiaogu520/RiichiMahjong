@@ -1,4 +1,4 @@
-use riichi_logic::acceptance::{analyze_acceptance, analyze_discard, AcceptanceInfo, DiscardOption, VisibleTiles};
+use riichi_logic::acceptance::{analyze_acceptance, analyze_discard, AcceptanceInfo, DiscardOption};
 use riichi_logic::shanten::ShantenCalculator;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -203,7 +203,7 @@ impl App {
     }
 
     fn ai_discard(&mut self, player: PlayerId) {
-        let visible = self.build_visible_tiles(player);
+        let visible = self.game.build_visible_tiles(player);
         let hand = &self.game.players[player.0].hand;
         let analysis = analyze_discard(&mut self.calc, hand.tiles(), &visible);
         let best = analysis.first().cloned();
@@ -449,7 +449,7 @@ impl App {
         if tiles.len() < 2 {
             return Vec::new();
         }
-        let visible = Self::build_visible_tiles_static(game, PlayerId(0));
+        let visible = game.build_visible_tiles(PlayerId(0));
         analyze_discard(calc, &tiles, &visible)
     }
 
@@ -459,39 +459,8 @@ impl App {
         if hand.is_empty() {
             return (Vec::new(), Vec::new(), -1);
         }
-        let visible = Self::build_visible_tiles_static(game, PlayerId(0));
+        let visible = game.build_visible_tiles(PlayerId(0));
         analyze_acceptance(calc, hand.tiles(), &visible)
-    }
-
-    fn build_visible_tiles(&self, player: PlayerId) -> VisibleTiles {
-        Self::build_visible_tiles_static(&self.game, player)
-    }
-
-    fn build_visible_tiles_static(game: &GameState, player: PlayerId) -> VisibleTiles {
-        let mut visible = VisibleTiles::new();
-        for meld in &game.players[player.0].melds {
-            for t in &meld.tiles {
-                visible.hand_melds.inc(t.tile_type());
-            }
-        }
-        for i in 0..4 {
-            let pid = PlayerId(i);
-            if pid == player { continue; }
-            for meld in &game.players[i].melds {
-                for t in &meld.tiles {
-                    visible.all_melds.inc(t.tile_type());
-                }
-            }
-        }
-        for i in 0..4 {
-            for &t in &game.players[i].discards {
-                visible.all_discards.inc(t.tile_type());
-            }
-        }
-        for &tt in &game.dora_indicators {
-            visible.dora_indicators.inc(tt);
-        }
-        visible
     }
 
     pub fn player_name(&self, idx: usize) -> &str {
