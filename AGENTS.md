@@ -29,9 +29,31 @@ cargo fmt --all -- --check
 cargo build                    # 构建所有 crate
 cargo run -p riichi-client     # 终端 UI
 cargo run -p riichi-server     # CLI 模式
+cargo run -p riichi-test       # 交互式测试工具
 cargo fmt                      # 格式化
 cargo clippy --workspace       # lint
 ```
+
+## 测试方式
+
+**不写单元测试。** 使用 `riichi-test` 交互式测试工具进行手动验证。
+
+```bash
+cargo run -p riichi-test
+> a 12345m445p45678s          # analyze: 自动判断 3n+1/3n+2
+> a 111222333m4455p           # 和了拆解
+> dora 1m2m3m --indicator 1m # 宝牌计算
+> points 4 30                 # 点数计算
+```
+
+手牌格式：`12345m445p45678s`（数字+花色字母，m=万 p=筒 s=索 z=字）
+
+`analyze` 命令根据手牌张数自动分发：
+- **3n+2**：和了 → 显示拆解；未和了 → 显示向听 + 打牌分析
+- **3n+1**：听牌 → 显示听牌类型；未听牌 → 显示向听 + 进张/改良
+- **3n**：拒绝分析
+
+修改 riichi-logic 后，用 riichi-test 验证输出是否符合预期。
 
 ## Workspace 结构
 
