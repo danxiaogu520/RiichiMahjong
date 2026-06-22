@@ -56,20 +56,35 @@ pub fn analyze_discard(
 
             for i in 0..34u8 {
                 let draw_tt = TileType(i);
-                let rem = remaining_copies(draw_tt, &after_discard, visible);
-                if rem == 0 {
+                let draw_rem = remaining_copies(draw_tt, &after_discard, visible);
+                if draw_rem == 0 {
                     continue;
                 }
 
                 let mut after_draw = after_discard;
                 after_draw.inc(draw_tt);
 
-                let new_acceptance_copies =
-                    count_acceptance_copies(calculator, &after_draw, visible, new_shanten);
+                for j in 0..34u8 {
+                    let discard_tt = TileType(j);
+                    if after_draw.get(discard_tt) == 0 {
+                        continue;
+                    }
+                    let mut after_discard2 = after_draw;
+                    after_discard2.dec(discard_tt);
 
-                if new_acceptance_copies > old_acceptance_copies {
-                    improvement_types += 1;
-                    improvement_copies += rem;
+                    let new_acceptance_copies = count_acceptance_copies_with_extra(
+                        calculator,
+                        &after_discard2,
+                        visible,
+                        new_shanten,
+                        draw_tt,
+                    );
+
+                    if new_acceptance_copies > old_acceptance_copies {
+                        improvement_types += 1;
+                        improvement_copies += draw_rem;
+                        break;
+                    }
                 }
             }
         }
@@ -114,7 +129,6 @@ pub fn analyze_acceptance(
     let current_shanten = calculator.lookup(&counts);
 
     let mut acceptance = Vec::new();
-    let mut improvement = Vec::new();
 
     for i in 0..34u8 {
         let tt = TileType(i);
@@ -133,15 +147,44 @@ pub fn analyze_acceptance(
                 copies: rem,
                 new_shanten,
             });
-        } else if new_shanten == current_shanten {
-            let old_copies = count_acceptance_copies(calculator, &counts, visible, current_shanten);
-            let new_copies = count_acceptance_copies(calculator, &after, visible, current_shanten);
-            if new_copies > old_copies {
+        }
+    }
+
+    let base_acceptance = count_acceptance_copies(calculator, &counts, visible, current_shanten);
+    let mut improvement = Vec::new();
+
+    for i in 0..34u8 {
+        let draw_tt = TileType(i);
+        let draw_rem = remaining_copies(draw_tt, &counts, visible);
+        if draw_rem == 0 {
+            continue;
+        }
+
+        let mut after_draw = counts;
+        after_draw.inc(draw_tt);
+
+        for j in 0..34u8 {
+            let discard_tt = TileType(j);
+            if after_draw.get(discard_tt) == 0 {
+                continue;
+            }
+            let mut after_discard = after_draw;
+            after_discard.dec(discard_tt);
+
+            let new_acceptance = count_acceptance_copies_with_extra(
+                calculator,
+                &after_discard,
+                visible,
+                current_shanten,
+                draw_tt,
+            );
+            if new_acceptance > base_acceptance {
                 improvement.push(AcceptanceInfo {
-                    tile: tt,
-                    copies: rem,
-                    new_shanten,
+                    tile: draw_tt,
+                    copies: draw_rem,
+                    new_shanten: current_shanten,
                 });
+                break;
             }
         }
     }
@@ -165,6 +208,32 @@ fn count_acceptance_copies(
         after.inc(tt);
         if calculator.lookup(&after) < shanten {
             total += remaining_copies(tt, counts, visible);
+        }
+    }
+    total
+}
+
+fn count_acceptance_copies_with_extra(
+    calculator: &mut ShantenCalculator,
+    counts: &TileCounts,
+    visible: &VisibleTiles,
+    shanten: i8,
+    extra_tile: TileType,
+) -> usize {
+    let mut total = 0usize;
+    for i in 0..34u8 {
+        let tt = TileType(i);
+        if counts.get(tt) >= 4 {
+            continue;
+        }
+        let mut after = *counts;
+        after.inc(tt);
+        if calculator.lookup(&after) < shanten {
+            let mut rem = remaining_copies(tt, counts, visible);
+            if tt == extra_tile {
+                rem = rem.saturating_sub(1);
+            }
+            total += rem;
         }
     }
     total
