@@ -1300,15 +1300,6 @@ impl GameState {
             .count() as u8
     }
 
-    /// 玩家 id 是否已立直（通过事件判断）
-    fn is_player_riichi(&self, player: PlayerId) -> bool {
-        self.events.iter().any(|e| {
-            matches!(
-                e,
-                GameEvent::PlayerDeclaredRiichi { player: p } if *p == player
-            )
-        })
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════
