@@ -111,7 +111,7 @@ pub fn calculate_fu(
     // TODO: 听牌类型符
 
     // 向上取整到 10
-    if fu > 0 && fu % 10 != 0 {
+    if fu > 0 && !fu.is_multiple_of(10) {
         fu = (fu / 10 + 1) * 10;
     }
 
@@ -122,4 +122,3 @@ pub fn calculate_fu(
 
     fu
 }
-

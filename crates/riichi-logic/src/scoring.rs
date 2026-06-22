@@ -16,6 +16,7 @@
 ///
 /// # 返回
 /// `[i32; 4]` — 4 家的点数变化
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 pub fn calculate_points(
     total_han: u8,
     total_fu: u32,
@@ -87,11 +88,11 @@ fn base_points(han: u8, fu: u32) -> i32 {
     match han {
         0 => 0,
         1..=4 => fu as i32 * (1 << (han as u32 + 2)),
-        5 => 2000,  // 满贯
-        6..=7 => 3000,  // 跳满
-        8..=10 => 4000, // 倍满
+        5 => 2000,       // 满贯
+        6..=7 => 3000,   // 跳满
+        8..=10 => 4000,  // 倍满
         11..=12 => 6000, // 三倍满
-        _ => 8000,  // 役满（非 yakuman_count 时的兜底）
+        _ => 8000,       // 役满（非 yakuman_count 时的兜底）
     }
 }
 
@@ -99,4 +100,3 @@ fn base_points(han: u8, fu: u32) -> i32 {
 fn round_up_100(n: i32) -> i32 {
     ((n + 99) / 100) * 100
 }
-

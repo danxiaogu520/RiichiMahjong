@@ -60,7 +60,9 @@ fn render_opponent(f: &mut Frame, app: &App, player_idx: usize, area: Rect) {
     let line1 = Line::from(vec![
         Span::styled(
             format!("{}({})", name, player_idx),
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!(" [{}]{}", points, melds_display),
@@ -70,7 +72,10 @@ fn render_opponent(f: &mut Frame, app: &App, player_idx: usize, area: Rect) {
     ]);
 
     let line2 = Line::from({
-        let mut spans = vec![Span::styled("    牌河: ", Style::default().fg(Color::DarkGray))];
+        let mut spans = vec![Span::styled(
+            "    牌河: ",
+            Style::default().fg(Color::DarkGray),
+        )];
         spans.extend(discards);
         spans
     });
@@ -116,7 +121,9 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
     let line1 = Line::from(vec![
         Span::styled(
             format!("{}({})", name, 0),
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!(" [{}]{}", points, melds_display),
@@ -156,7 +163,9 @@ fn render_action_line(app: &App) -> Line<'static> {
     if !app.call_options.is_empty() {
         let spans = vec![Span::styled(
             "副露: [Enter]荣和 [P]跳过",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         )];
         return Line::from(spans);
     }

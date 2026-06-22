@@ -1,6 +1,8 @@
 use riichi_core::player::PlayerId;
 use riichi_server::ai_client::run_ai_client;
-use riichi_server::channel::{create_player_pair, ServerEvent, TurnActionMsg, PlayerAction, ActionMsg, CallResponseMsg};
+use riichi_server::channel::{
+    create_player_pair, ActionMsg, CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg,
+};
 use riichi_server::game_loop::GameLoop;
 use tokio::sync::mpsc;
 
@@ -11,7 +13,12 @@ async fn main() {
     let (p2_handle, p2_client) = create_player_pair(PlayerId(2));
     let (p3_handle, p3_client) = create_player_pair(PlayerId(3));
 
-    let event_txs = [p0_handle.event_tx, p1_handle.event_tx, p2_handle.event_tx, p3_handle.event_tx];
+    let event_txs = [
+        p0_handle.event_tx,
+        p1_handle.event_tx,
+        p2_handle.event_tx,
+        p3_handle.event_tx,
+    ];
 
     let (merged_tx, merged_rx) = mpsc::channel::<ActionMsg>(64);
 
@@ -25,35 +32,68 @@ async fn main() {
     let mut r2 = p2_handle.action_rx;
     let mut r3 = p3_handle.action_rx;
 
-    tokio::spawn(async move { while let Some(msg) = r0.recv().await { let _ = tx0.send(msg).await; } });
-    tokio::spawn(async move { while let Some(msg) = r1.recv().await { let _ = tx1.send(msg).await; } });
-    tokio::spawn(async move { while let Some(msg) = r2.recv().await { let _ = tx2.send(msg).await; } });
-    tokio::spawn(async move { while let Some(msg) = r3.recv().await { let _ = tx3.send(msg).await; } });
+    tokio::spawn(async move {
+        while let Some(msg) = r0.recv().await {
+            let _ = tx0.send(msg).await;
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(msg) = r1.recv().await {
+            let _ = tx1.send(msg).await;
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(msg) = r2.recv().await {
+            let _ = tx2.send(msg).await;
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(msg) = r3.recv().await {
+            let _ = tx3.send(msg).await;
+        }
+    });
 
     tokio::spawn(run_ai_client(p1_client));
     tokio::spawn(run_ai_client(p2_client));
     tokio::spawn(run_ai_client(p3_client));
 
     let mut game_loop = GameLoop::new(event_txs, merged_rx);
-    tokio::spawn(async move { game_loop.run().await; });
+    tokio::spawn(async move {
+        game_loop.run().await;
+    });
 
     while let Some(event) = p0_client.event_rx.recv().await {
         match event {
-            ServerEvent::StateUpdate { hand_tiles, remaining_tiles, .. } => {
+            ServerEvent::StateUpdate {
+                hand_tiles,
+                remaining_tiles,
+                ..
+            } => {
                 println!("手牌: {:?}  剩余: {}", hand_tiles, remaining_tiles);
             }
-            ServerEvent::ActionRequired { can_tsumo, can_riichi } => {
+            ServerEvent::ActionRequired {
+                can_tsumo,
+                can_riichi,
+            } => {
                 println!("行动: tsumo={} riichi={}", can_tsumo, can_riichi);
                 let tile = riichi_core::tile::Tile::from_raw(0);
-                let _ = p0_client.action_tx.send(
-                    (PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Discard(tile)))
-                ).await;
+                let _ = p0_client
+                    .action_tx
+                    .send((
+                        PlayerId(0),
+                        PlayerAction::TurnAction(TurnActionMsg::Discard(tile)),
+                    ))
+                    .await;
             }
             ServerEvent::CallRequired { options } => {
                 println!("副露选项: {:?}", options);
-                let _ = p0_client.action_tx.send(
-                    (PlayerId(0), PlayerAction::CallResponse(CallResponseMsg::Pass))
-                ).await;
+                let _ = p0_client
+                    .action_tx
+                    .send((
+                        PlayerId(0),
+                        PlayerAction::CallResponse(CallResponseMsg::Pass),
+                    ))
+                    .await;
             }
             ServerEvent::GameOver { scores } => {
                 println!("游戏结束: {:?}", scores);

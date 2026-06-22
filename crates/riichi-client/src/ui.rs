@@ -46,7 +46,9 @@ fn render_messages(f: &mut Frame, app: &App, area: Rect) {
         .map(|m| Line::from(Span::raw(m.clone())))
         .collect();
 
-    let para = Paragraph::new(messages).block(block).wrap(Wrap { trim: false });
+    let para = Paragraph::new(messages)
+        .block(block)
+        .wrap(Wrap { trim: false });
     f.render_widget(para, area);
 }
 

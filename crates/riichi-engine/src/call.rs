@@ -113,7 +113,11 @@ fn detect_chi(hand: &riichi_core::hand::Hand, discarded: TileType) -> Vec<[Tile;
 }
 
 /// 找出手牌中能组成吃的两张牌
-fn find_chi_pair(hand: &riichi_core::hand::Hand, type1: TileType, type2: TileType) -> Option<[Tile; 2]> {
+fn find_chi_pair(
+    hand: &riichi_core::hand::Hand,
+    type1: TileType,
+    type2: TileType,
+) -> Option<[Tile; 2]> {
     let tile1 = hand.tiles().iter().find(|t| t.tile_type() == type1)?;
     let tile2 = hand
         .tiles()

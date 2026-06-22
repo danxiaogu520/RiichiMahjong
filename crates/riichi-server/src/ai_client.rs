@@ -2,7 +2,9 @@ use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::GamePhase;
 
-use crate::channel::{ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg};
+use crate::channel::{
+    ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
+};
 
 struct AiState {
     hand_tiles: Vec<Tile>,
@@ -24,13 +26,19 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
     while let Some(event) = handle.event_rx.recv().await {
         match event {
             ServerEvent::StateUpdate {
-                phase, current_player, hand_tiles, ..
+                phase,
+                current_player,
+                hand_tiles,
+                ..
             } => {
                 state.phase = phase;
                 state.current_player = current_player;
                 state.hand_tiles = hand_tiles;
             }
-            ServerEvent::ActionRequired { can_tsumo, can_riichi } => {
+            ServerEvent::ActionRequired {
+                can_tsumo,
+                can_riichi,
+            } => {
                 state.can_tsumo = can_tsumo;
                 state.can_riichi = can_riichi;
 
@@ -53,7 +61,13 @@ fn decide_turn(player: &PlayerId, state: &AiState) -> ActionMsg {
     if state.can_riichi {
         return (*player, PlayerAction::TurnAction(TurnActionMsg::Riichi));
     }
-    let tile = state.hand_tiles.last().copied()
+    let tile = state
+        .hand_tiles
+        .last()
+        .copied()
         .unwrap_or_else(|| Tile::from_raw(0));
-    (*player, PlayerAction::TurnAction(TurnActionMsg::Discard(tile)))
+    (
+        *player,
+        PlayerAction::TurnAction(TurnActionMsg::Discard(tile)),
+    )
 }

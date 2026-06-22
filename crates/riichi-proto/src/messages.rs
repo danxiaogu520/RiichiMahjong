@@ -32,13 +32,18 @@ pub enum CallResponsePayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
-    RoomJoined { room_id: String, player_id: PlayerId },
-    StateUpdate(GameStateView),
+    RoomJoined {
+        room_id: String,
+        player_id: PlayerId,
+    },
+    StateUpdate(Box<GameStateView>),
     Event(GameEventView),
     ActionRequired(ActionRequest),
     CallRequired(CallRequest),
     RoundResult(RoundResultView),
-    GameOver { scores: [i32; 4] },
+    GameOver {
+        scores: [i32; 4],
+    },
     Error(String),
 }
 
@@ -98,19 +103,59 @@ pub enum GamePhaseView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GameEventView {
-    GameStarted { dealer: PlayerId },
-    RoundStarted { round_number: u32, dealer: PlayerId },
-    PlayerDrew { player: PlayerId },
-    PlayerDiscarded { player: PlayerId, tile: Tile },
-    PlayerCalledPon { player: PlayerId, tiles: Vec<Tile>, from_player: PlayerId },
-    PlayerCalledChi { player: PlayerId, tiles: Vec<Tile>, from_player: PlayerId },
-    PlayerCalledMinkan { player: PlayerId, tiles: Vec<Tile>, from_player: PlayerId },
-    PlayerCalledAnkan { player: PlayerId, tiles: Vec<Tile> },
-    PlayerCalledKakan { player: PlayerId, tile: Tile },
-    PlayerDeclaredRiichi { player: PlayerId },
-    PlayerWon { player: PlayerId, is_tsumo: bool, points: i32, yaku_names: Vec<String> },
-    RoundEnded { reason: RoundEndReasonView },
-    ExhaustiveDrawResult { tenpai: [bool; 4], payments: [i32; 4] },
+    GameStarted {
+        dealer: PlayerId,
+    },
+    RoundStarted {
+        round_number: u32,
+        dealer: PlayerId,
+    },
+    PlayerDrew {
+        player: PlayerId,
+    },
+    PlayerDiscarded {
+        player: PlayerId,
+        tile: Tile,
+    },
+    PlayerCalledPon {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+        from_player: PlayerId,
+    },
+    PlayerCalledChi {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+        from_player: PlayerId,
+    },
+    PlayerCalledMinkan {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+        from_player: PlayerId,
+    },
+    PlayerCalledAnkan {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+    },
+    PlayerCalledKakan {
+        player: PlayerId,
+        tile: Tile,
+    },
+    PlayerDeclaredRiichi {
+        player: PlayerId,
+    },
+    PlayerWon {
+        player: PlayerId,
+        is_tsumo: bool,
+        points: i32,
+        yaku_names: Vec<String>,
+    },
+    RoundEnded {
+        reason: RoundEndReasonView,
+    },
+    ExhaustiveDrawResult {
+        tenpai: [bool; 4],
+        payments: [i32; 4],
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
