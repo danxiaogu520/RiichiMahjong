@@ -15,6 +15,12 @@ git push
 - 每个逻辑改动一个 commit
 - 推送前确认 `cargo build` 编译通过
 
+```bash
+cargo build --workspace
+cargo clippy --workspace -- -D warnings
+cargo fmt --all -- --check
+```
+
 ## Build & Run
 
 ```bash
