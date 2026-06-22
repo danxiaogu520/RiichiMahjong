@@ -1,22 +1,22 @@
 use std::collections::HashSet;
 
+use rand::Rng;
 use riichi_core::hand::Hand;
 use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
-use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::analysis::{analyze_wait_tiles, is_standard_win};
+use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::types::{TileCounts, WinContext};
 use riichi_logic::win_check;
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::action::{CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction};
 use crate::player::{wind_from_index, FuritenState, Player};
 
-pub use riichi_core::game_types::{extract_kuikae_tiles, GameError, GamePhase};
 use riichi_core::game_types::GameError::{InvalidAction, WallExhausted};
+pub use riichi_core::game_types::{extract_kuikae_tiles, GameError, GamePhase};
 
 /// 游戏状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,7 +127,8 @@ impl GameState {
             self.dora_indicators.push(indicator);
             self.dora.push(Self::dora_from_indicator(indicator));
             // 里宝牌指示牌
-            self.ura_dora_indicators.push(self.wall.ura_dora_indicator(kan_count).tile_type());
+            self.ura_dora_indicators
+                .push(self.wall.ura_dora_indicator(kan_count).tile_type());
         }
     }
 }
@@ -150,7 +151,8 @@ impl GameState {
         self.dora_indicators.push(indicator);
         self.dora.push(Self::dora_from_indicator(indicator));
         // 里宝牌指示牌
-        self.ura_dora_indicators.push(self.wall.ura_dora_indicator(0).tile_type());
+        self.ura_dora_indicators
+            .push(self.wall.ura_dora_indicator(0).tile_type());
 
         for player in &mut self.players {
             player.hand = Hand::new();
@@ -216,7 +218,10 @@ impl GameState {
         if self.get_kan_count() > 4 {
             return Err(InvalidAction("不能在四杠已开时继续摸岭上牌".to_string()));
         }
-        let tile = self.wall.draw_rinshan().ok_or(InvalidAction("岭上牌已耗尽".to_string()))?;
+        let tile = self
+            .wall
+            .draw_rinshan()
+            .ok_or(InvalidAction("岭上牌已耗尽".to_string()))?;
         self.drawn_tile = Some(tile);
         self.update_discard_furiten(self.current_player);
         self.events.push(GameEvent::PlayerDrew {
@@ -518,7 +523,9 @@ impl GameState {
 
                 for idx in 0..4 {
                     let pid = PlayerId(idx);
-                    if pid == discarder { continue; }
+                    if pid == discarder {
+                        continue;
+                    }
                     let waiting = self.get_waiting_tile_types(pid);
                     if waiting.contains(&discarded_tile.tile_type()) {
                         if self.players[idx].is_riichi {
@@ -774,11 +781,10 @@ impl GameState {
             p.melds.push(Meld::ankan(tiles_to_remove.clone()));
         }
 
-        let mut new_events = Vec::new();
-        new_events.push(GameEvent::PlayerCalledAnkan {
+        let new_events = vec![GameEvent::PlayerCalledAnkan {
             player,
             tiles: tiles_to_remove,
-        });
+        }];
 
         self.reveal_dora_indicator();
         self.current_player = player;
@@ -862,12 +868,11 @@ impl GameState {
             };
         }
 
-        let mut new_events = Vec::new();
-        new_events.push(GameEvent::PlayerCalledKakan {
+        let new_events = vec![GameEvent::PlayerCalledKakan {
             player,
             tile,
             original_pon,
-        });
+        }];
 
         self.current_player = player;
         self.reveal_dora_indicator();
@@ -1007,11 +1012,10 @@ impl GameState {
         }
 
         // waits_before：13 张手牌的听牌
-        let waits_before: std::collections::HashSet<TileType> =
-            analyze_wait_tiles(hand.tiles())
-                .iter()
-                .map(|w| w.tile_type)
-                .collect();
+        let waits_before: std::collections::HashSet<TileType> = analyze_wait_tiles(hand.tiles())
+            .iter()
+            .map(|w| w.tile_type)
+            .collect();
 
         if waits_before.is_empty() {
             return vec![];
@@ -1035,7 +1039,7 @@ impl GameState {
         // is_standard_win 会自动从总张数推算面子数。
         let base_counts = TileCounts::from_tiles(hand_after.tiles());
         let waits_after: std::collections::HashSet<TileType> = (0..34u8)
-            .map(|i| TileType(i))
+            .map(TileType)
             .filter(|&tt| {
                 if base_counts.get(tt) >= 4 {
                     return false;
@@ -1133,7 +1137,8 @@ impl GameState {
         all_tiles.push(winning_tile);
 
         // 门清部分 TileType（手牌 + 和了牌，用于判形和拆解）
-        let mut hand_tile_types: Vec<TileType> = hand.tiles().iter().map(|t| t.tile_type()).collect();
+        let mut hand_tile_types: Vec<TileType> =
+            hand.tiles().iter().map(|t| t.tile_type()).collect();
         if !hand_tile_types.contains(&winning_tile.tile_type()) {
             hand_tile_types.push(winning_tile.tile_type());
         } else {
@@ -1146,8 +1151,13 @@ impl GameState {
         ctx.is_rinshan = self.is_rinshan_tile(winning_tile);
 
         let is_furiten = self.players[player.0].furiten.is_furiten();
-        let result = win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten, winning_tile)?;
-        let yaku_names: Vec<String> = result.yaku_results.iter().map(|y| format!("{:?}", y.yaku)).collect();
+        let result =
+            win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten, winning_tile)?;
+        let yaku_names: Vec<String> = result
+            .yaku_results
+            .iter()
+            .map(|y| format!("{:?}", y.yaku))
+            .collect();
         Some((result.points, yaku_names))
     }
 }
@@ -1217,7 +1227,9 @@ impl GameState {
 
         for i in 0..4 {
             let pid = PlayerId(i);
-            if pid == player { continue; }
+            if pid == player {
+                continue;
+            }
             for meld in &self.players[i].melds {
                 for t in &meld.tiles {
                     visible.all_melds.inc(t.tile_type());
@@ -1299,7 +1311,6 @@ impl GameState {
             .filter(|e| matches!(e, GameEvent::PlayerDeclaredRiichi { .. }))
             .count() as u8
     }
-
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1454,6 +1465,7 @@ impl GameState {
             _ => unreachable!(),
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..4 {
             self.players[i].points += payments[i];
         }
@@ -1516,4 +1528,3 @@ impl GameState {
 // ═══════════════════════════════════════════════════════════════
 //  测试
 // ═══════════════════════════════════════════════════════════════
-

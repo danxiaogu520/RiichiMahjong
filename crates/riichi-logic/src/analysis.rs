@@ -1,6 +1,8 @@
 use riichi_core::tile::TileType;
 
-use crate::types::{HandType, Mentsu, MentsuKind, TileCounts, WaitInfo, WaitTileInfo, WaitType, WinningHand};
+use crate::types::{
+    HandType, Mentsu, MentsuKind, TileCounts, WaitInfo, WaitTileInfo, WaitType, WinningHand,
+};
 
 // ─── 和了判定 ──────────────────────────────────────────────
 
@@ -59,8 +61,11 @@ fn can_form_mentsu(counts: &mut TileCounts, num_mentsu: usize) -> bool {
             if tt.is_number() && tt.rank().0 <= 7 {
                 let tt2 = TileType(i as u8 + 1);
                 let tt3 = TileType(i as u8 + 2);
-                if tt.suit() == tt2.suit() && tt.suit() == tt3.suit()
-                    && counts.get(tt) >= 1 && counts.get(tt2) >= 1 && counts.get(tt3) >= 1
+                if tt.suit() == tt2.suit()
+                    && tt.suit() == tt3.suit()
+                    && counts.get(tt) >= 1
+                    && counts.get(tt2) >= 1
+                    && counts.get(tt3) >= 1
                 {
                     counts.dec(tt);
                     counts.dec(tt2);
@@ -189,8 +194,11 @@ fn decompose_all_mentsu(counts: &mut TileCounts, num: usize) -> Vec<Vec<Mentsu>>
     if tt.is_number() && tt.rank().0 <= 7 {
         let tt2 = TileType(idx as u8 + 1);
         let tt3 = TileType(idx as u8 + 2);
-        if tt.suit() == tt2.suit() && tt.suit() == tt3.suit()
-            && counts.get(tt) >= 1 && counts.get(tt2) >= 1 && counts.get(tt3) >= 1
+        if tt.suit() == tt2.suit()
+            && tt.suit() == tt3.suit()
+            && counts.get(tt) >= 1
+            && counts.get(tt2) >= 1
+            && counts.get(tt3) >= 1
         {
             counts.dec(tt);
             counts.dec(tt2);
@@ -326,10 +334,13 @@ pub fn analyze_wait_tiles(hand_tiles: &[riichi_core::tile::Tile]) -> WaitInfo {
             }
         }
 
-        merge_wait_info(&mut wait_map, vec![WaitTileInfo {
-            tile_type: tt,
-            wait_types,
-        }]);
+        merge_wait_info(
+            &mut wait_map,
+            vec![WaitTileInfo {
+                tile_type: tt,
+                wait_types,
+            }],
+        );
     }
 
     // 七对子听牌
@@ -344,7 +355,10 @@ pub fn analyze_wait_tiles(hand_tiles: &[riichi_core::tile::Tile]) -> WaitInfo {
 
     wait_map
         .into_iter()
-        .map(|(tile_type, wait_types)| WaitTileInfo { tile_type, wait_types })
+        .map(|(tile_type, wait_types)| WaitTileInfo {
+            tile_type,
+            wait_types,
+        })
         .collect()
 }
 
@@ -403,7 +417,7 @@ fn analyze_kokushi_tenpai(base: &TileCounts) -> Option<WaitInfo> {
 
     // 统计非幺九牌总张数
     let non_yaochuuhai_count: u8 = (0..34u8)
-        .map(|i| TileType(i))
+        .map(TileType)
         .filter(|tt| !tt.is_yaochuuhai())
         .map(|tt| base.get(tt))
         .sum();
@@ -479,10 +493,8 @@ pub(crate) fn classify_wait(hand: &WinningHand, winning_tile: TileType) -> Vec<W
     for mentsu in &hand.mentsu {
         match mentsu.kind {
             MentsuKind::Koutsu => {
-                if mentsu.tile_type == winning_tile {
-                    if !result.contains(&WaitType::Shanpon) {
-                        result.push(WaitType::Shanpon);
-                    }
+                if mentsu.tile_type == winning_tile && !result.contains(&WaitType::Shanpon) {
+                    result.push(WaitType::Shanpon);
                 }
             }
             MentsuKind::Shuntsu => {
@@ -526,4 +538,3 @@ pub(crate) fn classify_wait(hand: &WinningHand, winning_tile: TileType) -> Vec<W
     }
     result
 }
-

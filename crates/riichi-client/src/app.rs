@@ -4,7 +4,9 @@ use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
 use tokio::sync::mpsc;
 
-use riichi_server::channel::{ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg};
+use riichi_server::channel::{
+    ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
+};
 
 pub struct App {
     pub event_rx: mpsc::Receiver<ServerEvent>,
@@ -100,7 +102,10 @@ impl App {
                         self.selected = 0;
                     }
                 }
-                ServerEvent::ActionRequired { can_tsumo, can_riichi } => {
+                ServerEvent::ActionRequired {
+                    can_tsumo,
+                    can_riichi,
+                } => {
                     self.can_tsumo = can_tsumo;
                     self.can_riichi = can_riichi;
                     self.call_options.clear();
@@ -129,23 +134,36 @@ impl App {
     }
 
     pub fn send_discard(&self, tile: Tile) {
-        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Discard(tile))));
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::TurnAction(TurnActionMsg::Discard(tile)),
+        ));
     }
 
     pub fn send_tsumo(&self) {
-        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Tsumo)));
+        let _ = self
+            .action_tx
+            .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Tsumo)));
     }
 
     pub fn send_riichi(&self) {
-        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Riichi)));
+        let _ = self
+            .action_tx
+            .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Riichi)));
     }
 
     pub fn send_call_ron(&self) {
-        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::CallResponse(CallResponseMsg::Ron)));
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::CallResponse(CallResponseMsg::Ron),
+        ));
     }
 
     pub fn send_call_pass(&self) {
-        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::CallResponse(CallResponseMsg::Pass)));
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::CallResponse(CallResponseMsg::Pass),
+        ));
     }
 
     pub fn player_name(&self, idx: usize) -> &str {

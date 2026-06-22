@@ -13,11 +13,11 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc;
 
+use crate::app::App;
 use riichi_core::player::PlayerId;
 use riichi_server::ai_client::run_ai_client;
 use riichi_server::channel::{create_player_pair, ActionMsg};
 use riichi_server::game_loop::GameLoop;
-use crate::app::App;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -26,7 +26,12 @@ async fn main() -> io::Result<()> {
     let (p2_handle, p2_client) = create_player_pair(PlayerId(2));
     let (p3_handle, p3_client) = create_player_pair(PlayerId(3));
 
-    let event_txs = [p0_handle.event_tx, p1_handle.event_tx, p2_handle.event_tx, p3_handle.event_tx];
+    let event_txs = [
+        p0_handle.event_tx,
+        p1_handle.event_tx,
+        p2_handle.event_tx,
+        p3_handle.event_tx,
+    ];
 
     let (merged_tx, merged_rx) = mpsc::channel::<ActionMsg>(64);
 
@@ -40,17 +45,35 @@ async fn main() -> io::Result<()> {
     let mut r2 = p2_handle.action_rx;
     let mut r3 = p3_handle.action_rx;
 
-    tokio::spawn(async move { while let Some(msg) = r0.recv().await { let _ = tx0.send(msg).await; } });
-    tokio::spawn(async move { while let Some(msg) = r1.recv().await { let _ = tx1.send(msg).await; } });
-    tokio::spawn(async move { while let Some(msg) = r2.recv().await { let _ = tx2.send(msg).await; } });
-    tokio::spawn(async move { while let Some(msg) = r3.recv().await { let _ = tx3.send(msg).await; } });
+    tokio::spawn(async move {
+        while let Some(msg) = r0.recv().await {
+            let _ = tx0.send(msg).await;
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(msg) = r1.recv().await {
+            let _ = tx1.send(msg).await;
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(msg) = r2.recv().await {
+            let _ = tx2.send(msg).await;
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(msg) = r3.recv().await {
+            let _ = tx3.send(msg).await;
+        }
+    });
 
     tokio::spawn(run_ai_client(p1_client));
     tokio::spawn(run_ai_client(p2_client));
     tokio::spawn(run_ai_client(p3_client));
 
     let mut game_loop = GameLoop::new(event_txs, merged_rx);
-    tokio::spawn(async move { game_loop.run().await; });
+    tokio::spawn(async move {
+        game_loop.run().await;
+    });
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -85,7 +108,10 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
+async fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> io::Result<()> {
     loop {
         app.process_server_events().await;
 
