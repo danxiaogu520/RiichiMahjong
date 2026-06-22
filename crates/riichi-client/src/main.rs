@@ -75,7 +75,15 @@ async fn main() -> io::Result<()> {
         game_loop.run().await;
     });
 
-    enable_raw_mode()?;
+    enable_raw_mode().map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!(
+                "无法初始化终端 ({}). 请在真实的终端中运行, 而不是 IDE 内置终端或管道.",
+                e
+            ),
+        )
+    })?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
