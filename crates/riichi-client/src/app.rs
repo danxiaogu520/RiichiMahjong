@@ -178,7 +178,7 @@ impl App {
 
     pub fn round_display(&self) -> String {
         let wind = if self.round <= 4 { "东" } else { "南" };
-        let num = ((self.round - 1) % 4) + 1;
+        let num = (self.round.saturating_sub(1) % 4) + 1;
         format!("{}{}局", wind, num)
     }
 }
