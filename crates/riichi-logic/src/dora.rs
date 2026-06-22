@@ -11,7 +11,7 @@ const AKA_DORA_TYPES: [TileType; 3] = [
 
 /// 判断一张牌是否为赤宝牌（副本索引为 0 的 5m/5p/5s）
 pub fn is_aka_dora(tile: Tile) -> bool {
-    tile.raw() % 4 == 0 && AKA_DORA_TYPES.contains(&tile.tile_type())
+    tile.raw().is_multiple_of(4) && AKA_DORA_TYPES.contains(&tile.tile_type())
 }
 
 /// 从指示牌推导宝牌
@@ -24,11 +24,11 @@ pub fn dora_from_indicator(indicator: TileType) -> TileType {
     let suit = indicator.suit();
     let rank = indicator.rank().0;
     match suit {
-        riichi_core::tile::Suit::Man => TileType((rank % 9) as u8),
-        riichi_core::tile::Suit::Pin => TileType(9 + (rank % 9) as u8),
-        riichi_core::tile::Suit::Sou => TileType(18 + (rank % 9) as u8),
-        riichi_core::tile::Suit::Wind => TileType(27 + (rank % 4) as u8),
-        riichi_core::tile::Suit::Dragon => TileType(31 + (rank % 3) as u8),
+        riichi_core::tile::Suit::Man => TileType(rank % 9),
+        riichi_core::tile::Suit::Pin => TileType(9 + (rank % 9)),
+        riichi_core::tile::Suit::Sou => TileType(18 + (rank % 9)),
+        riichi_core::tile::Suit::Wind => TileType(27 + (rank % 4)),
+        riichi_core::tile::Suit::Dragon => TileType(31 + (rank % 3)),
     }
 }
 
@@ -49,14 +49,20 @@ pub fn calculate_dora(
     // 宝牌
     for &indicator in dora_indicators {
         let dora_tile = dora_from_indicator(indicator);
-        result.dora += all_tiles.iter().filter(|&&t| t.tile_type() == dora_tile).count() as u8;
+        result.dora += all_tiles
+            .iter()
+            .filter(|&&t| t.tile_type() == dora_tile)
+            .count() as u8;
     }
 
     // 里宝牌（仅立直时计算）
     if is_riichi {
         for &indicator in ura_dora_indicators {
             let ura_tile = dora_from_indicator(indicator);
-            result.ura_dora += all_tiles.iter().filter(|&&t| t.tile_type() == ura_tile).count() as u8;
+            result.ura_dora += all_tiles
+                .iter()
+                .filter(|&&t| t.tile_type() == ura_tile)
+                .count() as u8;
         }
     }
 
@@ -65,4 +71,3 @@ pub fn calculate_dora(
 
     result
 }
-

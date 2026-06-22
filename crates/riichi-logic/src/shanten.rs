@@ -1,5 +1,5 @@
-use riichi_core::tile::Tile;
 use crate::types::TileCounts;
+use riichi_core::tile::Tile;
 
 /// 数牌（9种）查找表：每条目10字节，存储0~4面子无雀头/有雀头的部分置换数
 static SUIT_TABLE: &[u8] = include_bytes!("../data/index_s.bin");
@@ -10,19 +10,24 @@ const ENTRY_LEN: usize = 10;
 
 /// Base-5 编码：将 N 种牌的计数数组映射为查找表索引
 fn encode_base5<const N: usize>(counts: &[u8]) -> usize {
-    counts.iter().take(N).fold(0, |acc, &c| acc * 5 + (c.min(4)) as usize)
+    counts
+        .iter()
+        .take(N)
+        .fold(0, |acc, &c| acc * 5 + (c.min(4)) as usize)
 }
 
 fn lookup_suit(counts: &[u8]) -> [u8; 10] {
     let idx = encode_base5::<9>(counts) * ENTRY_LEN;
-    SUIT_TABLE.get(idx..idx + ENTRY_LEN)
+    SUIT_TABLE
+        .get(idx..idx + ENTRY_LEN)
         .map(|s| <[u8; 10]>::try_from(s).unwrap())
         .unwrap_or([14u8; 10])
 }
 
 fn lookup_honor(counts: &[u8]) -> [u8; 10] {
     let idx = encode_base5::<7>(counts) * ENTRY_LEN;
-    HONOR_TABLE.get(idx..idx + ENTRY_LEN)
+    HONOR_TABLE
+        .get(idx..idx + ENTRY_LEN)
         .map(|s| <[u8; 10]>::try_from(s).unwrap())
         .unwrap_or([14u8; 10])
 }
@@ -34,12 +39,18 @@ fn lookup_honor(counts: &[u8]) -> [u8; 10] {
 fn merge_with_pair(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
     let max_j = (num_melds + 5).min(9);
     for j in (5..=max_j).rev() {
-        let mut best = std::cmp::min(acc[j] as i32 + other[0] as i32, acc[0] as i32 + other[j] as i32);
+        let mut best = std::cmp::min(
+            acc[j] as i32 + other[0] as i32,
+            acc[0] as i32 + other[j] as i32,
+        );
         for k in 5..j {
-            best = std::cmp::min(best, std::cmp::min(
-                acc[k] as i32 + other[j - k] as i32,
-                acc[j - k] as i32 + other[k] as i32,
-            ));
+            best = std::cmp::min(
+                best,
+                std::cmp::min(
+                    acc[k] as i32 + other[j - k] as i32,
+                    acc[j - k] as i32 + other[k] as i32,
+                ),
+            );
         }
         acc[j] = best as u8;
     }
@@ -55,12 +66,18 @@ fn merge_with_pair(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
 /// 合并最后一组花色（雀头已在前面确定，只更新有雀头部分）
 fn merge_final(acc: &mut [u8; 10], other: &[u8; 10], num_melds: usize) {
     let j = (num_melds + 5).min(9);
-    let mut best = std::cmp::min(acc[j] as i32 + other[0] as i32, acc[0] as i32 + other[j] as i32);
+    let mut best = std::cmp::min(
+        acc[j] as i32 + other[0] as i32,
+        acc[0] as i32 + other[j] as i32,
+    );
     for k in 5..j {
-        best = std::cmp::min(best, std::cmp::min(
-            acc[k] as i32 + other[j - k] as i32,
-            acc[j - k] as i32 + other[k] as i32,
-        ));
+        best = std::cmp::min(
+            best,
+            std::cmp::min(
+                acc[k] as i32 + other[j - k] as i32,
+                acc[j - k] as i32 + other[k] as i32,
+            ),
+        );
     }
     acc[j] = best as u8;
 }
@@ -92,6 +109,12 @@ fn calc_thirteen_orphans(counts: &[u8; 34]) -> i8 {
 
 pub struct ShantenCalculator;
 
+impl Default for ShantenCalculator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShantenCalculator {
     pub fn new() -> Self {
         Self
@@ -107,10 +130,17 @@ impl ShantenCalculator {
         let num_melds = c.iter().sum::<u8>() as usize / 3;
 
         let standard = calc_standard(c, num_melds);
-        let seven_pairs = if num_melds == 4 { calc_seven_pairs(c) } else { i8::MAX };
-        let thirteen_orphans = if num_melds == 4 { calc_thirteen_orphans(c) } else { i8::MAX };
+        let seven_pairs = if num_melds == 4 {
+            calc_seven_pairs(c)
+        } else {
+            i8::MAX
+        };
+        let thirteen_orphans = if num_melds == 4 {
+            calc_thirteen_orphans(c)
+        } else {
+            i8::MAX
+        };
 
         standard.min(seven_pairs).min(thirteen_orphans)
     }
 }
-

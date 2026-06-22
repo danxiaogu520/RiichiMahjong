@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use riichi_core::tile::{Tile, TileType};
 use crate::types::TileCounts;
+use riichi_core::tile::{Tile, TileType};
 
 use crate::shanten::ShantenCalculator;
 
@@ -51,7 +51,8 @@ pub fn analyze_discard(
         let mut improvement_copies = 0usize;
 
         if new_shanten == current_shanten {
-            let old_acceptance_copies = count_acceptance_copies(calculator, &after_discard, visible, new_shanten);
+            let old_acceptance_copies =
+                count_acceptance_copies(calculator, &after_discard, visible, new_shanten);
 
             for i in 0..34u8 {
                 let draw_tt = TileType(i);
@@ -63,7 +64,8 @@ pub fn analyze_discard(
                 let mut after_draw = after_discard;
                 after_draw.inc(draw_tt);
 
-                let new_acceptance_copies = count_acceptance_copies(calculator, &after_draw, visible, new_shanten);
+                let new_acceptance_copies =
+                    count_acceptance_copies(calculator, &after_draw, visible, new_shanten);
 
                 if new_acceptance_copies > old_acceptance_copies {
                     improvement_types += 1;
@@ -126,12 +128,20 @@ pub fn analyze_acceptance(
         let new_shanten = calculator.lookup(&after);
 
         if new_shanten < current_shanten {
-            acceptance.push(AcceptanceInfo { tile: tt, copies: rem, new_shanten });
+            acceptance.push(AcceptanceInfo {
+                tile: tt,
+                copies: rem,
+                new_shanten,
+            });
         } else if new_shanten == current_shanten {
             let old_copies = count_acceptance_copies(calculator, &counts, visible, current_shanten);
             let new_copies = count_acceptance_copies(calculator, &after, visible, current_shanten);
             if new_copies > old_copies {
-                improvement.push(AcceptanceInfo { tile: tt, copies: rem, new_shanten });
+                improvement.push(AcceptanceInfo {
+                    tile: tt,
+                    copies: rem,
+                    new_shanten,
+                });
             }
         }
     }
@@ -195,6 +205,12 @@ pub struct VisibleTiles {
     pub all_discards: TileCounts,
     pub all_melds: TileCounts,
     pub dora_indicators: TileCounts,
+}
+
+impl Default for VisibleTiles {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VisibleTiles {

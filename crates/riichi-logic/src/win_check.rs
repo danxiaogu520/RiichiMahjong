@@ -1,12 +1,14 @@
-use riichi_core::tile::{Suit, Tile, TileType};
 use riichi_core::meld::{Meld, MeldKind};
+use riichi_core::tile::{Suit, Tile, TileType};
 
-use crate::analysis::{decompose_all_standard, decompose_seven_pairs, decompose_kokushi, is_winning};
+use crate::analysis::{
+    decompose_all_standard, decompose_kokushi, decompose_seven_pairs, is_winning,
+};
 use crate::dora::calculate_dora;
 use crate::fu::calculate_fu;
 use crate::scoring::calculate_points;
 use crate::types::{
-    HandType, MentsuKind, TileCounts, WinningHand, WinContext, WinResult, YakuName, YakuResult,
+    HandType, MentsuKind, TileCounts, WinContext, WinResult, WinningHand, YakuName, YakuResult,
 };
 
 /// 判和：判形 + 判振 + (判役 → 算翻 → 算符 → 算点)
@@ -53,13 +55,22 @@ pub fn check_win(
     );
     let mut all_yaku = yaku_results;
     if dora_result.dora > 0 {
-        all_yaku.push(YakuResult::new(crate::types::YakuName::Dora, dora_result.dora));
+        all_yaku.push(YakuResult::new(
+            crate::types::YakuName::Dora,
+            dora_result.dora,
+        ));
     }
     if dora_result.aka_dora > 0 {
-        all_yaku.push(YakuResult::new(crate::types::YakuName::AkaDora, dora_result.aka_dora));
+        all_yaku.push(YakuResult::new(
+            crate::types::YakuName::AkaDora,
+            dora_result.aka_dora,
+        ));
     }
     if dora_result.ura_dora > 0 {
-        all_yaku.push(YakuResult::new(crate::types::YakuName::UraDora, dora_result.ura_dora));
+        all_yaku.push(YakuResult::new(
+            crate::types::YakuName::UraDora,
+            dora_result.ura_dora,
+        ));
     }
 
     // ── Step 5: 算符（高点法）──
@@ -166,11 +177,17 @@ fn suit_base(suit: Suit) -> u8 {
 }
 
 fn count_kans(melds: &[Meld]) -> usize {
-    melds.iter().filter(|m| matches!(m.kind, MeldKind::Ankan | MeldKind::Minkan | MeldKind::Kakan)).count()
+    melds
+        .iter()
+        .filter(|m| matches!(m.kind, MeldKind::Ankan | MeldKind::Minkan | MeldKind::Kakan))
+        .count()
 }
 
 fn count_open_triplets(melds: &[Meld]) -> usize {
-    melds.iter().filter(|m| matches!(m.kind, MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan)).count()
+    melds
+        .iter()
+        .filter(|m| matches!(m.kind, MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan))
+        .count()
 }
 
 fn count_concealed_triplets(melds: &[Meld]) -> usize {
@@ -211,7 +228,11 @@ fn collect_hand_tiles(hand: &WinningHand) -> Vec<TileType> {
                 tiles.push(TileType(m.tile_type.0 + 2));
             }
             MentsuKind::Koutsu => {
-                let count = if hand.hand_type == HandType::SevenPairs { 2 } else { 3 };
+                let count = if hand.hand_type == HandType::SevenPairs {
+                    2
+                } else {
+                    3
+                };
                 for _ in 0..count {
                     tiles.push(m.tile_type);
                 }
@@ -244,8 +265,16 @@ fn detect_yaku(
         let all_tiles = collect_all_tiles(hand, &ctx.melds);
         let mut yaku = Vec::new();
 
-        let num_koutsu = hand.mentsu.iter().filter(|m| m.kind == MentsuKind::Koutsu).count();
-        let num_shuntsu = hand.mentsu.iter().filter(|m| m.kind == MentsuKind::Shuntsu).count();
+        let num_koutsu = hand
+            .mentsu
+            .iter()
+            .filter(|m| m.kind == MentsuKind::Koutsu)
+            .count();
+        let num_shuntsu = hand
+            .mentsu
+            .iter()
+            .filter(|m| m.kind == MentsuKind::Shuntsu)
+            .count();
         let is_menzen = ctx.melds.iter().all(|m| m.is_concealed());
 
         let koutsu_in_hand = num_koutsu + concealed_triplets_melds;
@@ -253,15 +282,25 @@ fn detect_yaku(
         let total_kans = count_kans(&ctx.melds);
 
         let mut concealed_triplet_count = koutsu_in_hand;
-        if !ctx.is_tsumo && hand.mentsu.iter().any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == winning_tile.tile_type()) {
+        if !ctx.is_tsumo
+            && hand
+                .mentsu
+                .iter()
+                .any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == winning_tile.tile_type())
+        {
             concealed_triplet_count = concealed_triplet_count.saturating_sub(1);
         }
 
         if hand.hand_type == HandType::Kokushi {
             let mut thirteen_wait = false;
             for &tt in &TileType::YAOCHUUHAI {
-                if ctx.melds.iter().all(|m| !m.tiles.iter().any(|t| t.tile_type() == tt))
-                    && decompositions.iter().any(|d| d.all_tiles().iter().filter(|&&t| t == tt).count() == 1)
+                if ctx
+                    .melds
+                    .iter()
+                    .all(|m| !m.tiles.iter().any(|t| t.tile_type() == tt))
+                    && decompositions
+                        .iter()
+                        .any(|d| d.all_tiles().iter().filter(|&&t| t == tt).count() == 1)
                 {
                     thirteen_wait = true;
                     break;
@@ -283,7 +322,7 @@ fn detect_yaku(
         if is_menzen && hand.hand_type != HandType::SevenPairs {
             let suit = hand.all_tiles().first().map(|t| t.suit());
             if let Some(s) = suit {
-                let required = [3,1,1,1,1,1,1,1,3];
+                let required = [3, 1, 1, 1, 1, 1, 1, 1, 3];
                 let mut ok = true;
                 for (i, &need) in required.iter().enumerate() {
                     let tt = TileType(suit_base(s) + i as u8);
@@ -296,7 +335,9 @@ fn detect_yaku(
                     let mut nine_wait = false;
                     for i in 0..9u8 {
                         let tt = TileType(suit_base(s) + i);
-                        if winning_tile.tile_type() == tt && all_tiles.iter().filter(|&&t| t == tt).count() == 1 {
+                        if winning_tile.tile_type() == tt
+                            && all_tiles.iter().filter(|&&t| t == tt).count() == 1
+                        {
                             nine_wait = true;
                             break;
                         }
@@ -329,8 +370,19 @@ fn detect_yaku(
         let dragon_koutsu = (31..=33u8)
             .filter(|&i| {
                 let tt = TileType(i);
-                hand.mentsu.iter().any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu)
-                    || ctx.melds.iter().any(|m| m.tiles[0].tile_type() == tt && matches!(m.kind, MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan))
+                hand.mentsu
+                    .iter()
+                    .any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu)
+                    || ctx.melds.iter().any(|m| {
+                        m.tiles[0].tile_type() == tt
+                            && matches!(
+                                m.kind,
+                                MeldKind::Pon
+                                    | MeldKind::Minkan
+                                    | MeldKind::Kakan
+                                    | MeldKind::Ankan
+                            )
+                    })
             })
             .count();
         if dragon_koutsu == 3 {
@@ -340,8 +392,19 @@ fn detect_yaku(
         let wind_koutsu = (27..=30u8)
             .filter(|&i| {
                 let tt = TileType(i);
-                hand.mentsu.iter().any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu)
-                    || ctx.melds.iter().any(|m| m.tiles[0].tile_type() == tt && matches!(m.kind, MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan))
+                hand.mentsu
+                    .iter()
+                    .any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu)
+                    || ctx.melds.iter().any(|m| {
+                        m.tiles[0].tile_type() == tt
+                            && matches!(
+                                m.kind,
+                                MeldKind::Pon
+                                    | MeldKind::Minkan
+                                    | MeldKind::Kakan
+                                    | MeldKind::Ankan
+                            )
+                    })
             })
             .count();
         if wind_koutsu == 4 {
@@ -382,23 +445,31 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::Tanyao, 1));
         }
 
-        if is_menzen && hand.hand_type != HandType::SevenPairs {
-            if num_shuntsu == 4 && !is_yakuhai(hand.jantai, ctx) {
-                yaku.push(YakuResult::new(YakuName::Pinfu, 1));
-            }
+        if is_menzen
+            && hand.hand_type != HandType::SevenPairs
+            && num_shuntsu == 4
+            && !is_yakuhai(hand.jantai, ctx)
+        {
+            yaku.push(YakuResult::new(YakuName::Pinfu, 1));
         }
 
         if is_menzen && hand.hand_type != HandType::SevenPairs {
             let mut found = false;
             for i in 0..hand.mentsu.len() {
-                if hand.mentsu[i].kind != MentsuKind::Shuntsu { continue; }
-                for j in (i+1)..hand.mentsu.len() {
-                    if hand.mentsu[j].kind == MentsuKind::Shuntsu && hand.mentsu[i].tile_type == hand.mentsu[j].tile_type {
+                if hand.mentsu[i].kind != MentsuKind::Shuntsu {
+                    continue;
+                }
+                for j in (i + 1)..hand.mentsu.len() {
+                    if hand.mentsu[j].kind == MentsuKind::Shuntsu
+                        && hand.mentsu[i].tile_type == hand.mentsu[j].tile_type
+                    {
                         found = true;
                         break;
                     }
                 }
-                if found { break; }
+                if found {
+                    break;
+                }
             }
             if found {
                 yaku.push(YakuResult::new(YakuName::Iipeiko, 1));
@@ -453,27 +524,64 @@ fn detect_yaku(
         if hand.hand_type != HandType::SevenPairs {
             let mut found = false;
             for i in 0..hand.mentsu.len() {
-                if hand.mentsu[i].kind != MentsuKind::Koutsu { continue; }
+                if hand.mentsu[i].kind != MentsuKind::Koutsu {
+                    continue;
+                }
                 let tt = hand.mentsu[i].tile_type;
-                if !tt.is_number() { continue; }
+                if !tt.is_number() {
+                    continue;
+                }
                 let rank = tt.rank().0;
                 let suit = tt.suit();
                 for other_suit in [Suit::Man, Suit::Pin, Suit::Sou] {
-                    if other_suit == suit { continue; }
+                    if other_suit == suit {
+                        continue;
+                    }
                     let other_tt = TileType(suit_base(other_suit) + rank - 1);
-                    let has_in_hand = hand.mentsu.iter().any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == other_tt);
-                    let has_in_meld = ctx.melds.iter().any(|m| m.tiles[0].tile_type() == other_tt && matches!(m.kind, MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan));
-                    if !has_in_hand && !has_in_meld { continue; }
-                    let third_suit = [Suit::Man, Suit::Pin, Suit::Sou].iter().find(|&&s| s != suit && s != other_suit).unwrap();
+                    let has_in_hand = hand
+                        .mentsu
+                        .iter()
+                        .any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == other_tt);
+                    let has_in_meld = ctx.melds.iter().any(|m| {
+                        m.tiles[0].tile_type() == other_tt
+                            && matches!(
+                                m.kind,
+                                MeldKind::Pon
+                                    | MeldKind::Minkan
+                                    | MeldKind::Kakan
+                                    | MeldKind::Ankan
+                            )
+                    });
+                    if !has_in_hand && !has_in_meld {
+                        continue;
+                    }
+                    let third_suit = [Suit::Man, Suit::Pin, Suit::Sou]
+                        .iter()
+                        .find(|&&s| s != suit && s != other_suit)
+                        .unwrap();
                     let third_tt = TileType(suit_base(*third_suit) + rank - 1);
-                    let has_third = hand.mentsu.iter().any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == third_tt)
-                        || ctx.melds.iter().any(|m| m.tiles[0].tile_type() == third_tt && matches!(m.kind, MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan));
+                    let has_third = hand
+                        .mentsu
+                        .iter()
+                        .any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == third_tt)
+                        || ctx.melds.iter().any(|m| {
+                            m.tiles[0].tile_type() == third_tt
+                                && matches!(
+                                    m.kind,
+                                    MeldKind::Pon
+                                        | MeldKind::Minkan
+                                        | MeldKind::Kakan
+                                        | MeldKind::Ankan
+                                )
+                        });
                     if has_third {
                         found = true;
                         break;
                     }
                 }
-                if found { break; }
+                if found {
+                    break;
+                }
             }
             if found {
                 yaku.push(YakuResult::new(YakuName::SanshokuDoukou, 2));
@@ -492,11 +600,11 @@ fn detect_yaku(
             let has_honor = all_tiles.iter().any(|t| t.is_honor());
             let has_number = all_tiles.iter().any(|t| t.is_number());
             if has_honor && has_number {
-                let all_groups_have_yaochuuhai = hand.mentsu.iter().all(|m| {
-                    match m.kind {
-                        MentsuKind::Shuntsu => m.tile_type.is_yaochuuhai() || TileType(m.tile_type.0 + 2).is_yaochuuhai(),
-                        MentsuKind::Koutsu => m.tile_type.is_yaochuuhai(),
+                let all_groups_have_yaochuuhai = hand.mentsu.iter().all(|m| match m.kind {
+                    MentsuKind::Shuntsu => {
+                        m.tile_type.is_yaochuuhai() || TileType(m.tile_type.0 + 2).is_yaochuuhai()
                     }
+                    MentsuKind::Koutsu => m.tile_type.is_yaochuuhai(),
                 }) && hand.jantai.is_yaochuuhai()
                     && ctx.melds.iter().all(|m| {
                         let first = m.tiles[0].tile_type();
@@ -512,31 +620,50 @@ fn detect_yaku(
         if hand.hand_type != HandType::SevenPairs {
             let mut found = false;
             for i in 0..hand.mentsu.len() {
-                if hand.mentsu[i].kind != MentsuKind::Shuntsu { continue; }
+                if hand.mentsu[i].kind != MentsuKind::Shuntsu {
+                    continue;
+                }
                 let tt = hand.mentsu[i].tile_type;
-                if !tt.is_number() { continue; }
+                if !tt.is_number() {
+                    continue;
+                }
                 let rank = tt.rank().0;
                 let suit = tt.suit();
                 for other_suit in [Suit::Man, Suit::Pin, Suit::Sou] {
-                    if other_suit == suit { continue; }
+                    if other_suit == suit {
+                        continue;
+                    }
                     let other_tt = TileType(suit_base(other_suit) + rank - 1);
-                    let has_in_hand = hand.mentsu.iter().any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == other_tt);
+                    let has_in_hand = hand
+                        .mentsu
+                        .iter()
+                        .any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == other_tt);
                     let has_in_meld = ctx.melds.iter().any(|m| {
                         if matches!(m.kind, MeldKind::Chi) {
-                            let mut ts: Vec<TileType> = m.tiles.iter().map(|t| t.tile_type()).collect();
+                            let mut ts: Vec<TileType> =
+                                m.tiles.iter().map(|t| t.tile_type()).collect();
                             ts.sort_by_key(|t| t.0);
                             ts[0] == other_tt
                         } else {
                             false
                         }
                     });
-                    if !has_in_hand && !has_in_meld { continue; }
-                    let third_suit = [Suit::Man, Suit::Pin, Suit::Sou].iter().find(|&&s| s != suit && s != other_suit).unwrap();
+                    if !has_in_hand && !has_in_meld {
+                        continue;
+                    }
+                    let third_suit = [Suit::Man, Suit::Pin, Suit::Sou]
+                        .iter()
+                        .find(|&&s| s != suit && s != other_suit)
+                        .unwrap();
                     let third_tt = TileType(suit_base(*third_suit) + rank - 1);
-                    let has_third = hand.mentsu.iter().any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == third_tt)
+                    let has_third = hand
+                        .mentsu
+                        .iter()
+                        .any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == third_tt)
                         || ctx.melds.iter().any(|m| {
                             if matches!(m.kind, MeldKind::Chi) {
-                                let mut ts: Vec<TileType> = m.tiles.iter().map(|t| t.tile_type()).collect();
+                                let mut ts: Vec<TileType> =
+                                    m.tiles.iter().map(|t| t.tile_type()).collect();
                                 ts.sort_by_key(|t| t.0);
                                 ts[0] == third_tt
                             } else {
@@ -548,7 +675,9 @@ fn detect_yaku(
                         break;
                     }
                 }
-                if found { break; }
+                if found {
+                    break;
+                }
             }
             if found {
                 yaku.push(YakuResult::new(YakuName::SanshokuDoujun, 2));
@@ -558,28 +687,42 @@ fn detect_yaku(
         if hand.hand_type != HandType::SevenPairs {
             let mut found = false;
             for i in 0..hand.mentsu.len() {
-                if hand.mentsu[i].kind != MentsuKind::Shuntsu { continue; }
+                if hand.mentsu[i].kind != MentsuKind::Shuntsu {
+                    continue;
+                }
                 let tt = hand.mentsu[i].tile_type;
-                if !tt.is_number() { continue; }
+                if !tt.is_number() {
+                    continue;
+                }
                 let rank = tt.rank().0;
-                if rank != 1 { continue; }
+                if rank != 1 {
+                    continue;
+                }
                 let suit = tt.suit();
                 let mid = TileType(suit_base(suit) + 3);
                 let high = TileType(suit_base(suit) + 6);
-                let has_mid = hand.mentsu.iter().any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == mid)
+                let has_mid = hand
+                    .mentsu
+                    .iter()
+                    .any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == mid)
                     || ctx.melds.iter().any(|m| {
                         if matches!(m.kind, MeldKind::Chi) {
-                            let mut ts: Vec<TileType> = m.tiles.iter().map(|t| t.tile_type()).collect();
+                            let mut ts: Vec<TileType> =
+                                m.tiles.iter().map(|t| t.tile_type()).collect();
                             ts.sort_by_key(|t| t.0);
                             ts[0] == mid
                         } else {
                             false
                         }
                     });
-                let has_high = hand.mentsu.iter().any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == high)
+                let has_high = hand
+                    .mentsu
+                    .iter()
+                    .any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == high)
                     || ctx.melds.iter().any(|m| {
                         if matches!(m.kind, MeldKind::Chi) {
-                            let mut ts: Vec<TileType> = m.tiles.iter().map(|t| t.tile_type()).collect();
+                            let mut ts: Vec<TileType> =
+                                m.tiles.iter().map(|t| t.tile_type()).collect();
                             ts.sort_by_key(|t| t.0);
                             ts[0] == high
                         } else {
@@ -601,11 +744,16 @@ fn detect_yaku(
             let mut single_suit: Option<Suit> = None;
             let mut single = true;
             for &t in &all_tiles {
-                if t.is_honor() { continue; }
+                if t.is_honor() {
+                    continue;
+                }
                 let s = t.suit();
                 match single_suit {
                     None => single_suit = Some(s),
-                    Some(prev) if prev != s => { single = false; break; }
+                    Some(prev) if prev != s => {
+                        single = false;
+                        break;
+                    }
                     _ => {}
                 }
             }
@@ -622,11 +770,11 @@ fn detect_yaku(
             let has_honor = all_tiles.iter().any(|t| t.is_honor());
             let has_number = all_tiles.iter().any(|t| t.is_number());
             if !has_honor && has_number && is_menzen {
-                let all_groups_have_terminal = hand.mentsu.iter().all(|m| {
-                    match m.kind {
-                        MentsuKind::Shuntsu => m.tile_type.is_terminal() || TileType(m.tile_type.0 + 2).is_terminal(),
-                        MentsuKind::Koutsu => m.tile_type.is_terminal(),
+                let all_groups_have_terminal = hand.mentsu.iter().all(|m| match m.kind {
+                    MentsuKind::Shuntsu => {
+                        m.tile_type.is_terminal() || TileType(m.tile_type.0 + 2).is_terminal()
                     }
+                    MentsuKind::Koutsu => m.tile_type.is_terminal(),
                 }) && hand.jantai.is_terminal()
                     && ctx.melds.iter().all(|m| {
                         let first = m.tiles[0].tile_type();
@@ -642,9 +790,13 @@ fn detect_yaku(
         if is_menzen && hand.hand_type != HandType::SevenPairs {
             let mut pairs = 0usize;
             for i in 0..hand.mentsu.len() {
-                if hand.mentsu[i].kind != MentsuKind::Shuntsu { continue; }
-                for j in (i+1)..hand.mentsu.len() {
-                    if hand.mentsu[j].kind == MentsuKind::Shuntsu && hand.mentsu[i].tile_type == hand.mentsu[j].tile_type {
+                if hand.mentsu[i].kind != MentsuKind::Shuntsu {
+                    continue;
+                }
+                for j in (i + 1)..hand.mentsu.len() {
+                    if hand.mentsu[j].kind == MentsuKind::Shuntsu
+                        && hand.mentsu[i].tile_type == hand.mentsu[j].tile_type
+                    {
                         pairs += 1;
                     }
                 }
@@ -663,4 +815,3 @@ fn detect_yaku(
 
     best.unwrap_or_default()
 }
-

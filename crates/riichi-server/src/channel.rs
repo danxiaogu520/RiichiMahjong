@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 //  Server → Client 事件
 // ═══════════════════════════════════════════════════════════════
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
     StateUpdate {
@@ -82,7 +83,15 @@ pub fn create_player_pair(id: PlayerId) -> (PlayerHandle, ClientHandle) {
     let (event_tx, event_rx) = mpsc::channel(64);
     let (action_tx, action_rx) = mpsc::channel(64);
     (
-        PlayerHandle { id, event_tx, action_rx },
-        ClientHandle { id, event_rx, action_tx },
+        PlayerHandle {
+            id,
+            event_tx,
+            action_rx,
+        },
+        ClientHandle {
+            id,
+            event_rx,
+            action_tx,
+        },
     )
 }

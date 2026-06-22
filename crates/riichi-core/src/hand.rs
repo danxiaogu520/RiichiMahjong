@@ -68,7 +68,11 @@ impl Hand {
     /// 添加一张牌（插入到排序位置）
     pub fn add(&mut self, tile: Tile) {
         assert!(self.tiles.len() < MAX_HAND, "手牌已满，无法添加");
-        let pos = self.tiles.iter().position(|&t| t.raw() > tile.raw()).unwrap_or(self.tiles.len());
+        let pos = self
+            .tiles
+            .iter()
+            .position(|&t| t.raw() > tile.raw())
+            .unwrap_or(self.tiles.len());
         self.tiles.insert(pos, tile);
     }
 
@@ -90,7 +94,10 @@ impl Hand {
 
     /// 统计某种牌（按 type_index）的数量
     pub fn count_type(&self, type_index: u8) -> usize {
-        self.tiles.iter().filter(|t| t.type_index() == type_index).count()
+        self.tiles
+            .iter()
+            .filter(|t| t.type_index() == type_index)
+            .count()
     }
 
     /// 统计某种牌（按花色和数字）的数量
@@ -129,4 +136,3 @@ impl std::fmt::Display for Hand {
         Ok(())
     }
 }
-

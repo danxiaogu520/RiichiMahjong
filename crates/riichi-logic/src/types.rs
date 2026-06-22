@@ -1,5 +1,5 @@
-use riichi_core::tile::{Tile, TileType};
 use riichi_core::meld::Meld;
+use riichi_core::tile::{Tile, TileType};
 use serde::{Deserialize, Serialize};
 
 // ═══════════════════════════════════════════════════════════════

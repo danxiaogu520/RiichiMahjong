@@ -21,23 +21,57 @@ pub enum GamePhase {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GameEvent {
-    GameStarted { dealer: PlayerId },
-    RoundStarted { round_number: u32, dealer: PlayerId },
-    PlayerDrew { player: PlayerId, tile: Tile },
-    PlayerDiscarded { player: PlayerId, tile: Tile },
-    PlayerCalledPon { player: PlayerId, tiles: Vec<Tile>, from_player: PlayerId },
-    PlayerCalledChi { player: PlayerId, tiles: Vec<Tile>, from_player: PlayerId },
-    PlayerCalledMinkan { player: PlayerId, tiles: Vec<Tile>, from_player: PlayerId },
-    PlayerCalledAnkan { player: PlayerId, tiles: Vec<Tile> },
-    PlayerCalledKakan { player: PlayerId, tile: Tile, original_pon: Vec<Tile> },
-    PlayerDeclaredRiichi { player: PlayerId },
+    GameStarted {
+        dealer: PlayerId,
+    },
+    RoundStarted {
+        round_number: u32,
+        dealer: PlayerId,
+    },
+    PlayerDrew {
+        player: PlayerId,
+        tile: Tile,
+    },
+    PlayerDiscarded {
+        player: PlayerId,
+        tile: Tile,
+    },
+    PlayerCalledPon {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+        from_player: PlayerId,
+    },
+    PlayerCalledChi {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+        from_player: PlayerId,
+    },
+    PlayerCalledMinkan {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+        from_player: PlayerId,
+    },
+    PlayerCalledAnkan {
+        player: PlayerId,
+        tiles: Vec<Tile>,
+    },
+    PlayerCalledKakan {
+        player: PlayerId,
+        tile: Tile,
+        original_pon: Vec<Tile>,
+    },
+    PlayerDeclaredRiichi {
+        player: PlayerId,
+    },
     PlayerWon {
         player: PlayerId,
         is_tsumo: bool,
         points: i32,
         yaku_names: Vec<String>,
     },
-    RoundEnded { reason: RoundEndReason },
+    RoundEnded {
+        reason: RoundEndReason,
+    },
     ExhaustiveDrawResult {
         tenpai: [bool; 4],
         payments: [i32; 4],

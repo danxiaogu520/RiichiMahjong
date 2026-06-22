@@ -1,5 +1,5 @@
-use rand::Rng;
 use rand::seq::SliceRandom;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::tile::Tile;
@@ -111,4 +111,3 @@ impl Wall {
         (RINSHAN_START - 3..=RINSHAN_START).any(|i| self.tiles[i] == tile)
     }
 }
-

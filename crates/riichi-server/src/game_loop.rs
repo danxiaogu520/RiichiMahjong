@@ -1,9 +1,9 @@
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use riichi_core::game_types::{CallType, ResponseAction, TurnAction};
 use riichi_core::player::PlayerId;
 use riichi_engine::game::{GamePhase, GameState};
 use riichi_logic::shanten::ShantenCalculator;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use tokio::sync::mpsc;
 
 use crate::channel::{ActionMsg, CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg};
@@ -38,7 +38,8 @@ impl GameLoop {
             if self.game.is_game_over() {
                 self.broadcast(ServerEvent::GameOver {
                     scores: self.scores(),
-                }).await;
+                })
+                .await;
                 return;
             }
 
@@ -55,10 +56,14 @@ impl GameLoop {
                     let can_tsumo = self.game.check_tsumo(player).is_some();
                     let can_riichi = self.game.can_declare_riichi(player);
 
-                    self.send_to(player, ServerEvent::ActionRequired {
-                        can_tsumo,
-                        can_riichi,
-                    }).await;
+                    self.send_to(
+                        player,
+                        ServerEvent::ActionRequired {
+                            can_tsumo,
+                            can_riichi,
+                        },
+                    )
+                    .await;
 
                     match self.wait_for_turn_action(player).await {
                         Some(action) => {
@@ -105,7 +110,10 @@ impl GameLoop {
             let phase = self.game.phase.clone();
             match phase {
                 GamePhase::ResponsePhase { discarder, .. }
-                | GamePhase::ChankanResponse { kakan_player: discarder, .. } => {
+                | GamePhase::ChankanResponse {
+                    kakan_player: discarder,
+                    ..
+                } => {
                     self.handle_response_phase_with_discarder(discarder).await;
                     if matches!(self.game.phase, GamePhase::DrawPhase) {
                         if self.game.draw().is_err() {
@@ -141,21 +149,31 @@ impl GameLoop {
 
         for idx in 0..4u8 {
             let pid = PlayerId(idx as usize);
-            if pid == discarder { continue; }
+            if pid == discarder {
+                continue;
+            }
 
-            let player_options: Vec<_> = call_options.iter()
+            let player_options: Vec<_> = call_options
+                .iter()
                 .filter(|o| o.player == pid)
                 .cloned()
                 .collect();
 
-            if player_options.is_empty() { continue; }
+            if player_options.is_empty() {
+                continue;
+            }
 
-            let has_ron = player_options.iter()
+            let has_ron = player_options
+                .iter()
                 .any(|o| matches!(o.call_type, CallType::Ron));
 
-            self.send_to(pid, ServerEvent::CallRequired {
-                options: player_options,
-            }).await;
+            self.send_to(
+                pid,
+                ServerEvent::CallRequired {
+                    options: player_options,
+                },
+            )
+            .await;
 
             let response = self.wait_for_call_response(pid).await;
 
@@ -196,7 +214,8 @@ impl GameLoop {
         if self.game.is_game_over() {
             self.broadcast(ServerEvent::GameOver {
                 scores: self.scores(),
-            }).await;
+            })
+            .await;
         } else {
             self.game.start_round(&mut self.rng);
             self.broadcast_state().await;
@@ -205,7 +224,9 @@ impl GameLoop {
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnActionMsg> {
         while let Some((pid, action)) = self.action_rx.recv().await {
-            if pid != expected { continue; }
+            if pid != expected {
+                continue;
+            }
             match action {
                 PlayerAction::TurnAction(ta) => return Some(ta),
                 _ => continue,
@@ -216,7 +237,9 @@ impl GameLoop {
 
     async fn wait_for_call_response(&mut self, expected: PlayerId) -> Option<CallResponseMsg> {
         while let Some((pid, action)) = self.action_rx.recv().await {
-            if pid != expected { continue; }
+            if pid != expected {
+                continue;
+            }
             match action {
                 PlayerAction::CallResponse(cr) => return Some(cr),
                 _ => continue,
@@ -227,13 +250,26 @@ impl GameLoop {
 
     async fn broadcast_state(&self) {
         let players = &self.game.players;
-        let points = [players[0].points, players[1].points, players[2].points, players[3].points];
-        let discards = [
-            players[0].discards.clone(), players[1].discards.clone(),
-            players[2].discards.clone(), players[3].discards.clone(),
+        let points = [
+            players[0].points,
+            players[1].points,
+            players[2].points,
+            players[3].points,
         ];
-        let melds_count = [players[0].melds.len(), players[1].melds.len(), players[2].melds.len(), players[3].melds.len()];
+        let discards = [
+            players[0].discards.clone(),
+            players[1].discards.clone(),
+            players[2].discards.clone(),
+            players[3].discards.clone(),
+        ];
+        let melds_count = [
+            players[0].melds.len(),
+            players[1].melds.len(),
+            players[2].melds.len(),
+            players[3].melds.len(),
+        ];
 
+        #[allow(clippy::needless_range_loop)]
         for idx in 0..4 {
             let pid = PlayerId(idx);
             let my_hand = {
@@ -248,7 +284,11 @@ impl GameLoop {
             let event = ServerEvent::StateUpdate {
                 phase: self.game.phase.clone(),
                 current_player: self.game.current_player,
-                drawn_tile: if self.game.current_player == pid { self.game.drawn_tile } else { None },
+                drawn_tile: if self.game.current_player == pid {
+                    self.game.drawn_tile
+                } else {
+                    None
+                },
                 hand_tiles: my_hand,
                 hand_count: players[idx].hand.len(),
                 points,
@@ -276,8 +316,10 @@ impl GameLoop {
 
     fn scores(&self) -> [i32; 4] {
         [
-            self.game.players[0].points, self.game.players[1].points,
-            self.game.players[2].points, self.game.players[3].points,
+            self.game.players[0].points,
+            self.game.players[1].points,
+            self.game.players[2].points,
+            self.game.players[3].points,
         ]
     }
 }
