@@ -13,19 +13,44 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc;
 
-use riichi_server::channel::{PlayerAction, ServerEvent};
+use riichi_core::player::PlayerId;
+use riichi_server::ai_client::run_ai_client;
+use riichi_server::channel::{create_player_pair, ActionMsg};
 use riichi_server::game_loop::GameLoop;
 use crate::app::App;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let (event_tx, event_rx) = mpsc::channel::<ServerEvent>(64);
-    let (action_tx, action_rx) = mpsc::channel::<PlayerAction>(64);
+    let (p0_handle, p0_client) = create_player_pair(PlayerId(0));
+    let (p1_handle, p1_client) = create_player_pair(PlayerId(1));
+    let (p2_handle, p2_client) = create_player_pair(PlayerId(2));
+    let (p3_handle, p3_client) = create_player_pair(PlayerId(3));
 
-    let mut game_loop = GameLoop::new(event_tx, action_rx);
-    tokio::spawn(async move {
-        game_loop.run().await;
-    });
+    let event_txs = [p0_handle.event_tx, p1_handle.event_tx, p2_handle.event_tx, p3_handle.event_tx];
+
+    let (merged_tx, merged_rx) = mpsc::channel::<ActionMsg>(64);
+
+    let tx0 = merged_tx.clone();
+    let tx1 = merged_tx.clone();
+    let tx2 = merged_tx.clone();
+    let tx3 = merged_tx;
+
+    let mut r0 = p0_handle.action_rx;
+    let mut r1 = p1_handle.action_rx;
+    let mut r2 = p2_handle.action_rx;
+    let mut r3 = p3_handle.action_rx;
+
+    tokio::spawn(async move { while let Some(msg) = r0.recv().await { let _ = tx0.send(msg).await; } });
+    tokio::spawn(async move { while let Some(msg) = r1.recv().await { let _ = tx1.send(msg).await; } });
+    tokio::spawn(async move { while let Some(msg) = r2.recv().await { let _ = tx2.send(msg).await; } });
+    tokio::spawn(async move { while let Some(msg) = r3.recv().await { let _ = tx3.send(msg).await; } });
+
+    tokio::spawn(run_ai_client(p1_client));
+    tokio::spawn(run_ai_client(p2_client));
+    tokio::spawn(run_ai_client(p3_client));
+
+    let mut game_loop = GameLoop::new(event_txs, merged_rx);
+    tokio::spawn(async move { game_loop.run().await; });
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -33,7 +58,7 @@ async fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(event_rx, action_tx);
+    let mut app = App::new(p0_client);
     let res = run_app(&mut terminal, &mut app).await;
 
     disable_raw_mode()?;

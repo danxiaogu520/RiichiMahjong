@@ -1,7 +1,12 @@
-use riichi_core::game_types::{CallOption, GameEvent};
+use riichi_core::game_types::CallOption;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
+use tokio::sync::mpsc;
+
+// ═══════════════════════════════════════════════════════════════
+//  Server → Client 事件
+// ═══════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
 pub enum ServerEvent {
@@ -19,7 +24,6 @@ pub enum ServerEvent {
         round: u32,
         honba: u32,
         riichi_sticks: u32,
-        recent_events: Vec<GameEvent>,
     },
     ActionRequired {
         can_tsumo: bool,
@@ -32,6 +36,10 @@ pub enum ServerEvent {
         scores: [i32; 4],
     },
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  Client → Server 动作
+// ═══════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
 pub enum PlayerAction {
@@ -50,4 +58,31 @@ pub enum TurnActionMsg {
 pub enum CallResponseMsg {
     Pass,
     Ron,
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PlayerHandle / ClientHandle
+// ═══════════════════════════════════════════════════════════════
+
+pub type ActionMsg = (PlayerId, PlayerAction);
+
+pub struct PlayerHandle {
+    pub id: PlayerId,
+    pub event_tx: mpsc::Sender<ServerEvent>,
+    pub action_rx: mpsc::Receiver<ActionMsg>,
+}
+
+pub struct ClientHandle {
+    pub id: PlayerId,
+    pub event_rx: mpsc::Receiver<ServerEvent>,
+    pub action_tx: mpsc::Sender<ActionMsg>,
+}
+
+pub fn create_player_pair(id: PlayerId) -> (PlayerHandle, ClientHandle) {
+    let (event_tx, event_rx) = mpsc::channel(64);
+    let (action_tx, action_rx) = mpsc::channel(64);
+    (
+        PlayerHandle { id, event_tx, action_rx },
+        ClientHandle { id, event_rx, action_tx },
+    )
 }

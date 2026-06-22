@@ -1,14 +1,14 @@
-use riichi_core::game_types::{CallOption, GameEvent};
+use riichi_core::game_types::CallOption;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
 use tokio::sync::mpsc;
 
-use riichi_server::channel::{PlayerAction, ServerEvent, TurnActionMsg, CallResponseMsg};
+use riichi_server::channel::{ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg};
 
 pub struct App {
     pub event_rx: mpsc::Receiver<ServerEvent>,
-    pub action_tx: mpsc::Sender<PlayerAction>,
+    pub action_tx: mpsc::Sender<ActionMsg>,
 
     pub phase: GamePhase,
     pub current_player: PlayerId,
@@ -22,7 +22,6 @@ pub struct App {
     pub round: u32,
     pub honba: u32,
     pub riichi_sticks: u32,
-    pub recent_events: Vec<GameEvent>,
 
     pub can_tsumo: bool,
     pub can_riichi: bool,
@@ -38,13 +37,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(
-        event_rx: mpsc::Receiver<ServerEvent>,
-        action_tx: mpsc::Sender<PlayerAction>,
-    ) -> Self {
+    pub fn new(handle: ClientHandle) -> Self {
         Self {
-            event_rx,
-            action_tx,
+            event_rx: handle.event_rx,
+            action_tx: handle.action_tx,
             phase: GamePhase::ActionPhase,
             current_player: PlayerId(0),
             hand_tiles: Vec::new(),
@@ -57,7 +53,6 @@ impl App {
             round: 1,
             honba: 0,
             riichi_sticks: 0,
-            recent_events: Vec::new(),
             can_tsumo: false,
             can_riichi: false,
             call_options: Vec::new(),
@@ -87,7 +82,6 @@ impl App {
                     round,
                     honba,
                     riichi_sticks,
-                    recent_events,
                     ..
                 } => {
                     self.phase = phase;
@@ -102,7 +96,6 @@ impl App {
                     self.round = round;
                     self.honba = honba;
                     self.riichi_sticks = riichi_sticks;
-                    self.recent_events = recent_events;
                     if self.selected >= self.hand_tiles.len() {
                         self.selected = 0;
                     }
@@ -136,23 +129,23 @@ impl App {
     }
 
     pub fn send_discard(&self, tile: Tile) {
-        let _ = self.action_tx.try_send(PlayerAction::TurnAction(TurnActionMsg::Discard(tile)));
+        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Discard(tile))));
     }
 
     pub fn send_tsumo(&self) {
-        let _ = self.action_tx.try_send(PlayerAction::TurnAction(TurnActionMsg::Tsumo));
+        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Tsumo)));
     }
 
     pub fn send_riichi(&self) {
-        let _ = self.action_tx.try_send(PlayerAction::TurnAction(TurnActionMsg::Riichi));
+        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Riichi)));
     }
 
     pub fn send_call_ron(&self) {
-        let _ = self.action_tx.try_send(PlayerAction::CallResponse(CallResponseMsg::Ron));
+        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::CallResponse(CallResponseMsg::Ron)));
     }
 
     pub fn send_call_pass(&self) {
-        let _ = self.action_tx.try_send(PlayerAction::CallResponse(CallResponseMsg::Pass));
+        let _ = self.action_tx.try_send((PlayerId(0), PlayerAction::CallResponse(CallResponseMsg::Pass)));
     }
 
     pub fn player_name(&self, idx: usize) -> &str {
