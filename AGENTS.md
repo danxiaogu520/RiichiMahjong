@@ -13,7 +13,7 @@ git push
 - commit message 简洁描述改了什么
 - 不要提交 `target/` 目录（已在 .gitignore 中）
 - 每个逻辑改动一个 commit
-- 推送前确认 `cargo build` 编译通过
+- **提交前必须通过以下三项检查，全部通过才能 commit + push：**
 
 ```bash
 cargo build --workspace
