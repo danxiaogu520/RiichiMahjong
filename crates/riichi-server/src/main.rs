@@ -62,21 +62,24 @@ async fn main() {
         game_loop.run().await;
     });
 
+    let mut hand_tiles: Vec<riichi_core::tile::Tile> = Vec::new();
+
     while let Some(event) = p0_client.event_rx.recv().await {
         match event {
             ServerEvent::StateUpdate {
-                hand_tiles,
+                hand_tiles: h,
                 remaining_tiles,
                 ..
             } => {
+                hand_tiles = h;
                 println!("手牌: {:?}  剩余: {}", hand_tiles, remaining_tiles);
             }
-            ServerEvent::ActionRequired {
-                can_tsumo,
-                can_riichi,
-            } => {
-                println!("行动: tsumo={} riichi={}", can_tsumo, can_riichi);
-                let tile = riichi_core::tile::Tile::from_raw(0);
+            ServerEvent::ActionRequired { .. } => {
+                let tile = hand_tiles
+                    .last()
+                    .copied()
+                    .unwrap_or(riichi_core::tile::Tile::from_raw(0));
+                println!("打出: {:?}", tile);
                 let _ = p0_client
                     .action_tx
                     .send((
