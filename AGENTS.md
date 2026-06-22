@@ -21,6 +21,8 @@ cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
 
+> 已配置 git pre-commit hook 自动执行以上三项检查。任一失败则拒绝提交。
+
 ## Build & Run
 
 ```bash
