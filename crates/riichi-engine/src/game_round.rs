@@ -1,4 +1,13 @@
-use super::*;
+use rand::Rng;
+use riichi_core::hand::Hand;
+use riichi_core::tile::Tile;
+use riichi_core::wall::Wall;
+
+use crate::action::{GameEvent, RoundEndReason};
+use crate::game::{GameError, GamePhase, GameState};
+use crate::player::FuritenState;
+
+use riichi_core::game_types::GameError::{InvalidAction, WallExhausted};
 
 impl GameState {
     pub fn start_round(&mut self, rng: &mut impl Rng) {
@@ -85,7 +94,7 @@ impl GameState {
         Ok(tile)
     }
 
-    pub(super) fn insert_tile(&mut self) {
+    pub(crate) fn insert_tile(&mut self) {
         if let Some(tile) = self.drawn_tile.take() {
             self.players[self.current_player.0].hand.add(tile);
         }

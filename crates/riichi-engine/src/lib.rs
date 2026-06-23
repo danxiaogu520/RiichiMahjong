@@ -1,4 +1,13 @@
 pub mod action;
 pub mod call;
 pub mod game;
+mod game_abort;
+mod game_action;
+mod game_init;
+mod game_query;
+mod game_riichi;
+mod game_round;
+mod game_settlement;
+mod game_state;
+mod game_win;
 pub mod player;
