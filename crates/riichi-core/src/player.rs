@@ -1,6 +1,10 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
-use crate::tile::TileType;
+use crate::hand::Hand;
+use crate::meld::Meld;
+use crate::tile::{Tile, TileType};
 
 /// 玩家标识符（0-3）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -55,5 +59,54 @@ pub fn wind_display(wind: TileType) -> &'static str {
         TileType::WEST => "西",
         TileType::NORTH => "北",
         _ => "？",
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FuritenState {
+    pub discard: bool,
+    pub round: bool,
+    pub riichi: bool,
+}
+
+impl FuritenState {
+    pub fn is_furiten(&self) -> bool {
+        self.discard || self.round || self.riichi
+    }
+    pub fn clear_round(&mut self) {
+        self.round = false;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Player {
+    pub id: PlayerId,
+    pub hand: Hand,
+    pub points: i32,
+    pub wind: TileType,
+    pub discards: Vec<Tile>,
+    pub melds: Vec<Meld>,
+    pub is_riichi: bool,
+    pub furiten: FuritenState,
+    pub all_discarded_types: HashSet<TileType>,
+}
+
+impl Player {
+    pub fn new(id: PlayerId, wind: TileType) -> Self {
+        Self {
+            id,
+            hand: Hand::new(),
+            wind,
+            discards: Vec::new(),
+            melds: Vec::new(),
+            points: 25000,
+            is_riichi: false,
+            furiten: FuritenState::default(),
+            all_discarded_types: HashSet::new(),
+        }
+    }
+
+    pub fn is_menzen(&self) -> bool {
+        self.melds.iter().all(|m| m.is_concealed())
     }
 }

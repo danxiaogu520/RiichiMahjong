@@ -1,6 +1,6 @@
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use riichi_core::game_types::{CallType, ResponseAction, TurnAction};
+use riichi_core::game::{CallType, ResponseAction, TurnAction};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};

@@ -1,6 +1,6 @@
 use riichi_core::meld::MeldKind;
+use riichi_core::player::Player;
 use riichi_core::player::{wind_from_index, PlayerId};
-use riichi_core::player_state::Player;
 use riichi_core::tile::TileType;
 use riichi_core::wall::Wall;
 

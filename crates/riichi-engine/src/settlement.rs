@@ -1,4 +1,4 @@
-use riichi_core::game_types::{GameEvent, RoundEndReason};
+use riichi_core::game::{GameEvent, RoundEndReason};
 use riichi_core::tile::TileType;
 use riichi_logic::shanten::ShantenCalculator;
 

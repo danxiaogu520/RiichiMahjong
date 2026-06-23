@@ -1,3 +1,4 @@
+use riichi_core::game::GameEvent;
 use riichi_core::hand::Hand;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -37,11 +38,32 @@ impl GameState {
     ) -> WinContext {
         let p = &self.players[player.0];
         let no_tiles_left = self.remaining_tiles() == 0;
+
+        // 查询是否一发：立直后没有打牌/副露事件
+        let is_ippatsu = self.events.iter().any(
+            |e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
+        ) && !self.events.iter().any(|e| match e {
+            GameEvent::PlayerDiscarded { player: pid, .. } => *pid == player,
+            GameEvent::PlayerCalledPon { player: pid, .. }
+            | GameEvent::PlayerCalledChi { player: pid, .. } => *pid == player,
+            _ => false,
+        });
+
+        // 查询是否双立直：立直事件在第一巡（只有庄家的第一次打牌）
+        let is_double_riichi = self.events.iter().any(
+            |e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
+        ) && self
+            .events
+            .iter()
+            .filter(|e| matches!(e, GameEvent::PlayerDiscarded { .. }))
+            .count()
+            <= 1;
+
         WinContext {
             is_tsumo,
             is_riichi: p.is_riichi,
-            is_double_riichi: p.is_double_riichi,
-            is_ippatsu: p.is_ippatsu,
+            is_double_riichi,
+            is_ippatsu,
             is_rinshan: false, // 由调用方设置
             is_chankan,
             is_haitei: no_tiles_left && is_tsumo,

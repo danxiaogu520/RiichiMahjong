@@ -1,4 +1,4 @@
-use riichi_core::game_types::CallOption;
+use riichi_core::game::CallOption;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
