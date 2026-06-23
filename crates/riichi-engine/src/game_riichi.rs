@@ -1,4 +1,11 @@
-use super::*;
+use riichi_core::player::PlayerId;
+use riichi_core::tile::{Tile, TileType};
+use riichi_logic::analysis::{analyze_wait_tiles, is_standard_win};
+use riichi_logic::shanten::ShantenCalculator;
+use riichi_logic::types::TileCounts;
+
+use crate::action::GameEvent;
+use crate::game::{GameError, GameState};
 
 impl GameState {
     pub fn get_waiting_tiles(&self, player: PlayerId) -> Vec<TileType> {
@@ -27,7 +34,7 @@ impl GameState {
         if let Some(t) = self.drawn_tile {
             tiles.push(t);
         }
-        let counts = riichi_logic::types::TileCounts::from_tiles(&tiles);
+        let counts = TileCounts::from_tiles(&tiles);
         tiles.iter().any(|tile| {
             let mut after = counts;
             after.dec(tile.tile_type());

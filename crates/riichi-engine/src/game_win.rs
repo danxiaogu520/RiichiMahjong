@@ -1,4 +1,10 @@
-use super::*;
+use riichi_core::hand::Hand;
+use riichi_core::player::PlayerId;
+use riichi_core::tile::{Tile, TileType};
+use riichi_logic::types::WinContext;
+use riichi_logic::win_check;
+
+use crate::game::GameState;
 
 impl GameState {
     pub fn check_tsumo(&self, player: PlayerId) -> Option<([i32; 4], Vec<String>)> {
@@ -38,7 +44,7 @@ impl GameState {
         }
     }
 
-    pub(super) fn check_win(
+    pub(crate) fn check_win(
         &self,
         player: PlayerId,
         is_tsumo: bool,
