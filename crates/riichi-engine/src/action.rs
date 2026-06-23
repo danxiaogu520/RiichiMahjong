@@ -1,7 +1,6 @@
-pub use riichi_core::game_types::{
+use riichi_core::game_types::{
     CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction,
 };
-
 use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;

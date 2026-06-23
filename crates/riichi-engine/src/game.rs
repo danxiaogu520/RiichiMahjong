@@ -1,10 +1,9 @@
+use riichi_core::game_types::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::player_state::Player;
 use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
 use serde::{Deserialize, Serialize};
-
-use crate::action::GameEvent;
 
 pub use riichi_core::game_types::{extract_kuikae_tiles, GameError, GamePhase};
 
