@@ -894,53 +894,6 @@ impl GameState {
 // ═══════════════════════════════════════════════════════════════
 
 impl GameState {
-    /// 检测玩家是否听牌（考虑 drawn_tile 缓冲区）
-    pub fn is_tenpai(&self, player: PlayerId) -> bool {
-        let calc = ShantenCalculator::new();
-        let hand = &self.players[player.0].hand;
-        let mut counts = riichi_logic::types::TileCounts::from_tiles(hand.tiles());
-        if let Some(drawn) = self.drawn_tile {
-            if player == self.current_player {
-                counts.inc(drawn.tile_type());
-            }
-        }
-        calc.lookup(&counts) == 0
-    }
-
-    /// 获取玩家可以导致听牌的打牌列表（手牌 14 张时调用，含 drawn_tile）
-    pub fn get_tenpai_discard_options(&self, player: PlayerId) -> Vec<Tile> {
-        let calc = ShantenCalculator::new();
-        let hand = &self.players[player.0].hand;
-        let mut full_tiles: Vec<Tile> = hand.tiles().to_vec();
-        if let Some(drawn) = self.drawn_tile {
-            full_tiles.push(drawn);
-        }
-        let full_counts = riichi_logic::types::TileCounts::from_tiles(&full_tiles);
-        let mut options = Vec::new();
-        for &tile in &full_tiles {
-            let mut after = full_counts;
-            after.dec(tile.tile_type());
-            if calc.lookup(&after) == 0 {
-                options.push(tile);
-            }
-        }
-        options
-    }
-
-    /// 检测玩家是否可以听牌（手牌 14 张时调用）
-    pub fn can_tenpai(&self, player: PlayerId) -> bool {
-        let calc = ShantenCalculator::new();
-        let hand = &self.players[player.0].hand;
-        for &tile in hand.tiles() {
-            let mut after = riichi_logic::types::TileCounts::from_tiles(hand.tiles());
-            after.dec(tile.tile_type());
-            if calc.lookup(&after) == 0 {
-                return true;
-            }
-        }
-        false
-    }
-
     /// 获取玩家听牌列表（手牌 13 张时调用）
     pub fn get_waiting_tiles(&self, player: PlayerId) -> Vec<TileType> {
         analyze_wait_tiles(self.players[player.0].hand.tiles())
@@ -964,7 +917,17 @@ impl GameState {
         if self.remaining_tiles() < 4 {
             return false;
         }
-        self.is_tenpai(player)
+        let calc = ShantenCalculator::new();
+        let mut tiles: Vec<Tile> = self.players[player.0].hand.tiles().to_vec();
+        if let Some(t) = self.drawn_tile {
+            tiles.push(t);
+        }
+        let counts = riichi_logic::types::TileCounts::from_tiles(&tiles);
+        tiles.iter().any(|tile| {
+            let mut after = counts;
+            after.dec(tile.tile_type());
+            calc.lookup(&after) == 0
+        })
     }
 
     /// 宣告立直：扣 1000 点，设置立直标记
@@ -1417,11 +1380,20 @@ impl GameState {
 impl GameState {
     /// 荒牌流局结算：计算不听罚符，更新点棒
     pub fn resolve_exhaustive_draw(&mut self) {
+        let calc = ShantenCalculator::new();
         let tenpai: [bool; 4] = [
-            self.is_tenpai(PlayerId(0)),
-            self.is_tenpai(PlayerId(1)),
-            self.is_tenpai(PlayerId(2)),
-            self.is_tenpai(PlayerId(3)),
+            calc.lookup(&riichi_logic::types::TileCounts::from_tiles(
+                self.players[0].hand.tiles(),
+            )) == 0,
+            calc.lookup(&riichi_logic::types::TileCounts::from_tiles(
+                self.players[1].hand.tiles(),
+            )) == 0,
+            calc.lookup(&riichi_logic::types::TileCounts::from_tiles(
+                self.players[2].hand.tiles(),
+            )) == 0,
+            calc.lookup(&riichi_logic::types::TileCounts::from_tiles(
+                self.players[3].hand.tiles(),
+            )) == 0,
         ];
         let tenpai_count = tenpai.iter().filter(|&&t| t).count();
 
@@ -1484,7 +1456,12 @@ impl GameState {
     pub fn advance_round(&mut self, reason: &RoundEndReason) {
         let dealer_continues = match reason {
             RoundEndReason::Win { winner, .. } => *winner == self.get_dealer(),
-            RoundEndReason::ExhaustiveDraw => self.is_tenpai(self.get_dealer()),
+            RoundEndReason::ExhaustiveDraw => {
+                let calc = ShantenCalculator::new();
+                calc.lookup(&riichi_logic::types::TileCounts::from_tiles(
+                    self.players[self.get_dealer().0].hand.tiles(),
+                )) == 0
+            }
             // 途中流局一律连庄
             RoundEndReason::KyuushuKyuuhai
             | RoundEndReason::SuufonRenda

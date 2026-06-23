@@ -2,6 +2,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use riichi_core::game_types::{CallType, ResponseAction, TurnAction};
 use riichi_core::player::PlayerId;
+use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
 use riichi_logic::shanten::ShantenCalculator;
 use tokio::sync::mpsc;
@@ -95,7 +96,21 @@ impl GameLoop {
                 self.handle_round_end().await;
             }
             TurnActionMsg::Riichi => {
-                let options = self.game.get_tenpai_discard_options(player);
+                let calc = ShantenCalculator::new();
+                let mut tiles: Vec<Tile> = self.game.players[player.0].hand.tiles().to_vec();
+                if let Some(drawn) = self.game.drawn_tile {
+                    tiles.push(drawn);
+                }
+                let counts = riichi_logic::types::TileCounts::from_tiles(&tiles);
+                let options: Vec<Tile> = tiles
+                    .iter()
+                    .filter(|&&tile| {
+                        let mut after = counts;
+                        after.dec(tile.tile_type());
+                        calc.lookup(&after) == 0
+                    })
+                    .copied()
+                    .collect();
                 if let Some(tile) = options.first() {
                     let _ = self.game.execute_action(TurnAction::RiichiDiscard(*tile));
                     self.broadcast_state().await;
