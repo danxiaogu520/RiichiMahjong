@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
+use riichi_core::game_types::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_logic::analysis::analyze_wait_tiles;
 
-use crate::action::GameEvent;
 use crate::game::{GamePhase, GameState};
 
 impl GameState {
