@@ -1,11 +1,10 @@
-mod abort;
 pub mod action;
 pub mod call;
 pub mod game;
 mod init;
-mod query;
 mod riichi;
 mod round;
+mod ryukyoku;
 mod settlement;
 mod state;
 mod win;

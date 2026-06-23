@@ -4,6 +4,12 @@ use riichi_core::player_state::Player;
 use riichi_core::tile::{Tile, TileType};
 
 /// 检测所有玩家对某张打出的牌可执行的副露操作
+///
+/// 返回所有可能的副露选项，按优先级排序：
+/// - 荣和（最优先）
+/// - 大明杠
+/// - 碰
+/// - 吃（仅下家可用，仅数牌）
 pub fn detect_calls(
     players: &[Player; 4],
     discarded_tile: Tile,
@@ -15,12 +21,12 @@ pub fn detect_calls(
     for (idx, player) in players.iter().enumerate().take(4) {
         let pid = PlayerId(idx);
         if pid == discarder {
-            continue;
+            continue; // 不能对自己的牌副露
         }
 
         let hand = &player.hand;
 
-        // 荣和检测
+        // 荣和检测：手牌 + 打出的牌是否构成和了形
         let mut test_tiles: Vec<Tile> = hand.tiles().to_vec();
         test_tiles.push(discarded_tile);
         let mut counts = riichi_logic::types::TileCounts::from_tiles(&test_tiles);
@@ -31,7 +37,7 @@ pub fn detect_calls(
                     call_type: CallType::Ron,
                 });
             }
-            continue;
+            continue; // 能荣和就不检测其他副露
         }
 
         // 大明杠检测：手中有 3 张相同牌
@@ -44,7 +50,7 @@ pub fn detect_calls(
             });
         }
 
-        // 碰检测
+        // 碰检测：手中有 2 张相同牌
         if count >= 2 {
             let hand_tiles = find_tiles_of_type(hand, tt, 2);
             options.push(CallOption {
@@ -78,12 +84,17 @@ pub fn detect_calls(
 }
 
 /// 检测吃的所有可能组合
+///
+/// 吃的三种形式（假设打出的牌为 X）：
+/// 1. X-2, X-1, X（左吃）
+/// 2. X-1, X, X+1（中吃）
+/// 3. X, X+1, X+2（右吃）
 fn detect_chi(hand: &riichi_core::hand::Hand, discarded: TileType) -> Vec<[Tile; 2]> {
     let mut results = Vec::new();
     let rank = discarded.rank().0; // 1-9
     let base = TileType(discarded.0 - (rank - 1)); // 同花色 1 的 type
 
-    // 1) discarded-2, discarded-1, discarded
+    // 1) X-2, X-1, X（左吃）
     if rank >= 3 {
         let t1 = TileType(base.0 + rank - 3);
         let t2 = TileType(base.0 + rank - 2);
@@ -91,7 +102,7 @@ fn detect_chi(hand: &riichi_core::hand::Hand, discarded: TileType) -> Vec<[Tile;
             results.push(tiles);
         }
     }
-    // 2) discarded-1, discarded, discarded+1
+    // 2) X-1, X, X+1（中吃）
     if (2..=8).contains(&rank) {
         let t1 = TileType(base.0 + rank - 2);
         let t2 = TileType(base.0 + rank);
@@ -99,7 +110,7 @@ fn detect_chi(hand: &riichi_core::hand::Hand, discarded: TileType) -> Vec<[Tile;
             results.push(tiles);
         }
     }
-    // 3) discarded, discarded+1, discarded+2
+    // 3) X, X+1, X+2（右吃）
     if rank <= 7 {
         let t1 = TileType(base.0 + rank);
         let t2 = TileType(base.0 + rank + 1);
@@ -125,7 +136,7 @@ fn find_chi_pair(
     Some([*tile1, *tile2])
 }
 
-/// 从手牌中找到指定 TileType 的 n 张牌
+/// 从手牌中找到指定 TileType 的 2 张牌（用于碰）
 fn find_tiles_of_type(hand: &riichi_core::hand::Hand, tt: TileType, n: usize) -> [Tile; 2] {
     let tiles: Vec<Tile> = hand
         .tiles()

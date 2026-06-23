@@ -9,7 +9,17 @@ use riichi_logic::analysis::analyze_wait_tiles;
 use crate::game::{extract_kuikae_tiles, GameError, GamePhase, GameState};
 
 impl GameState {
+    /// 执行玩家的行动（行动阶段）
+    ///
+    /// 支持的行动类型：
+    /// - Discard: 打牌
+    /// - RiichiDiscard: 立直宣言 + 打牌
+    /// - Tsumo: 自摸和
+    /// - KyuushuKyuuhai: 九种九牌（流局）
+    /// - Ankan: 暗杠
+    /// - Kakan: 加杠
     pub fn execute_action(&mut self, action: TurnAction) -> Result<Vec<GameEvent>, GameError> {
+        // 检查是否处于行动阶段
         if !matches!(self.phase, GamePhase::ActionPhase) {
             return Err(GameError::InvalidAction("不在行动阶段".to_string()));
         }
@@ -17,19 +27,25 @@ impl GameState {
         let mut new_events = Vec::new();
 
         match action {
+            // 打牌
             TurnAction::Discard(tile) => {
                 self.discard(tile)?;
                 self.players[self.current_player.0].has_made_first_action = true;
             }
 
+            // 立直宣言 + 打牌
             TurnAction::RiichiDiscard(tile) => {
+                // 检查是否满足立直条件
                 if !self.can_declare_riichi(self.current_player) {
                     return Err(GameError::InvalidAction("不满足立直条件".to_string()));
                 }
+                // 提交自摸牌到手牌（hand 13→14），以便做听牌检查
                 self.insert_tile();
+                // 检查牌在手中
                 if !self.players[self.current_player.0].hand.contains(tile) {
                     return Err(GameError::TileNotInHand(tile));
                 }
+                // 检查打出后是否听牌（hand 有 14 张，打一张剩 13 张）
                 let mut simulated = self.players[self.current_player.0].hand.clone();
                 simulated
                     .remove(tile)
@@ -39,10 +55,11 @@ impl GameState {
                         "立直宣言牌必须使手牌听牌".to_string(),
                     ));
                 }
+                // 宣告立直
                 {
                     let p = &mut self.players[self.current_player.0];
-                    let is_double = !p.has_made_first_action;
-                    p.points -= 1000;
+                    let is_double = !p.has_made_first_action; // 第一巡立直 = 双立直
+                    p.points -= 1000; // 放置立直棒
                     p.is_riichi = true;
                     p.is_double_riichi = is_double;
                     p.riichi_declaration_tile = Some(tile);
@@ -51,27 +68,36 @@ impl GameState {
                 new_events.push(GameEvent::PlayerDeclaredRiichi {
                     player: self.current_player,
                 });
+                // 打出宣言牌
                 self.discard(tile)?;
                 self.players[self.current_player.0].has_made_first_action = true;
 
+                // 四风连打检查（立直宣言牌也参与判定）
                 if matches!(self.phase, GamePhase::ResponsePhase { .. })
                     && self.check_suufon_renda()
                 {
                     self.resolve_round_end(RoundEndReason::SuufonRenda);
-                } else if matches!(self.phase, GamePhase::ResponsePhase { .. })
+                }
+                // 四家立直检查（第四家立直宣言后，且未被荣和取消）
+                else if matches!(self.phase, GamePhase::ResponsePhase { .. })
                     && self.check_suucha_riichi()
                 {
                     self.resolve_round_end(RoundEndReason::SuuchaRiichi);
                 }
             }
 
+            // 自摸和
             TurnAction::Tsumo => {
                 let winning_tile = self.drawn_tile.ok_or_else(|| {
                     GameError::InvalidAction("没有摸到的牌，无法自摸".to_string())
                 })?;
                 let result = self.check_win(self.current_player, true, winning_tile, None, false);
                 if let Some((changes, yaku_names)) = result {
-                    self.insert_tile();
+                    self.insert_tile(); // 提交自摸牌到手牌
+                                        // 应用点数变化
+                    for (i, &change) in changes.iter().enumerate() {
+                        self.players[i].points += change;
+                    }
                     new_events.push(GameEvent::PlayerWon {
                         player: self.current_player,
                         is_tsumo: true,
@@ -87,6 +113,7 @@ impl GameState {
                 }
             }
 
+            // 九种九牌（流局）
             TurnAction::KyuushuKyuuhai => {
                 if !self.can_declare_kyuushu(self.current_player) {
                     return Err(GameError::InvalidAction("不满足九种九牌条件".to_string()));
@@ -94,14 +121,16 @@ impl GameState {
                 self.resolve_round_end(RoundEndReason::KyuushuKyuuhai);
             }
 
+            // 暗杠
             TurnAction::Ankan(tile) => {
-                self.insert_tile();
+                self.insert_tile(); // 提交自摸牌到手牌（暗杠需 4 张在手）
                 let events = self.execute_ankan(self.current_player, tile)?;
                 new_events.extend(events);
             }
 
+            // 加杠
             TurnAction::Kakan(meld_index, tile) => {
-                self.insert_tile();
+                self.insert_tile(); // 提交自摸牌到手牌（加杠需手牌中有第 4 张）
                 let events = self.execute_kakan(self.current_player, meld_index, tile)?;
                 new_events.extend(events);
             }
@@ -111,6 +140,11 @@ impl GameState {
         Ok(new_events)
     }
 
+    /// 获取当前玩家可执行的副露选项（响应阶段）
+    ///
+    /// 根据当前阶段返回可选的副露操作：
+    /// - ResponsePhase: 检测吃/碰/杠/荣和
+    /// - ChankanResponse: 仅检测抢杠荣和
     pub fn get_call_options(&self) -> Vec<CallOption> {
         match self.phase {
             GamePhase::ResponsePhase {
@@ -122,6 +156,7 @@ impl GameState {
                 kakan_player,
                 ..
             } => {
+                // 抢杠荣和：仅检测荣和，不检测吃/碰/杠
                 let mut options = Vec::new();
                 for idx in 0..4 {
                     let pid = PlayerId(idx);
@@ -144,6 +179,11 @@ impl GameState {
         }
     }
 
+    /// 执行副露响应（响应阶段）
+    ///
+    /// 根据当前阶段分发到对应的处理函数：
+    /// - ResponsePhase: 普通响应（吃/碰/杠/荣和/过）
+    /// - ChankanResponse: 抢杠响应（仅荣和/过）
     pub fn execute_call(
         &mut self,
         player: PlayerId,
@@ -185,6 +225,7 @@ impl GameState {
         Ok(new_events)
     }
 
+    /// 处理普通响应阶段（吃/碰/杠/荣和/过）
     fn execute_response_call(
         &mut self,
         player: PlayerId,
@@ -194,9 +235,11 @@ impl GameState {
         new_events: &mut Vec<GameEvent>,
     ) -> Result<(), GameError> {
         match action {
+            // 过：将牌放入舍牌区，更新振听，进入摸牌阶段
             ResponseAction::Pass => {
                 self.players[discarder.0].discards.push(discarded_tile);
 
+                // 更新其他玩家的振听状态
                 for idx in 0..4 {
                     let pid = PlayerId(idx);
                     if pid == discarder {
@@ -216,11 +259,16 @@ impl GameState {
                 self.advance_turn();
                 self.phase = GamePhase::DrawPhase;
             }
+            // 荣和
             ResponseAction::Ron => {
                 self.clear_ippatsu();
                 let result = self.check_win(player, false, discarded_tile, Some(discarder), false);
                 if let Some((changes, yaku_names)) = result {
                     self.players[player.0].hand.add(discarded_tile);
+                    // 应用点数变化
+                    for (i, &change) in changes.iter().enumerate() {
+                        self.players[i].points += change;
+                    }
                     new_events.push(GameEvent::PlayerWon {
                         player,
                         is_tsumo: false,
@@ -232,12 +280,14 @@ impl GameState {
                         is_tsumo: false,
                     });
                 } else {
+                    // 荣和不成立（振听/无役等），将牌放入舍牌区
                     self.players[discarder.0].discards.push(discarded_tile);
                     self.update_all_discard_furiten();
                     self.advance_turn();
                     self.phase = GamePhase::DrawPhase;
                 }
             }
+            // 碰
             ResponseAction::Pon { hand_tiles } => {
                 self.clear_ippatsu();
                 {
@@ -252,7 +302,7 @@ impl GameState {
                     let meld = Meld::pon(meld_tiles, discarded_tile, discarder);
                     let kuikae = extract_kuikae_tiles(&meld);
                     p.melds.push(meld);
-                    p.forbidden = kuikae;
+                    p.forbidden = kuikae; // 设置食替禁打
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
@@ -263,6 +313,7 @@ impl GameState {
                     from_player: discarder,
                 });
             }
+            // 吃（仅下家可用）
             ResponseAction::Chi { hand_tiles } => {
                 self.clear_ippatsu();
                 {
@@ -277,7 +328,7 @@ impl GameState {
                     let meld = Meld::chi(meld_tiles, discarded_tile, discarder);
                     let kuikae = extract_kuikae_tiles(&meld);
                     p.melds.push(meld);
-                    p.forbidden = kuikae;
+                    p.forbidden = kuikae; // 设置食替禁打
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
@@ -288,8 +339,9 @@ impl GameState {
                     from_player: discarder,
                 });
             }
+            // 大明杠
             ResponseAction::Minkan { hand_tiles } => {
-                if !self.can_declare_kan(player) {
+                if self.get_kan_count() >= 4 {
                     return Err(GameError::InvalidAction(
                         "四杠限制：不能继续开杠".to_string(),
                     ));
@@ -309,12 +361,13 @@ impl GameState {
                 }
                 self.current_player = player;
                 self.reveal_dora_indicator();
-                self.draw_rinshan()?;
+                self.draw_rinshan()?; // 杠后补摸岭上牌
                 new_events.push(GameEvent::PlayerCalledMinkan {
                     player,
                     tiles: hand_tiles.to_vec(),
                     from_player: discarder,
                 });
+                // 四杠散了检查
                 if self.check_four_kan_abort() {
                     self.resolve_round_end(RoundEndReason::SuuKantsu);
                 }
@@ -324,6 +377,7 @@ impl GameState {
         Ok(())
     }
 
+    /// 处理抢杠荣和响应阶段（仅荣和/过）
     fn execute_chankan_call(
         &mut self,
         player: PlayerId,
@@ -334,6 +388,7 @@ impl GameState {
         new_events: &mut Vec<GameEvent>,
     ) -> Result<(), GameError> {
         match action {
+            // 过：杠成立，摸岭上牌，进入行动阶段
             ResponseAction::Pass => {
                 self.current_player = kakan_player;
                 self.draw_rinshan()?;
@@ -344,12 +399,14 @@ impl GameState {
                     self.phase = GamePhase::ActionPhase;
                 }
             }
+            // 抢杠荣和
             ResponseAction::Ron => {
+                // 此杠不成立，副露恢复为碰
                 {
                     let meld = &mut self.players[kakan_player.0].melds[meld_index];
                     debug_assert!(meld.kind == MeldKind::Kakan);
-                    meld.tiles.pop();
-                    meld.kind = MeldKind::Pon;
+                    meld.tiles.pop(); // 移除第 4 张牌
+                    meld.kind = MeldKind::Pon; // 恢复为碰
                 }
 
                 self.clear_ippatsu();
@@ -357,6 +414,10 @@ impl GameState {
                 let result = self.check_win(player, false, kakan_tile, Some(kakan_player), true);
                 if let Some((changes, yaku_names)) = result {
                     self.players[player.0].hand.add(kakan_tile);
+                    // 应用点数变化
+                    for (i, &change) in changes.iter().enumerate() {
+                        self.players[i].points += change;
+                    }
                     new_events.push(GameEvent::PlayerWon {
                         player,
                         is_tsumo: false,
@@ -378,6 +439,10 @@ impl GameState {
         Ok(())
     }
 
+    /// 获取当前玩家可执行的暗杠选项
+    ///
+    /// 考虑手牌（3n+1）与自摸牌缓冲区中的牌
+    /// 手牌中有 4 张相同牌，或手牌 3 张 + 自摸牌 1 张
     pub fn get_ankan_options(&self, player: PlayerId) -> Vec<Tile> {
         let hand = &self.players[player.0].hand;
         let mut seen = std::collections::HashSet::new();
@@ -388,6 +453,7 @@ impl GameState {
                 options.push(tile);
             }
         }
+        // 自摸牌可能与手牌 3 张组合成暗杠（3+1=4）
         if let Some(drawn) = self.drawn_tile {
             let drawn_tt = drawn.tile_type();
             if !options.iter().any(|t| t.tile_type() == drawn_tt)
@@ -399,6 +465,16 @@ impl GameState {
         options
     }
 
+    /// 执行暗杠
+    ///
+    /// 流程：
+    /// 1. 检查手中是否有 4 张相同牌
+    /// 2. 检查四杠限制
+    /// 3. 立直后暗杠限制（不能改变听牌种类）
+    /// 4. 从手牌移除 4 张牌，创建暗杠副露
+    /// 5. 翻宝牌指示牌
+    /// 6. 补摸岭上牌
+    /// 7. 四杠散了检查
     pub fn execute_ankan(
         &mut self,
         player: PlayerId,
@@ -409,12 +485,14 @@ impl GameState {
             return Err(GameError::InvalidAction("手中没有 4 张相同牌".to_string()));
         }
 
-        if !self.can_declare_kan(player) {
+        // 四杠限制
+        if self.get_kan_count() >= 4 {
             return Err(GameError::InvalidAction(
                 "四杠限制：不能继续开杠".to_string(),
             ));
         }
 
+        // 立直后暗杠限制
         if self.players[player.0].is_riichi {
             let valid_tiles = self.get_riichi_ankan_options(player);
             if !valid_tiles.iter().any(|t| t.tile_type() == tt) {
@@ -424,6 +502,7 @@ impl GameState {
             }
         }
 
+        // 从手牌移除 4 张牌
         let tiles_to_remove: Vec<Tile> = self.players[player.0]
             .hand
             .tiles()
@@ -450,6 +529,7 @@ impl GameState {
         self.current_player = player;
         self.draw_rinshan()?;
 
+        // 四杠散了检查
         if self.check_four_kan_abort() {
             self.resolve_round_end(RoundEndReason::SuuKantsu);
         }
@@ -458,15 +538,21 @@ impl GameState {
         Ok(new_events)
     }
 
+    /// 获取当前玩家可执行的加杠选项
+    ///
+    /// 考虑手牌（3n+1）与自摸牌缓冲区中的牌
+    /// 手牌或自摸牌中有与碰副露相同类型的牌
     pub fn get_kakan_options(&self, player: PlayerId) -> Vec<(usize, Tile)> {
         let p = &self.players[player.0];
         let mut options = Vec::new();
         for (i, meld) in p.melds.iter().enumerate() {
             if meld.kind == riichi_core::meld::MeldKind::Pon {
                 let tt = meld.tiles[0].tile_type();
+                // 手牌中有匹配的牌
                 if let Some(&tile) = p.hand.tiles().iter().find(|t| t.tile_type() == tt) {
                     options.push((i, tile));
                 }
+                // 自摸牌也可能匹配碰副露
                 if let Some(drawn) = self.drawn_tile {
                     if drawn.tile_type() == tt {
                         options.push((i, drawn));
@@ -477,12 +563,22 @@ impl GameState {
         options
     }
 
+    /// 执行加杠（将碰升级为加杠）
+    ///
+    /// 流程：
+    /// 1. 检查该副露是否为碰
+    /// 2. 检查牌是否匹配
+    /// 3. 检查四杠限制
+    /// 4. 从手牌移除第 4 张牌，将碰升级为加杠
+    /// 5. 翻宝牌指示牌
+    /// 6. 进入抢杠荣和响应阶段（不立即摸岭上牌）
     pub fn execute_kakan(
         &mut self,
         player: PlayerId,
         meld_index: usize,
         tile: Tile,
     ) -> Result<Vec<GameEvent>, GameError> {
+        // 验证副露是否为碰
         {
             let meld = &self.players[player.0].melds[meld_index];
             if meld.kind != riichi_core::meld::MeldKind::Pon {
@@ -494,12 +590,14 @@ impl GameState {
             }
         }
 
-        if !self.can_declare_kan(player) {
+        // 四杠限制
+        if self.get_kan_count() >= 4 {
             return Err(GameError::InvalidAction(
                 "四杠限制：不能继续开杠".to_string(),
             ));
         }
 
+        // 执行加杠
         let original_pon;
         {
             let p = &mut self.players[player.0];
@@ -530,6 +628,7 @@ impl GameState {
         self.current_player = player;
         self.reveal_dora_indicator();
 
+        // 进入抢杠荣和响应阶段（不立即摸岭上牌）
         self.phase = GamePhase::ChankanResponse {
             kakan_tile: tile,
             kakan_player: player,
