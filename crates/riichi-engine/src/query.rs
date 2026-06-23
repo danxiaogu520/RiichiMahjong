@@ -1,6 +1,6 @@
+use riichi_core::game_types::GameEvent;
 use riichi_core::tile::TileType;
 
-use crate::action::GameEvent;
 use crate::game::GameState;
 
 impl GameState {

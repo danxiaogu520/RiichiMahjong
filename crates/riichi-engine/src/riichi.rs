@@ -1,10 +1,10 @@
+use riichi_core::game_types::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_logic::analysis::{analyze_wait_tiles, is_standard_win};
 use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::types::TileCounts;
 
-use crate::action::GameEvent;
 use crate::game::{GameError, GameState};
 
 impl GameState {

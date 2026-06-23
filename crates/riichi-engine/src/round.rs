@@ -1,13 +1,12 @@
 use rand::Rng;
+use riichi_core::game_types::GameError::{InvalidAction, WallExhausted};
+use riichi_core::game_types::{GameEvent, RoundEndReason};
 use riichi_core::hand::Hand;
 use riichi_core::player_state::FuritenState;
 use riichi_core::tile::Tile;
 use riichi_core::wall::Wall;
 
-use crate::action::{GameEvent, RoundEndReason};
 use crate::game::{GameError, GamePhase, GameState};
-
-use riichi_core::game_types::GameError::{InvalidAction, WallExhausted};
 
 impl GameState {
     pub fn start_round(&mut self, rng: &mut impl Rng) {

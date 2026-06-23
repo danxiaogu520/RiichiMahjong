@@ -1,7 +1,7 @@
+use riichi_core::game_types::{GameEvent, RoundEndReason};
 use riichi_core::tile::TileType;
 use riichi_logic::shanten::ShantenCalculator;
 
-use crate::action::{GameEvent, RoundEndReason};
 use crate::game::{GamePhase, GameState};
 
 impl GameState {
