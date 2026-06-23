@@ -1,13 +1,10 @@
 use riichi_core::meld::MeldKind;
-use riichi_core::player::PlayerId;
+use riichi_core::player::{wind_from_index, PlayerId};
+use riichi_core::player_state::Player;
 use riichi_core::tile::TileType;
 use riichi_core::wall::Wall;
 
-use crate::player::{wind_from_index, Player};
-
-pub use riichi_core::game_types::GamePhase;
-
-use crate::game::GameState;
+use crate::game::{GamePhase, GameState};
 
 impl GameState {
     pub fn new() -> Self {
