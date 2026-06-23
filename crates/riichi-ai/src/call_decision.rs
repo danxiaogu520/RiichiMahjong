@@ -1,4 +1,4 @@
-use riichi_core::game_types::{CallOption, ResponseAction};
+use riichi_core::game::{CallOption, ResponseAction};
 use riichi_core::player::PlayerId;
 
 /// AI 决策：是否响应他人的打出牌

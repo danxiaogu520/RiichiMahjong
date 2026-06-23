@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use riichi_core::game_types::GameEvent;
+use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_logic::analysis::analyze_wait_tiles;
@@ -16,13 +16,6 @@ impl GameState {
     /// 判断指定的牌是否来自岭上（wall[132..=135]）
     pub fn is_rinshan_tile(&self, tile: Tile) -> bool {
         self.wall.is_rinshan_tile(tile)
-    }
-
-    /// 清除所有玩家的一发状态
-    pub fn clear_ippatsu(&mut self) {
-        for player in &mut self.players {
-            player.is_ippatsu = false;
-        }
     }
 
     /// 获取玩家的听牌类型集合（内部使用）

@@ -1,9 +1,9 @@
 use rand::Rng;
-use riichi_core::game_types::GameError::{InvalidAction, WallExhausted};
-use riichi_core::game_types::{GameEvent, RoundEndReason};
+use riichi_core::game::GameError::{InvalidAction, WallExhausted};
+use riichi_core::game::{GameEvent, RoundEndReason};
 use riichi_core::hand::Hand;
-use riichi_core::player_state::FuritenState;
-use riichi_core::tile::Tile;
+use riichi_core::player::FuritenState;
+use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
 
 use crate::game::{GameError, GamePhase, GameState};
@@ -39,11 +39,6 @@ impl GameState {
             player.discards.clear();
             player.melds.clear();
             player.is_riichi = false;
-            player.is_ippatsu = false;
-            player.forbidden.clear();
-            player.riichi_declaration_tile = None;
-            player.has_made_first_action = false;
-            player.is_double_riichi = false;
             player.furiten = FuritenState::default();
             player.all_discarded_types.clear();
         }
@@ -141,8 +136,26 @@ impl GameState {
     pub fn discard(&mut self, tile: Tile) -> Result<(), GameError> {
         let cp = self.current_player.0;
 
-        // 食替检查
-        if self.players[cp].forbidden.contains(&tile.tile_type()) {
+        // 食替检查：查询最近一次副露事件，计算禁打牌
+        let forbidden: Vec<TileType> = self
+            .events
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                GameEvent::PlayerCalledPon { player, tiles, .. }
+                    if *player == self.current_player =>
+                {
+                    Some(tiles.iter().map(|t| t.tile_type()).collect::<Vec<_>>())
+                }
+                GameEvent::PlayerCalledChi { player, tiles, .. }
+                    if *player == self.current_player =>
+                {
+                    Some(tiles.iter().map(|t| t.tile_type()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
+        if forbidden.contains(&tile.tile_type()) {
             return Err(GameError::InvalidAction(format!(
                 "食替：{} 不能立刻打出",
                 tile
@@ -180,10 +193,11 @@ impl GameState {
 
         // 更新玩家状态
         let player = &mut self.players[cp];
-        if player.is_riichi && player.riichi_declaration_tile.is_none() {
-            player.riichi_declaration_tile = Some(tile); // 记录立直宣言牌
+        // 检查是否已有立直事件，如果没有则记录立直宣言牌
+        let has_riichi_event = self.events.iter().any(|e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == self.current_player));
+        if player.is_riichi && !has_riichi_event {
+            // 立直宣言牌通过事件记录，这里不需要额外操作
         }
-        player.forbidden.clear(); // 清除食替禁打
         player.all_discarded_types.insert(tile.tile_type()); // 记录舍牌类型
         player.furiten.clear_round(); // 清除本轮振听
 

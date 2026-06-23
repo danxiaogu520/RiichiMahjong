@@ -13,7 +13,7 @@
 | `meld.rs` | `Meld`, `MeldKind` — 副露（吃/碰/杠） |
 | `wall.rs` | `Wall` — 牌山（136 张牌的洗牌/摸牌/杠管理） |
 | `player.rs` | `PlayerId`, `wind_from_index`, `next_wind`, `wind_display` |
-| `player_state.rs` | `Player` — 玩家完整状态（手牌/分数/副露/立直/振听） |
+| `player_state.rs` | `Player` — 玩家状态（手牌/分数/副露/立直/振听，一发/食替/双立直等通过事件查询） |
 | `game_types.rs` | `GamePhase`, `GameEvent`, `TurnAction`, `ResponseAction`, `CallOption`, `GameError` |
 
 ### riichi-logic（纯算法）

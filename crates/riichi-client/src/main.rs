@@ -17,7 +17,7 @@ use crate::app::App;
 use riichi_core::player::PlayerId;
 use riichi_server::ai_client::run_ai_client;
 use riichi_server::channel::{create_player_pair, ActionMsg};
-use riichi_server::game_loop::GameLoop;
+use riichi_server::game::GameLoop;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
