@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use riichi_core::game_types::GameEvent;
+use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::TileType;
 

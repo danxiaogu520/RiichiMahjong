@@ -3,7 +3,7 @@ use riichi_server::ai_client::run_ai_client;
 use riichi_server::channel::{
     create_player_pair, ActionMsg, CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg,
 };
-use riichi_server::game_loop::GameLoop;
+use riichi_server::game::GameLoop;
 use tokio::sync::mpsc;
 
 #[tokio::main]

@@ -1,11 +1,11 @@
-use riichi_core::game_types::GameEvent;
+use riichi_core::game::GameEvent;
+use riichi_core::player::Player;
 use riichi_core::player::PlayerId;
-use riichi_core::player_state::Player;
 use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
 use serde::{Deserialize, Serialize};
 
-pub use riichi_core::game_types::{extract_kuikae_tiles, GameError, GamePhase};
+pub use riichi_core::game::{extract_kuikae_tiles, GameError, GamePhase};
 
 /// 麻将游戏状态核心结构体
 ///

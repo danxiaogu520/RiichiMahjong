@@ -1,4 +1,4 @@
-use riichi_core::game_types::{
+use riichi_core::game::{
     CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction,
 };
 use riichi_core::meld::{Meld, MeldKind};
@@ -6,7 +6,7 @@ use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_logic::analysis::analyze_wait_tiles;
 
-use crate::game::{extract_kuikae_tiles, GameError, GamePhase, GameState};
+use crate::game::{GameError, GamePhase, GameState};
 
 impl GameState {
     /// 执行玩家的行动（行动阶段）
@@ -30,7 +30,6 @@ impl GameState {
             // 打牌
             TurnAction::Discard(tile) => {
                 self.discard(tile)?;
-                self.players[self.current_player.0].has_made_first_action = true;
             }
 
             // 立直宣言 + 打牌
@@ -58,11 +57,8 @@ impl GameState {
                 // 宣告立直
                 {
                     let p = &mut self.players[self.current_player.0];
-                    let is_double = !p.has_made_first_action; // 第一巡立直 = 双立直
                     p.points -= 1000; // 放置立直棒
                     p.is_riichi = true;
-                    p.is_double_riichi = is_double;
-                    p.riichi_declaration_tile = Some(tile);
                 }
                 self.riichi_sticks += 1;
                 new_events.push(GameEvent::PlayerDeclaredRiichi {
@@ -70,7 +66,6 @@ impl GameState {
                 });
                 // 打出宣言牌
                 self.discard(tile)?;
-                self.players[self.current_player.0].has_made_first_action = true;
 
                 // 四风连打检查（立直宣言牌也参与判定）
                 if matches!(self.phase, GamePhase::ResponsePhase { .. })
@@ -261,7 +256,6 @@ impl GameState {
             }
             // 荣和
             ResponseAction::Ron => {
-                self.clear_ippatsu();
                 let result = self.check_win(player, false, discarded_tile, Some(discarder), false);
                 if let Some((changes, yaku_names)) = result {
                     self.players[player.0].hand.add(discarded_tile);
@@ -289,7 +283,6 @@ impl GameState {
             }
             // 碰
             ResponseAction::Pon { hand_tiles } => {
-                self.clear_ippatsu();
                 {
                     let p = &mut self.players[player.0];
                     for &tile in &hand_tiles {
@@ -300,9 +293,7 @@ impl GameState {
                     let mut meld_tiles = hand_tiles.to_vec();
                     meld_tiles.push(discarded_tile);
                     let meld = Meld::pon(meld_tiles, discarded_tile, discarder);
-                    let kuikae = extract_kuikae_tiles(&meld);
                     p.melds.push(meld);
-                    p.forbidden = kuikae; // 设置食替禁打
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
@@ -315,7 +306,6 @@ impl GameState {
             }
             // 吃（仅下家可用）
             ResponseAction::Chi { hand_tiles } => {
-                self.clear_ippatsu();
                 {
                     let p = &mut self.players[player.0];
                     for &tile in &hand_tiles {
@@ -326,9 +316,7 @@ impl GameState {
                     let mut meld_tiles = hand_tiles.to_vec();
                     meld_tiles.push(discarded_tile);
                     let meld = Meld::chi(meld_tiles, discarded_tile, discarder);
-                    let kuikae = extract_kuikae_tiles(&meld);
                     p.melds.push(meld);
-                    p.forbidden = kuikae; // 设置食替禁打
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
@@ -346,7 +334,7 @@ impl GameState {
                         "四杠限制：不能继续开杠".to_string(),
                     ));
                 }
-                self.clear_ippatsu();
+
                 {
                     let p = &mut self.players[player.0];
                     for &tile in &hand_tiles {
@@ -408,8 +396,6 @@ impl GameState {
                     meld.tiles.pop(); // 移除第 4 张牌
                     meld.kind = MeldKind::Pon; // 恢复为碰
                 }
-
-                self.clear_ippatsu();
 
                 let result = self.check_win(player, false, kakan_tile, Some(kakan_player), true);
                 if let Some((changes, yaku_names)) = result {
