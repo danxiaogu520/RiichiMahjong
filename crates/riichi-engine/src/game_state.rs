@@ -1,4 +1,11 @@
-use super::*;
+use std::collections::HashSet;
+
+use riichi_core::player::PlayerId;
+use riichi_core::tile::{Tile, TileType};
+use riichi_logic::analysis::analyze_wait_tiles;
+
+use crate::action::GameEvent;
+use crate::game::{GamePhase, GameState};
 
 impl GameState {
     pub fn advance_turn(&mut self) {
@@ -15,20 +22,20 @@ impl GameState {
         }
     }
 
-    pub(super) fn get_waiting_tile_types(&self, player: PlayerId) -> HashSet<TileType> {
+    pub(crate) fn get_waiting_tile_types(&self, player: PlayerId) -> HashSet<TileType> {
         analyze_wait_tiles(self.players[player.0].hand.tiles())
             .iter()
             .map(|w| w.tile_type)
             .collect()
     }
 
-    pub(super) fn update_discard_furiten(&mut self, player: PlayerId) {
+    pub(crate) fn update_discard_furiten(&mut self, player: PlayerId) {
         let waiting = self.get_waiting_tile_types(player);
         let discarded = &self.players[player.0].all_discarded_types;
         self.players[player.0].furiten.discard = waiting.iter().any(|tt| discarded.contains(tt));
     }
 
-    pub(super) fn update_all_discard_furiten(&mut self) {
+    pub(crate) fn update_all_discard_furiten(&mut self) {
         for idx in 0..4 {
             self.update_discard_furiten(PlayerId(idx));
         }

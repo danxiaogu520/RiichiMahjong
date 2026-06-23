@@ -1,4 +1,9 @@
-use super::*;
+use std::collections::HashSet;
+
+use riichi_core::meld::MeldKind;
+use riichi_core::player::PlayerId;
+
+use crate::game::GameState;
 
 impl GameState {
     pub fn can_declare_kyuushu(&self, player: PlayerId) -> bool {
@@ -27,7 +32,7 @@ impl GameState {
         types.len() >= 9
     }
 
-    pub(super) fn check_suufon_renda(&self) -> bool {
+    pub(crate) fn check_suufon_renda(&self) -> bool {
         let discards = self.first_turn_discards();
         if discards.len() < 4 {
             return false;
@@ -42,7 +47,7 @@ impl GameState {
         discards.iter().all(|&d| d == first)
     }
 
-    pub(super) fn check_suucha_riichi(&self) -> bool {
+    pub(crate) fn check_suucha_riichi(&self) -> bool {
         self.riichi_count() >= 4
     }
 

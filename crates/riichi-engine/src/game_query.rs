@@ -1,7 +1,10 @@
-use super::*;
+use riichi_core::tile::TileType;
+
+use crate::action::GameEvent;
+use crate::game::GameState;
 
 impl GameState {
-    pub(super) fn any_call_made(&self) -> bool {
+    pub(crate) fn any_call_made(&self) -> bool {
         self.events.iter().any(|e| {
             matches!(
                 e,
@@ -14,7 +17,7 @@ impl GameState {
         })
     }
 
-    pub(super) fn is_first_turn(&self) -> bool {
+    pub(crate) fn is_first_turn(&self) -> bool {
         let mut max_discards = 0usize;
         let mut counts = [0usize; 4];
         for e in &self.events {
@@ -28,7 +31,7 @@ impl GameState {
         max_discards <= 1
     }
 
-    pub(super) fn first_turn_discards(&self) -> Vec<TileType> {
+    pub(crate) fn first_turn_discards(&self) -> Vec<TileType> {
         let mut first = [None::<TileType>; 4];
         for e in &self.events {
             if let GameEvent::PlayerDiscarded { player, tile } = e {
@@ -40,7 +43,7 @@ impl GameState {
         first.iter().filter_map(|o| *o).collect()
     }
 
-    pub(super) fn riichi_count(&self) -> u8 {
+    pub(crate) fn riichi_count(&self) -> u8 {
         self.events
             .iter()
             .filter(|e| matches!(e, GameEvent::PlayerDeclaredRiichi { .. }))

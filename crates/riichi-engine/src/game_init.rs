@@ -1,4 +1,13 @@
-use super::*;
+use riichi_core::meld::MeldKind;
+use riichi_core::player::PlayerId;
+use riichi_core::tile::TileType;
+use riichi_core::wall::Wall;
+
+use crate::player::{wind_from_index, Player};
+
+pub use riichi_core::game_types::GamePhase;
+
+use crate::game::GameState;
 
 impl GameState {
     pub fn new() -> Self {
@@ -45,7 +54,7 @@ impl GameState {
             .sum()
     }
 
-    pub(super) fn dora_from_indicator(indicator: TileType) -> TileType {
+    pub(crate) fn dora_from_indicator(indicator: TileType) -> TileType {
         if indicator.is_number() {
             let rank = indicator.rank().0;
             if rank < 9 {
@@ -60,7 +69,7 @@ impl GameState {
         }
     }
 
-    pub(super) fn reveal_dora_indicator(&mut self) {
+    pub(crate) fn reveal_dora_indicator(&mut self) {
         let kan_count = self.get_kan_count();
         if kan_count > 0 && kan_count <= 5 && self.dora.len() < 5 {
             let indicator = self.wall.dora_indicator(kan_count).tile_type();
