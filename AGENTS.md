@@ -13,7 +13,7 @@ git push
 - commit message 简洁描述改了什么
 - 不要提交 `target/` 目录（已在 .gitignore 中）
 - 每个逻辑改动一个 commit
-- **提交前必须通过以下三项检查，全部通过才能 commit + push：**
+- **已配置 git pre-commit hook 自动执行以下三项检查，任一失败则拒绝提交，因此请不要手动运行以下命令：**
 
 ```bash
 cargo build --workspace
@@ -21,17 +21,12 @@ cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
 
-> 已配置 git pre-commit hook 自动执行以上三项检查，任一失败则拒绝提交。无需手动运行。
-
 ## Build & Run
 
 ```bash
-cargo build                    # 构建所有 crate
 cargo run -p riichi-client     # 终端 UI
 cargo run -p riichi-server     # CLI 模式
 cargo run -p riichi-test       # 交互式测试工具
-cargo fmt                      # 格式化
-cargo clippy --workspace       # lint
 ```
 
 ## 测试方式
