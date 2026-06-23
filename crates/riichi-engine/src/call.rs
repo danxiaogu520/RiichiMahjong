@@ -1,8 +1,8 @@
 use riichi_core::player::PlayerId;
+use riichi_core::player_state::Player;
 use riichi_core::tile::{Tile, TileType};
 
 use crate::action::{CallOption, CallType};
-use crate::player::Player;
 
 /// 检测所有玩家对某张打出的牌可执行的副露操作
 pub fn detect_calls(
