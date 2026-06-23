@@ -1,11 +1,11 @@
 use rand::Rng;
 use riichi_core::hand::Hand;
+use riichi_core::player_state::FuritenState;
 use riichi_core::tile::Tile;
 use riichi_core::wall::Wall;
 
 use crate::action::{GameEvent, RoundEndReason};
 use crate::game::{GameError, GamePhase, GameState};
-use crate::player::FuritenState;
 
 use riichi_core::game_types::GameError::{InvalidAction, WallExhausted};
 

@@ -3,7 +3,6 @@ pub mod action;
 pub mod call;
 pub mod game;
 mod init;
-pub mod player;
 mod query;
 mod riichi;
 mod round;
