@@ -65,6 +65,22 @@ crates/
   riichi-proto/     通信协议
 ```
 
+## riichi-engine 模块
+
+```
+game.rs          GameState 结构体定义
+init.rs          初始化、庄家、杠数、宝牌
+round.rs         配牌、摸牌、打牌
+action.rs        行动执行（自摸/立直/暗杠/加杠/响应）
+riichi.rs        立直相关
+win.rs           和了判定、计分
+state.rs         游戏状态辅助
+query.rs         事件查询
+abort.rs         流局检测
+settlement.rs    结算
+call.rs          副露检测
+```
+
 ## 关键约定
 
 - 新代码不加注释（除非明确要求）
