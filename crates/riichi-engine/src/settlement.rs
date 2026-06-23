@@ -5,6 +5,13 @@ use riichi_logic::shanten::ShantenCalculator;
 use crate::game::{GamePhase, GameState};
 
 impl GameState {
+    /// 荒牌流局结算：计算不听罚符，更新点棒
+    ///
+    /// 规则：
+    /// - 0 人听牌 / 4 人听牌：无收支
+    /// - 1 人听牌：3 人不听各付 1000，听牌者收 3000
+    /// - 2 人听牌：2 人不听各付 3000，听牌者各收 1500
+    /// - 3 人听牌：1 人不听付 3000，听牌者各收 1000
     pub fn resolve_exhaustive_draw(&mut self) {
         let calc = ShantenCalculator::new();
         let tenpai: [bool; 4] = [
@@ -63,6 +70,7 @@ impl GameState {
             _ => unreachable!(),
         }
 
+        // 应用点数变化
         #[allow(clippy::needless_range_loop)]
         for i in 0..4 {
             self.players[i].points += payments[i];
@@ -72,6 +80,14 @@ impl GameState {
             .push(GameEvent::ExhaustiveDrawResult { tenpai, payments });
     }
 
+    /// 根据局结束原因处理连庄/过庄，更新 round、honba、场风
+    ///
+    /// 规则：
+    /// - 和了：和牌者是庄家 → 连庄
+    /// - 荒牌流局：庄家听牌 → 连庄
+    /// - 途中流局（九种九牌/四风连打/四家立直/四杠散了）：一律连庄
+    /// - 连庄：round 不变, honba += 1
+    /// - 过庄：round += 1, honba = 0
     pub fn advance_round(&mut self, reason: &RoundEndReason) {
         let dealer_continues = match reason {
             RoundEndReason::Win { winner, .. } => *winner == self.get_dealer(),
@@ -81,6 +97,7 @@ impl GameState {
                     self.players[self.get_dealer().0].hand.tiles(),
                 )) == 0
             }
+            // 途中流局一律连庄
             RoundEndReason::KyuushuKyuuhai
             | RoundEndReason::SuufonRenda
             | RoundEndReason::SuuchaRiichi
@@ -92,6 +109,7 @@ impl GameState {
         } else {
             self.round += 1;
             self.honba = 0;
+            // 场风更新：round 1-4 = 东场, 5-8 = 南场
             self.wind = if self.round <= 4 {
                 TileType::EAST
             } else {
@@ -100,11 +118,14 @@ impl GameState {
         }
     }
 
+    /// 游戏是否结束（南四局过庄后）
     pub fn is_game_over(&self) -> bool {
         self.round > 8
     }
 
+    /// 统一处理局结束：荒牌罚符 + 连庄/过庄 + 设置 RoundOver
     pub fn resolve_round_end(&mut self, reason: RoundEndReason) {
+        // 荒牌流局需要先结算罚符
         if matches!(reason, RoundEndReason::ExhaustiveDraw) {
             self.resolve_exhaustive_draw();
         }

@@ -7,12 +7,27 @@ use riichi_logic::win_check;
 use crate::game::GameState;
 
 impl GameState {
+    /// 检查自摸和（只读检查，不消耗自摸牌）
+    ///
+    /// 模拟 hand + drawn_tile 合并后的 14 张手牌进行判定
+    /// 返回 None 表示不能和，Some((点数变化, 役名列表)) 表示可以和
     pub fn check_tsumo(&self, player: PlayerId) -> Option<([i32; 4], Vec<String>)> {
         let winning_tile = self.drawn_tile?;
         let hand = &self.players[player.0].hand;
         self.check_win_with_hand(player, true, winning_tile, None, hand, false)
     }
 
+    /// 构建和了评估上下文
+    ///
+    /// 包含判断役、计算点数所需的所有信息：
+    /// - 自摸/荣和
+    /// - 立直/双立直/一发
+    /// - 岭上/抢杠
+    /// - 海底/河底
+    /// - 自风/场风
+    /// - 宝牌信息
+    /// - 副露信息
+    /// - 本场/立直棒
     fn make_win_context(
         &self,
         player: PlayerId,
@@ -27,7 +42,7 @@ impl GameState {
             is_riichi: p.is_riichi,
             is_double_riichi: p.is_double_riichi,
             is_ippatsu: p.is_ippatsu,
-            is_rinshan: false,
+            is_rinshan: false, // 由调用方设置
             is_chankan,
             is_haitei: no_tiles_left && is_tsumo,
             is_houtei: no_tiles_left && !is_tsumo,
@@ -44,6 +59,9 @@ impl GameState {
         }
     }
 
+    /// 检查和了（从玩家手牌读取）
+    ///
+    /// 返回 None 表示不能和，Some((点数变化, 役名列表)) 表示可以和
     pub(crate) fn check_win(
         &self,
         player: PlayerId,
@@ -56,6 +74,12 @@ impl GameState {
         self.check_win_with_hand(player, is_tsumo, winning_tile, loser, hand, is_chankan)
     }
 
+    /// 检查和了（使用指定手牌，支持模拟 hand + drawn_tile）
+    ///
+    /// 支持三种和了形态：标准形、七对子、国士无双
+    ///
+    /// 返回 None 表示不能和，Some((点数变化, 役名列表)) 表示可以和
+    /// 点数变化是 [i32; 4] 数组，表示每个玩家的点数增减
     fn check_win_with_hand(
         &self,
         player: PlayerId,
@@ -65,20 +89,24 @@ impl GameState {
         hand: &Hand,
         is_chankan: bool,
     ) -> Option<([i32; 4], Vec<String>)> {
+        // 构建 all_tiles = 手牌 + 副露 + 和了牌（用于宝牌/赤宝牌计算）
         let mut all_tiles: Vec<Tile> = hand.tiles().to_vec();
         for meld in &self.players[player.0].melds {
             all_tiles.extend_from_slice(&meld.tiles);
         }
         all_tiles.push(winning_tile);
 
+        // 门清部分 TileType（手牌 + 和了牌，用于判形和拆解）
         let mut hand_tile_types: Vec<TileType> =
             hand.tiles().iter().map(|t| t.tile_type()).collect();
         hand_tile_types.push(winning_tile.tile_type());
 
+        // 构建上下文
         let mut ctx = self.make_win_context(player, is_tsumo, winning_tile, is_chankan);
         ctx.loser = loser.map(|id| id.0);
         ctx.is_rinshan = self.is_rinshan_tile(winning_tile);
 
+        // 检查和了
         let is_furiten = self.players[player.0].furiten.is_furiten();
         let result =
             win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten, winning_tile)?;
