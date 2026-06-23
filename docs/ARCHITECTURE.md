@@ -47,10 +47,17 @@
 
 | 模块 | 内容 |
 |------|------|
-| `game.rs` | `GameState` — 游戏状态核心（~2800 行） |
-| `call.rs` | `detect_calls` — 副露检测（吃/碰/杠/荣和） |
-| `action.rs` | re-export `riichi-core::game_types` |
-| `player.rs` | re-export `riichi-core::player_state` |
+| `game.rs` | `GameState` 结构体定义 |
+| `init.rs` | 初始化、庄家、杠数、宝牌 |
+| `round.rs` | 配牌、摸牌、打牌 |
+| `action.rs` | 行动执行（自摸/立直/暗杠/加杠/响应） |
+| `riichi.rs` | 立直相关（听牌检查、立直宣言、立直后暗杠） |
+| `win.rs` | 和了判定、计分 |
+| `state.rs` | 游戏状态辅助（回合推进、振听、可见牌） |
+| `query.rs` | 事件查询（副露/第一巡/立直数） |
+| `abort.rs` | 流局检测（九种九牌/四风连打/四家立直/四杠散了） |
+| `settlement.rs` | 结算（荒牌罚符、连庄/过庄） |
+| `call.rs` | 副露检测（吃/碰/杠/荣和） |
 
 ### riichi-proto（通信协议）
 
