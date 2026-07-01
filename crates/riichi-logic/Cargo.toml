@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 riichi-core = { path = "../riichi-core" }
 serde = { version = "1", features = ["derive"] }
+flate2 = "1"
+byteorder = "1"

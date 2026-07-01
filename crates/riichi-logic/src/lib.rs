@@ -1,4 +1,5 @@
 pub mod acceptance;
+pub mod algo;
 pub mod analysis;
 pub mod dora;
 pub mod fu;
