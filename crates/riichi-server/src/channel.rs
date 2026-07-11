@@ -53,6 +53,9 @@ pub enum TurnActionMsg {
     Discard(Tile),
     Tsumo,
     Riichi,
+    Ankan(Tile),
+    Kakan(usize, Tile),
+    KyuushuKyuuhai,
 }
 
 #[derive(Debug, Clone)]
