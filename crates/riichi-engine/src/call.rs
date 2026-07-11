@@ -26,14 +26,16 @@ pub fn detect_calls(
 
         let hand = &player.hand;
 
-        // 荣和检测：门清手牌、已有副露和打出的牌是否构成和了形。
-        let mut test_tiles: Vec<Tile> = hand.tiles().to_vec();
-        for meld in &player.melds {
-            test_tiles.extend_from_slice(&meld.tiles);
-        }
-        test_tiles.push(discarded_tile);
-        let mut counts = riichi_logic::types::TileCounts::from_tiles(&test_tiles);
-        if riichi_logic::analysis::is_winning(&mut counts) {
+        // 荣和粗筛：只对门清部分和和了牌判形，副露数量作为固定面子传入。
+        // 暗杠包含 4 张实体牌，但规则上只占 1 组面子，不能把它按普通
+        // 手牌牌张直接塞进 15 张牌里做 14 张和牌判断。
+        let mut hand_tile_types: Vec<TileType> =
+            hand.tiles().iter().map(|tile| tile.tile_type()).collect();
+        hand_tile_types.push(discarded_tile.tile_type());
+        if riichi_logic::win_check::is_win_shape_with_open_melds(
+            &hand_tile_types,
+            player.melds.len(),
+        ) {
             if !player.furiten.is_furiten() {
                 options.push(CallOption {
                     player: pid,
@@ -166,6 +168,7 @@ fn find_tiles_of_type_3(hand: &riichi_core::hand::Hand, tt: TileType) -> [Tile; 
 mod tests {
     use super::detect_calls;
     use riichi_core::game::CallType;
+    use riichi_core::meld::Meld;
     use riichi_core::player::{Player, PlayerId};
     use riichi_core::tile::Tile;
 
@@ -200,5 +203,39 @@ mod tests {
         assert!(options
             .iter()
             .any(|option| matches!(option.call_type, CallType::Pon { .. })));
+    }
+
+    #[test]
+    fn open_kan_ron_shape_uses_fixed_meld_count() {
+        let mut players = [
+            Player::new(PlayerId(0), riichi_core::tile::TileType::EAST),
+            Player::new(PlayerId(1), riichi_core::tile::TileType::SOUTH),
+            Player::new(PlayerId(2), riichi_core::tile::TileType::WEST),
+            Player::new(PlayerId(3), riichi_core::tile::TileType::NORTH),
+        ];
+        players[1].hand = riichi_core::hand::Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+        ]);
+        let east = [
+            Tile::from_raw(108),
+            Tile::from_raw(109),
+            Tile::from_raw(110),
+            Tile::from_raw(111),
+        ];
+        players[1].melds.push(Meld::ankan(east.to_vec()));
+
+        let options = detect_calls(&players, Tile::from_raw(37), PlayerId(0));
+        assert!(options.iter().any(
+            |option| option.player == PlayerId(1) && matches!(option.call_type, CallType::Ron)
+        ));
     }
 }
