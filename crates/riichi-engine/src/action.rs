@@ -112,6 +112,7 @@ impl GameState {
                 }
                 // 四家立直检查（第四家立直宣言后，且未被荣和取消）
                 else if matches!(self.phase, GamePhase::ResponsePhase { .. })
+                    && self.rules.suucha_riichi_abort
                     && self.check_suucha_riichi()
                 {
                     self.resolve_round_end(RoundEndReason::SuuchaRiichi);
@@ -412,7 +413,7 @@ impl GameState {
                     from_player: discarder,
                 });
                 // 四杠散了检查
-                if self.check_four_kan_abort() {
+                if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
                     self.resolve_round_end(RoundEndReason::SuuKantsu);
                 }
             }
@@ -437,7 +438,7 @@ impl GameState {
                 self.current_player = kakan_player;
                 self.draw_rinshan()?;
 
-                if self.check_four_kan_abort() {
+                if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
                     self.resolve_round_end(RoundEndReason::SuuKantsu);
                 } else {
                     self.phase = GamePhase::ActionPhase;
@@ -573,7 +574,7 @@ impl GameState {
         self.draw_rinshan()?;
 
         // 四杠散了检查
-        if self.check_four_kan_abort() {
+        if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
             self.resolve_round_end(RoundEndReason::SuuKantsu);
         }
 
