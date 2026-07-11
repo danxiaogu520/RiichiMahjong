@@ -35,13 +35,12 @@ pub fn detect_calls(
         if riichi_logic::win_check::is_win_shape_with_open_melds(
             &hand_tile_types,
             player.melds.len(),
-        ) {
-            if !player.furiten.is_furiten() {
-                options.push(CallOption {
-                    player: pid,
-                    call_type: CallType::Ron,
-                });
-            }
+        ) && !player.furiten.is_furiten()
+        {
+            options.push(CallOption {
+                player: pid,
+                call_type: CallType::Ron,
+            });
         }
 
         // 大明杠检测：手中有 3 张相同牌
