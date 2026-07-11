@@ -28,14 +28,37 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 app.messages.push("无法立直".to_string());
             }
         }
+        KeyCode::Char('a') => {
+            if let Some(&tile) = app.ankan_options.first() {
+                app.send_ankan(tile);
+            }
+        }
+        KeyCode::Char('k') => {
+            if let Some(&(index, tile)) = app.kakan_options.first() {
+                app.send_kakan(index, tile);
+            }
+        }
+        KeyCode::Char('9') => {
+            if app.can_kyuushu {
+                app.send_kyuushu();
+            }
+        }
         KeyCode::Left => {
-            if app.selected > 0 {
-                app.selected -= 1;
+            if app.call_options.is_empty() {
+                if app.selected > 0 {
+                    app.selected -= 1;
+                }
+            } else if app.call_selected > 0 {
+                app.call_selected -= 1;
             }
         }
         KeyCode::Right => {
-            if app.selected < tile_count.saturating_sub(1) {
-                app.selected += 1;
+            if app.call_options.is_empty() {
+                if app.selected < tile_count.saturating_sub(1) {
+                    app.selected += 1;
+                }
+            } else if app.call_selected + 1 < app.call_options.len() {
+                app.call_selected += 1;
             }
         }
         KeyCode::Enter => {
@@ -69,7 +92,20 @@ pub fn handle_call_input(app: &mut App, key: KeyEvent) {
             app.send_call_pass();
         }
         KeyCode::Enter | KeyCode::Char('y') => {
-            app.send_call_ron();
+            if let Some(option) = app.call_options.get(app.call_selected) {
+                match &option.call_type {
+                    riichi_core::game::CallType::Ron => app.send_call_ron(),
+                    riichi_core::game::CallType::Pon { hand_tiles } => {
+                        app.send_call_pon(*hand_tiles)
+                    }
+                    riichi_core::game::CallType::Chi { hand_tiles } => {
+                        app.send_call_chi(*hand_tiles)
+                    }
+                    riichi_core::game::CallType::Minkan { hand_tiles } => {
+                        app.send_call_minkan(*hand_tiles)
+                    }
+                }
+            }
         }
         _ => {}
     }

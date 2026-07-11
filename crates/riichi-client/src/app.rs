@@ -27,6 +27,9 @@ pub struct App {
 
     pub can_tsumo: bool,
     pub can_riichi: bool,
+    pub ankan_options: Vec<Tile>,
+    pub kakan_options: Vec<(usize, Tile)>,
+    pub can_kyuushu: bool,
     pub call_options: Vec<CallOption>,
 
     pub messages: Vec<String>,
@@ -57,6 +60,9 @@ impl App {
             riichi_sticks: 0,
             can_tsumo: false,
             can_riichi: false,
+            ankan_options: Vec::new(),
+            kakan_options: Vec::new(),
+            can_kyuushu: false,
             call_options: Vec::new(),
             messages: Vec::new(),
             selected: 0,
@@ -105,10 +111,16 @@ impl App {
                 ServerEvent::ActionRequired {
                     can_tsumo,
                     can_riichi,
+                    ankan_options,
+                    kakan_options,
+                    can_kyuushu,
                     ..
                 } => {
                     self.can_tsumo = can_tsumo;
                     self.can_riichi = can_riichi;
+                    self.ankan_options = ankan_options;
+                    self.kakan_options = kakan_options;
+                    self.can_kyuushu = can_kyuushu;
                     self.call_options.clear();
                 }
                 ServerEvent::CallRequired { options } => {
@@ -156,10 +168,52 @@ impl App {
             .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Riichi)));
     }
 
+    pub fn send_ankan(&self, tile: Tile) {
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::TurnAction(TurnActionMsg::Ankan(tile)),
+        ));
+    }
+
+    pub fn send_kakan(&self, meld_index: usize, tile: Tile) {
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::TurnAction(TurnActionMsg::Kakan(meld_index, tile)),
+        ));
+    }
+
+    pub fn send_kyuushu(&self) {
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::TurnAction(TurnActionMsg::KyuushuKyuuhai),
+        ));
+    }
+
     pub fn send_call_ron(&self) {
         let _ = self.action_tx.try_send((
             PlayerId(0),
             PlayerAction::CallResponse(CallResponseMsg::Ron),
+        ));
+    }
+
+    pub fn send_call_pon(&self, hand_tiles: [Tile; 2]) {
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::CallResponse(CallResponseMsg::Pon { hand_tiles }),
+        ));
+    }
+
+    pub fn send_call_chi(&self, hand_tiles: [Tile; 2]) {
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::CallResponse(CallResponseMsg::Chi { hand_tiles }),
+        ));
+    }
+
+    pub fn send_call_minkan(&self, hand_tiles: [Tile; 3]) {
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::CallResponse(CallResponseMsg::Minkan { hand_tiles }),
         ));
     }
 
