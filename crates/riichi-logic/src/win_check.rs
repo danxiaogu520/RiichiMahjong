@@ -349,6 +349,12 @@ fn detect_yaku(
             concealed_triplet_count = concealed_triplet_count.saturating_sub(1);
         }
 
+        if ctx.is_tenhou {
+            yaku.push(YakuResult::new(YakuName::Tenhou, 13));
+        } else if ctx.is_chiihou {
+            yaku.push(YakuResult::new(YakuName::Chiihou, 13));
+        }
+
         if hand.hand_type == HandType::Kokushi {
             let mut thirteen_wait = false;
             for &tt in &TileType::YAOCHUUHAI {

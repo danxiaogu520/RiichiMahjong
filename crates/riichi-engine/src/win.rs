@@ -94,6 +94,27 @@ impl GameState {
                 })
         });
 
+        let has_call = self.events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PlayerCalledPon { .. }
+                    | GameEvent::PlayerCalledChi { .. }
+                    | GameEvent::PlayerCalledMinkan { .. }
+                    | GameEvent::PlayerCalledAnkan { .. }
+                    | GameEvent::PlayerCalledKakan { .. }
+            )
+        });
+        let has_any_discard = self
+            .events
+            .iter()
+            .any(|event| matches!(event, GameEvent::PlayerDiscarded { .. }));
+        let has_player_discard = self.events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player
+            )
+        });
+
         WinContext {
             is_tsumo,
             is_riichi: p.is_riichi,
@@ -103,6 +124,8 @@ impl GameState {
             is_chankan,
             is_haitei: no_tiles_left && is_tsumo,
             is_houtei: no_tiles_left && !is_tsumo,
+            is_tenhou: is_tsumo && player == self.get_dealer() && !has_any_discard && !has_call,
+            is_chiihou: is_tsumo && player != self.get_dealer() && !has_player_discard && !has_call,
             red_fives: self.rules.red_fives,
             kuitan: self.rules.kuitan,
             atozuke: self.rules.atozuke,

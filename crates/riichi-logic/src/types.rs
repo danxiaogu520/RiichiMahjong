@@ -45,6 +45,8 @@ pub enum YakuName {
     Chinitsu,
 
     // 役满
+    Tenhou,
+    Chiihou,
     Kokushi,
     Suuankou,
     Daisangen,
@@ -100,6 +102,10 @@ pub struct WinContext {
     pub is_chankan: bool,
     pub is_haitei: bool,
     pub is_houtei: bool,
+    /// 庄家第一巡、尚未打出任何牌时自摸。
+    pub is_tenhou: bool,
+    /// 闲家第一巡、本人尚未打出任何牌且未发生鸣牌时自摸。
+    pub is_chiihou: bool,
     /// 万、筒、索三种赤五的数量。
     pub red_fives: [u8; 3],
     /// 是否允许副露断幺九（食断）。
