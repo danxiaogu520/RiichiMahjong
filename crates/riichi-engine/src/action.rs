@@ -429,6 +429,7 @@ impl GameState {
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
+                self.kuikae_forbidden[player.0] = vec![discarded_tile.tile_type()];
                 self.update_discard_furiten(player);
                 new_events.push(GameEvent::PlayerCalledPon {
                     player,
@@ -452,6 +453,7 @@ impl GameState {
                 }
                 self.current_player = player;
                 self.phase = GamePhase::ActionPhase;
+                self.kuikae_forbidden[player.0] = vec![discarded_tile.tile_type()];
                 self.update_discard_furiten(player);
                 new_events.push(GameEvent::PlayerCalledChi {
                     player,
