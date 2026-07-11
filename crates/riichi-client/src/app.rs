@@ -40,6 +40,7 @@ pub struct App {
     pub show_result: bool,
     pub game_over: bool,
     pub scores: [i32; 4],
+    pub ranking: [usize; 4],
 }
 
 impl App {
@@ -73,6 +74,7 @@ impl App {
             show_result: false,
             game_over: false,
             scores: [0; 4],
+            ranking: [0, 1, 2, 3],
         }
     }
 
@@ -131,8 +133,9 @@ impl App {
                     self.call_options = options;
                     self.call_selected = 0;
                 }
-                ServerEvent::GameOver { scores } => {
+                ServerEvent::GameOver { scores, ranking } => {
                     self.scores = scores;
+                    self.ranking = ranking;
                     self.game_over = true;
                     self.show_result = true;
                 }

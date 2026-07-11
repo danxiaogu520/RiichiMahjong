@@ -43,6 +43,7 @@ impl GameLoop {
             if self.game.is_game_over() {
                 self.broadcast(ServerEvent::GameOver {
                     scores: self.scores(),
+                    ranking: self.game.final_ranking(),
                 })
                 .await;
                 return;
@@ -389,6 +390,7 @@ impl GameLoop {
         if self.game.is_game_over() {
             self.broadcast(ServerEvent::GameOver {
                 scores: self.scores(),
+                ranking: self.game.final_ranking(),
             })
             .await;
         } else {
