@@ -116,17 +116,13 @@ impl GameState {
             }
 
             let mut hand_after = hand.clone();
+            if let Some(drawn) = self.drawn_tile {
+                hand_after.add(drawn);
+            }
             let mut removed = 0;
-            for tile in hand.tiles().iter().copied() {
+            for tile in hand_after.tiles().to_vec() {
                 if tile.tile_type() == tt && removed < 4 {
                     hand_after.remove(tile).ok();
-                    removed += 1;
-                }
-            }
-            if removed < 4 {
-                if let Some(drawn) = self.drawn_tile.filter(|tile| tile.tile_type() == tt) {
-                    hand_after.add(drawn);
-                    hand_after.remove(drawn).ok();
                     removed += 1;
                 }
             }
