@@ -27,6 +27,35 @@ pub fn calculate_points(
     honba: u32,
     is_tsumo: bool,
 ) -> [i32; 4] {
+    calculate_points_with_loser(
+        total_han,
+        total_fu,
+        yakuman_count,
+        winner,
+        None,
+        dealer,
+        riichi_sticks,
+        honba,
+        is_tsumo,
+    )
+}
+
+/// 计算和了后的点数变化，并在荣和时扣除指定放铳者。
+///
+/// `loser` 为 `Some` 时仅用于荣和；自摸时必须为 `None`。
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+pub fn calculate_points_with_loser(
+    total_han: u8,
+    total_fu: u32,
+    yakuman_count: u8,
+    winner: usize,
+    loser: Option<usize>,
+    dealer: usize,
+    riichi_sticks: u32,
+    honba: u32,
+    is_tsumo: bool,
+) -> [i32; 4] {
+    // 一本场总计增加 300 点：荣和由放铳者支付，自摸由三家各支付 100 点。
     let honba_val = (honba * 100) as i32;
     let riichi_bonus = (riichi_sticks * 1000) as i32;
     let is_dealer = winner == dealer;
@@ -66,16 +95,19 @@ pub fn calculate_points(
         }
     } else {
         // 荣和
-        let pay = if is_dealer {
+        let hand_pay = if is_dealer {
             round_up_100(bp * 6)
         } else {
             round_up_100(bp * 4)
-        } + honba_val * 3
-            + riichi_bonus;
+        };
+        let pay = hand_pay + honba * 300i32 + riichi_bonus;
 
         changes[winner] = pay;
-        // 荣和时 loser 必须有效，但这里由调用方保证
-        // 点数变化数组只描述变化量，具体谁付由调用方设置
+        if let Some(loser) = loser {
+            if loser < changes.len() && loser != winner {
+                changes[loser] -= pay;
+            }
+        }
     }
 
     changes
@@ -99,4 +131,29 @@ fn base_points(han: u8, fu: u32) -> i32 {
 /// 向上取整到百位
 fn round_up_100(n: i32) -> i32 {
     ((n + 99) / 100) * 100
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calculate_points_with_loser;
+
+    #[test]
+    fn ron_transfers_points_from_loser() {
+        let changes = calculate_points_with_loser(1, 30, 0, 0, Some(2), 1, 0, 0, false);
+        assert_eq!(changes, [1000, 0, -1000, 0]);
+        assert_eq!(changes.iter().sum::<i32>(), 0);
+    }
+
+    #[test]
+    fn honba_is_three_hundred_points_on_ron() {
+        let changes = calculate_points_with_loser(1, 30, 0, 0, Some(2), 1, 0, 2, false);
+        assert_eq!(changes, [1600, 0, -1600, 0]);
+    }
+
+    #[test]
+    fn tsumo_honba_is_one_hundred_per_opponent() {
+        let changes = calculate_points_with_loser(1, 30, 0, 0, None, 1, 0, 2, true);
+        assert_eq!(changes, [1700, -700, -500, -500]);
+        assert_eq!(changes.iter().sum::<i32>(), 0);
+    }
 }

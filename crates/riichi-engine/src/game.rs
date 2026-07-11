@@ -5,6 +5,8 @@ use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
 use serde::{Deserialize, Serialize};
 
+use crate::rules::RuleConfig;
+
 pub use riichi_core::game::{extract_kuikae_tiles, GameError, GamePhase};
 
 /// 麻将游戏状态核心结构体
@@ -21,6 +23,8 @@ pub use riichi_core::game::{extract_kuikae_tiles, GameError, GamePhase};
 /// - 当前游戏阶段
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
+    /// 当前牌局使用的规则配置。
+    pub rules: RuleConfig,
     /// 4 个玩家的完整状态
     pub players: [Player; 4],
     /// 当前场风（东场/南场）

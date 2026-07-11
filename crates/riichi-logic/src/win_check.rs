@@ -6,7 +6,7 @@ use crate::analysis::{
 };
 use crate::dora::calculate_dora;
 use crate::fu::calculate_fu;
-use crate::scoring::calculate_points;
+use crate::scoring::calculate_points_with_loser;
 use crate::types::{
     HandType, MentsuKind, TileCounts, WinContext, WinResult, WinningHand, YakuName, YakuResult,
 };
@@ -80,11 +80,12 @@ pub fn check_win(
     let total_han: u8 = all_yaku.iter().map(|y| y.han).sum();
     let yakuman_count = all_yaku.iter().filter(|y| y.han >= 13).count() as u8;
 
-    let points = calculate_points(
+    let points = calculate_points_with_loser(
         total_han,
         best_fu,
         yakuman_count,
         ctx.winner,
+        ctx.loser,
         ctx.dealer,
         ctx.riichi_sticks,
         ctx.honba,
