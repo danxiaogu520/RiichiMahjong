@@ -59,6 +59,9 @@ pub enum TurnActionMsg {
 pub enum CallResponseMsg {
     Pass,
     Ron,
+    Pon { hand_tiles: [Tile; 2] },
+    Chi { hand_tiles: [Tile; 2] },
+    Minkan { hand_tiles: [Tile; 3] },
 }
 
 // ═══════════════════════════════════════════════════════════════

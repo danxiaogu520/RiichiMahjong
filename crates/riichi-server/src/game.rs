@@ -160,7 +160,7 @@ impl GameLoop {
     async fn handle_response_phase_with_discarder(&mut self, discarder: PlayerId) {
         let call_options = self.game.get_call_options();
 
-        let mut ron_player: Option<PlayerId> = None;
+        let mut accepted_call: Option<(PlayerId, ResponseAction)> = None;
 
         for idx in 0..4u8 {
             let pid = PlayerId(idx as usize);
@@ -194,19 +194,36 @@ impl GameLoop {
 
             match response {
                 Some(CallResponseMsg::Ron) if has_ron => {
-                    ron_player = Some(pid);
-                    break;
+                    accepted_call = Some((pid, ResponseAction::Ron));
+                }
+                Some(CallResponseMsg::Pon { hand_tiles }) => {
+                    if accepted_call.is_none() {
+                        accepted_call = Some((pid, ResponseAction::Pon { hand_tiles }));
+                    }
+                }
+                Some(CallResponseMsg::Chi { hand_tiles }) => {
+                    if accepted_call.is_none() {
+                        accepted_call = Some((pid, ResponseAction::Chi { hand_tiles }));
+                    }
+                }
+                Some(CallResponseMsg::Minkan { hand_tiles }) => {
+                    if accepted_call.is_none() {
+                        accepted_call = Some((pid, ResponseAction::Minkan { hand_tiles }));
+                    }
                 }
                 _ => {
-                    let _ = self.game.execute_call(pid, ResponseAction::Pass);
+                    let _ = self.game.record_response_pass(pid);
                 }
             }
+
         }
 
-        if let Some(pid) = ron_player {
-            let _ = self.game.execute_call(pid, ResponseAction::Ron);
+        if let Some((pid, action)) = accepted_call {
+            let _ = self.game.execute_call(pid, action);
             self.broadcast_state().await;
-            self.handle_round_end().await;
+            if matches!(self.game.phase, GamePhase::RoundOver) {
+                self.handle_round_end().await;
+            }
             return;
         }
 

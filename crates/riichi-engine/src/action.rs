@@ -9,6 +9,39 @@ use riichi_logic::analysis::analyze_wait_tiles;
 use crate::game::{GameError, GamePhase, GameState};
 
 impl GameState {
+    /// 记录某位玩家在当前响应窗口选择 Pass，但不结束整个响应窗口。
+    ///
+    /// 服务端收集多人响应时使用；最终无人鸣牌时仍由普通 Pass 流程统一
+    /// 推进回合和处理所有玩家的临时振听。
+    pub fn record_response_pass(&mut self, player: PlayerId) -> Result<(), GameError> {
+        let discarded_tile = match self.phase {
+            GamePhase::ResponsePhase {
+                discarded_tile,
+                discarder,
+            } if player != discarder => discarded_tile,
+            GamePhase::ChankanResponse {
+                kakan_tile,
+                kakan_player,
+                ..
+            } if player != kakan_player => kakan_tile,
+            _ => {
+                return Err(GameError::InvalidAction(
+                    "当前不能记录响应 Pass".to_string(),
+                ));
+            }
+        };
+
+        let waiting = self.get_waiting_tile_types(player);
+        if waiting.contains(&discarded_tile.tile_type()) {
+            if self.players[player.0].is_riichi {
+                self.players[player.0].furiten.riichi = true;
+            } else {
+                self.players[player.0].furiten.round = true;
+            }
+        }
+        Ok(())
+    }
+
     /// 执行玩家的行动（行动阶段）
     ///
     /// 支持的行动类型：
