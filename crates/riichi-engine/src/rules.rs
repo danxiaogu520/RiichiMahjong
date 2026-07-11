@@ -16,6 +16,10 @@ pub struct RuleConfig {
     pub suukan_sanra_abort: bool,
     pub nagashi_mangan: bool,
     pub tobi: bool,
+    /// 轮到玩家操作的超时时间（毫秒）。
+    pub turn_timeout_ms: u64,
+    /// 响应窗口的超时时间（毫秒）。
+    pub response_timeout_ms: u64,
 }
 
 impl Default for RuleConfig {
@@ -31,6 +35,8 @@ impl Default for RuleConfig {
             suukan_sanra_abort: true,
             nagashi_mangan: false,
             tobi: false,
+            turn_timeout_ms: 30_000,
+            response_timeout_ms: 10_000,
         }
     }
 }

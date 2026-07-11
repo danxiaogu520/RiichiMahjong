@@ -6,6 +6,7 @@ use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
 use riichi_logic::shanten::ShantenCalculator;
 use tokio::sync::mpsc;
+use tokio::time::{timeout, Duration, Instant};
 
 use crate::channel::{ActionMsg, CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg};
 
@@ -321,29 +322,47 @@ impl GameLoop {
     }
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnActionMsg> {
-        while let Some((pid, action)) = self.action_rx.recv().await {
-            if pid != expected {
-                continue;
-            }
-            match action {
-                PlayerAction::TurnAction(ta) => return Some(ta),
-                _ => continue,
+        let deadline = Instant::now() + Duration::from_millis(self.game.rules.turn_timeout_ms);
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let received = timeout(remaining, self.action_rx.recv()).await;
+            match received {
+                Ok(Some((pid, PlayerAction::TurnAction(action)))) if pid == expected => {
+                    return Some(action);
+                }
+                Ok(Some(_)) => continue,
+                Ok(None) | Err(_) => break,
             }
         }
-        None
+
+        // 超时默认摸切；若状态异常没有摸牌，则选择当前手牌最后一张，
+        // 后续仍由规则引擎进行最终合法性校验。
+        self.game
+            .drawn_tile
+            .map(TurnActionMsg::Discard)
+            .or_else(|| {
+                self.game.players[expected.0]
+                    .hand
+                    .tiles()
+                    .last()
+                    .copied()
+                    .map(TurnActionMsg::Discard)
+            })
     }
 
     async fn wait_for_call_response(&mut self, expected: PlayerId) -> Option<CallResponseMsg> {
-        while let Some((pid, action)) = self.action_rx.recv().await {
-            if pid != expected {
-                continue;
-            }
-            match action {
-                PlayerAction::CallResponse(cr) => return Some(cr),
-                _ => continue,
+        let deadline = Instant::now() + Duration::from_millis(self.game.rules.response_timeout_ms);
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let received = timeout(remaining, self.action_rx.recv()).await;
+            match received {
+                Ok(Some((pid, PlayerAction::CallResponse(response)))) if pid == expected => {
+                    return Some(response);
+                }
+                Ok(Some(_)) => continue,
+                Ok(None) | Err(_) => return Some(CallResponseMsg::Pass),
             }
         }
-        None
     }
 
     async fn broadcast_state(&self) {
