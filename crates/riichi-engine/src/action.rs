@@ -767,6 +767,8 @@ impl GameState {
 mod tests {
     use super::*;
     use rand::SeedableRng;
+    use riichi_core::game::CallType;
+    use riichi_core::hand::Hand;
     use riichi_core::meld::Meld;
 
     #[test]
@@ -816,5 +818,39 @@ mod tests {
         assert!(matches!(state.phase, GamePhase::ResponsePhase { .. }));
         state.complete_response_pass().unwrap();
         assert!(matches!(state.phase, GamePhase::DrawPhase));
+    }
+
+    #[test]
+    fn open_white_dragon_pon_allows_ron_on_completing_tile() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(43);
+        state.start_round(&mut rng);
+        let white = Tile::from_raw(124);
+        state.players[1].melds.push(Meld::pon(
+            vec![white, Tile::from_raw(125), Tile::from_raw(126)],
+            white,
+            PlayerId(0),
+        ));
+        state.players[1].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+        ]);
+        state.phase = GamePhase::ResponsePhase {
+            discarded_tile: Tile::from_raw(37),
+            discarder: PlayerId(0),
+        };
+
+        let options = state.get_call_options();
+        assert!(options.iter().any(|option| {
+            option.player == PlayerId(1) && matches!(option.call_type, CallType::Ron)
+        }));
     }
 }

@@ -1,4 +1,5 @@
 use riichi_core::game::CallOption;
+use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
@@ -21,6 +22,7 @@ pub enum ServerEvent {
         points: [i32; 4],
         discards: [Vec<Tile>; 4],
         melds_count: [usize; 4],
+        melds: [Vec<Meld>; 4],
         dora: Vec<TileType>,
         remaining_tiles: usize,
         round: u32,

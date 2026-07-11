@@ -511,15 +511,35 @@ fn detect_yaku(
             }
         }
 
-        if is_yakuhai(hand.jantai, ctx) {
-            if hand.jantai.is_dragon() {
-                yaku.push(YakuResult::new(YakuName::YakuhaiSangen, 1));
+        // 役牌必须来自刻子/杠子，雀头不能单独构成役牌。
+        let mut yakuhai_triplets = Vec::new();
+        for mentsu in &hand.mentsu {
+            if mentsu.kind == MentsuKind::Koutsu && !yakuhai_triplets.contains(&mentsu.tile_type) {
+                yakuhai_triplets.push(mentsu.tile_type);
             }
-            if hand.jantai == ctx.seat_wind {
-                yaku.push(YakuResult::new(YakuName::YakuhaiJikaze, 1));
+        }
+        for meld in &ctx.melds {
+            if matches!(
+                meld.kind,
+                MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan
+            ) {
+                let tile_type = meld.tiles[0].tile_type();
+                if !yakuhai_triplets.contains(&tile_type) {
+                    yakuhai_triplets.push(tile_type);
+                }
             }
-            if hand.jantai == ctx.field_wind && hand.jantai != ctx.seat_wind {
-                yaku.push(YakuResult::new(YakuName::YakuhaiBakaze, 1));
+        }
+        for tile_type in yakuhai_triplets {
+            if is_yakuhai(tile_type, ctx) {
+                if tile_type.is_dragon() {
+                    yaku.push(YakuResult::new(YakuName::YakuhaiSangen, 1));
+                }
+                if tile_type == ctx.seat_wind {
+                    yaku.push(YakuResult::new(YakuName::YakuhaiJikaze, 1));
+                }
+                if tile_type == ctx.field_wind {
+                    yaku.push(YakuResult::new(YakuName::YakuhaiBakaze, 1));
+                }
             }
         }
 
