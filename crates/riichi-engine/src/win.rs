@@ -39,25 +39,60 @@ impl GameState {
         let p = &self.players[player.0];
         let no_tiles_left = self.remaining_tiles() == 0;
 
-        // 查询是否一发：立直后没有打牌/副露事件
-        let is_ippatsu = self.events.iter().any(
+        let riichi_index = self.events.iter().rposition(
             |e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
-        ) && !self.events.iter().any(|e| match e {
-            GameEvent::PlayerDiscarded { player: pid, .. } => *pid == player,
-            GameEvent::PlayerCalledPon { player: pid, .. }
-            | GameEvent::PlayerCalledChi { player: pid, .. } => *pid == player,
-            _ => false,
+        );
+
+        // 一发从立直宣言牌之后开始计算：立直宣言牌本身不打断一发，
+        // 任何玩家的吃、碰、明杠、暗杠、加杠都会打断一发。
+        let is_ippatsu = riichi_index.is_some_and(|index| {
+            let after = &self.events[index + 1..];
+            let own_discards = after
+                .iter()
+                .filter(|event| {
+                    matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
+                })
+                .count();
+            own_discards == 1
+                && !after.iter().any(|event| {
+                    matches!(
+                        event,
+                        GameEvent::PlayerCalledPon { .. }
+                            | GameEvent::PlayerCalledChi { .. }
+                            | GameEvent::PlayerCalledMinkan { .. }
+                            | GameEvent::PlayerCalledAnkan { .. }
+                            | GameEvent::PlayerCalledKakan { .. }
+                    )
+                })
         });
 
-        // 查询是否双立直：立直事件在第一巡（只有庄家的第一次打牌）
-        let is_double_riichi = self.events.iter().any(
-            |e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
-        ) && self
-            .events
-            .iter()
-            .filter(|e| matches!(e, GameEvent::PlayerDiscarded { .. }))
-            .count()
-            <= 1;
+        // 双立直必须发生在当前局第一巡：立直者在本局只打出宣言牌，
+        // 且宣言前没有鸣牌、全桌弃牌数仍不超过一轮四张。
+        let is_double_riichi = riichi_index.is_some_and(|index| {
+            let before_or_at = &self.events[..=index];
+            let discard_count = before_or_at
+                .iter()
+                .filter(|event| matches!(event, GameEvent::PlayerDiscarded { .. }))
+                .count();
+            let own_discard_count = before_or_at
+                .iter()
+                .filter(|event| {
+                    matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
+                })
+                .count();
+            discard_count <= 4
+                && own_discard_count == 1
+                && !before_or_at.iter().any(|event| {
+                    matches!(
+                        event,
+                        GameEvent::PlayerCalledPon { .. }
+                            | GameEvent::PlayerCalledChi { .. }
+                            | GameEvent::PlayerCalledMinkan { .. }
+                            | GameEvent::PlayerCalledAnkan { .. }
+                            | GameEvent::PlayerCalledKakan { .. }
+                    )
+                })
+        });
 
         WinContext {
             is_tsumo,
