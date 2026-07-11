@@ -1065,7 +1065,7 @@ fn detect_yaku(
 mod tests {
     use super::{check_win, detect_yaku};
     use crate::types::{HandType, Mentsu, MentsuKind, WinContext, WinningHand, YakuName};
-    use riichi_core::meld::Meld;
+    use riichi_core::meld::{Meld, MeldKind};
     use riichi_core::player::PlayerId;
     use riichi_core::tile::TileType;
 
@@ -1202,5 +1202,81 @@ mod tests {
         let ittsu_ctx = context(true, vec![ittsu_meld]);
         let yaku = detect_yaku(&[ittsu_hand], &ittsu_ctx, TileType(3).with_copy(0));
         assert_eq!(yaku_han(&yaku, YakuName::Ittsu), Some(1));
+    }
+
+    #[test]
+    fn all_open_sanshoku_patterns_are_detected() {
+        let open_meld = |kind: MeldKind, tile_type: TileType| {
+            let tiles: Vec<_> = (0..3).map(|copy| tile_type.with_copy(copy)).collect();
+            match kind {
+                MeldKind::Chi => {
+                    let called = tiles[0];
+                    Meld::chi(tiles, called, PlayerId(0))
+                }
+                _ => {
+                    let called = tiles[0];
+                    Meld::pon(tiles, called, PlayerId(0))
+                }
+            }
+        };
+
+        let sequence_melds = vec![
+            Meld::chi(
+                vec![
+                    TileType(0).with_copy(0),
+                    TileType(1).with_copy(0),
+                    TileType(2).with_copy(0),
+                ],
+                TileType(0).with_copy(0),
+                PlayerId(0),
+            ),
+            Meld::chi(
+                vec![
+                    TileType(9).with_copy(0),
+                    TileType(10).with_copy(0),
+                    TileType(11).with_copy(0),
+                ],
+                TileType(9).with_copy(0),
+                PlayerId(1),
+            ),
+            Meld::chi(
+                vec![
+                    TileType(18).with_copy(0),
+                    TileType(19).with_copy(0),
+                    TileType(20).with_copy(0),
+                ],
+                TileType(18).with_copy(0),
+                PlayerId(2),
+            ),
+        ];
+        let sequence_hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType(17),
+            mentsu: vec![triplet(TileType(8))],
+        };
+        let yaku = detect_yaku(
+            &[sequence_hand],
+            &context(true, sequence_melds),
+            TileType(17).with_copy(0),
+        );
+        assert_eq!(yaku_han(&yaku, YakuName::SanshokuDoujun), Some(1));
+        assert_eq!(yaku_han(&yaku, YakuName::Junchan), Some(2));
+
+        let triplet_melds = vec![
+            open_meld(MeldKind::Pon, TileType(1)),
+            open_meld(MeldKind::Pon, TileType(10)),
+            open_meld(MeldKind::Pon, TileType(19)),
+        ];
+        let triplet_hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType(13),
+            mentsu: vec![sequence(TileType(0))],
+        };
+        let yaku = detect_yaku(
+            &[triplet_hand],
+            &context(true, triplet_melds),
+            TileType(13).with_copy(0),
+        );
+        assert_eq!(yaku_han(&yaku, YakuName::SanshokuDoukou), Some(2));
     }
 }
