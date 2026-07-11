@@ -6,6 +6,8 @@ use ratatui::{
     Frame,
 };
 
+use riichi_core::game::CallType;
+
 use crate::app::App;
 use crate::ui::{format_tile_type, tile_color};
 
@@ -161,12 +163,46 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_action_line(app: &App) -> Line<'static> {
     if !app.call_options.is_empty() {
-        let spans = vec![Span::styled(
-            "响应: [←→]选择 [Enter]确认 [P]跳过",
+        let mut spans = vec![Span::styled(
+            "响应: ",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )];
+        for (index, option) in app.call_options.iter().enumerate() {
+            let label = match &option.call_type {
+                CallType::Ron => "荣和".to_string(),
+                CallType::Pon { hand_tiles } => format!(
+                    "碰({}{})",
+                    format_tile_type(hand_tiles[0].tile_type()),
+                    format_tile_type(hand_tiles[1].tile_type())
+                ),
+                CallType::Chi { hand_tiles } => format!(
+                    "吃({}{})",
+                    format_tile_type(hand_tiles[0].tile_type()),
+                    format_tile_type(hand_tiles[1].tile_type())
+                ),
+                CallType::Minkan { hand_tiles } => format!(
+                    "明杠({}{}{})",
+                    format_tile_type(hand_tiles[0].tile_type()),
+                    format_tile_type(hand_tiles[1].tile_type()),
+                    format_tile_type(hand_tiles[2].tile_type())
+                ),
+            };
+            let style = if index == app.call_selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Yellow)
+            };
+            spans.push(Span::styled(format!("[{}] ", label), style));
+        }
+        spans.push(Span::styled(
+            "←→选择 Enter确认 P跳过",
+            Style::default().fg(Color::DarkGray),
+        ));
         return Line::from(spans);
     }
 
