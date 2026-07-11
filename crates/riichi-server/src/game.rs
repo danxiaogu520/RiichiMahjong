@@ -103,6 +103,43 @@ impl GameLoop {
     ) {
         self.event_txs[player.0] = event_tx;
         self.broadcast_state().await;
+        self.send_current_action_prompt(player).await;
+    }
+
+    /// 向重连玩家重新发送当前阶段的操作提示。
+    async fn send_current_action_prompt(&self, player: PlayerId) {
+        match self.game.phase {
+            GamePhase::ActionPhase if self.game.current_player == player => {
+                let _ = self
+                    .event_txs[player.0]
+                    .send(ServerEvent::ActionRequired {
+                        can_tsumo: self.game.check_tsumo(player).is_some(),
+                        can_riichi: self.game.can_declare_riichi(player),
+                        discard_options: self.game.players[player.0]
+                            .hand
+                            .tiles()
+                            .to_vec(),
+                        ankan_options: self.game.get_ankan_options(player),
+                        kakan_options: self.game.get_kakan_options(player),
+                        can_kyuushu: self.game.can_declare_kyuushu(player),
+                    })
+                    .await;
+            }
+            GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
+                let options: Vec<_> = self
+                    .game
+                    .get_call_options()
+                    .into_iter()
+                    .filter(|option| option.player == player)
+                    .collect();
+                if !options.is_empty() {
+                    let _ = self.event_txs[player.0]
+                        .send(ServerEvent::CallRequired { options })
+                        .await;
+                }
+            }
+            _ => {}
+        }
     }
 
     async fn apply_turn_action(&mut self, player: PlayerId, action: TurnActionMsg) {
