@@ -543,6 +543,9 @@ impl GameState {
     /// 考虑手牌（3n+1）与自摸牌缓冲区中的牌
     /// 手牌中有 4 张相同牌，或手牌 3 张 + 自摸牌 1 张
     pub fn get_ankan_options(&self, player: PlayerId) -> Vec<Tile> {
+        if self.players[player.0].is_riichi {
+            return self.get_riichi_ankan_options(player);
+        }
         let hand = &self.players[player.0].hand;
         let mut seen = std::collections::HashSet::new();
         let mut options = Vec::new();

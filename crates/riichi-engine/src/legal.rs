@@ -29,10 +29,7 @@ impl GameState {
                     actions.push(LegalAction::Turn(TurnAction::Discard(tile)));
                 }
                 if self.can_declare_riichi(player) {
-                    for &tile in self.players[player.0].hand.tiles() {
-                        actions.push(LegalAction::Turn(TurnAction::RiichiDiscard(tile)));
-                    }
-                    if let Some(tile) = self.drawn_tile {
+                    for tile in self.get_riichi_discard_options(player) {
                         actions.push(LegalAction::Turn(TurnAction::RiichiDiscard(tile)));
                     }
                 }
