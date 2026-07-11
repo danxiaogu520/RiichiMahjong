@@ -1,7 +1,7 @@
 use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::analysis::{analyze_wait_tiles, analyze_wait_tiles_with_open_melds};
+use riichi_logic::analysis::analyze_wait_tiles_with_open_melds;
 use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::types::TileCounts;
 
@@ -97,10 +97,11 @@ impl GameState {
             return vec![];
         }
         let hand = &p.hand;
-        let waits_before: std::collections::HashSet<TileType> = analyze_wait_tiles(hand.tiles())
-            .iter()
-            .map(|w| w.tile_type)
-            .collect();
+        let waits_before: std::collections::HashSet<TileType> =
+            analyze_wait_tiles_with_open_melds(hand.tiles(), p.melds.len())
+                .iter()
+                .map(|w| w.tile_type)
+                .collect();
 
         if waits_before.is_empty() {
             return vec![];
@@ -134,7 +135,7 @@ impl GameState {
             }
 
             let waits_after: std::collections::HashSet<TileType> =
-                analyze_wait_tiles(hand_after.tiles())
+                analyze_wait_tiles_with_open_melds(hand_after.tiles(), p.melds.len() + 1)
                     .iter()
                     .map(|w| w.tile_type)
                     .collect();
