@@ -125,10 +125,13 @@ pub fn calculate_fu_with_winning_tile(
             MeldKind::Ankan => {
                 fu += if is_yao { 32 } else { 16 };
             }
+            MeldKind::Pon => {
+                fu += if is_yao { 4 } else { 2 };
+            }
             MeldKind::Minkan | MeldKind::Kakan => {
                 fu += if is_yao { 16 } else { 8 };
             }
-            MeldKind::Chi | MeldKind::Pon => {} // 吃碰的符已在面子符中计算
+            MeldKind::Chi => {} // 吃没有符
         }
     }
 
@@ -176,6 +179,8 @@ pub fn calculate_fu_with_winning_tile(
 mod tests {
     use super::calculate_fu_with_winning_tile;
     use crate::types::{HandType, Mentsu, MentsuKind, WinningHand};
+    use riichi_core::meld::Meld;
+    use riichi_core::player::PlayerId;
     use riichi_core::tile::TileType;
 
     fn sequence(tile_type: TileType) -> Mentsu {
@@ -253,5 +258,58 @@ mod tests {
 
         assert_eq!(two_sided, 30);
         assert_eq!(edge, 40);
+    }
+
+    #[test]
+    fn open_pon_contributes_two_or_four_fu() {
+        let hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType(10),
+            mentsu: vec![
+                triplet(TileType(1)),
+                triplet(TileType(2)),
+                sequence(TileType(12)),
+            ],
+        };
+        let simple_pon = Meld::pon(
+            vec![
+                TileType(22).with_copy(0),
+                TileType(22).with_copy(1),
+                TileType(22).with_copy(2),
+            ],
+            TileType(22).with_copy(0),
+            PlayerId(1),
+        );
+        let terminal_pon = Meld::pon(
+            vec![
+                TileType(0).with_copy(0),
+                TileType(0).with_copy(1),
+                TileType(0).with_copy(2),
+            ],
+            TileType(0).with_copy(0),
+            PlayerId(1),
+        );
+
+        let simple_fu = calculate_fu_with_winning_tile(
+            &hand,
+            &[simple_pon],
+            &[],
+            false,
+            TileType::EAST,
+            TileType::EAST,
+            Some(TileType(12)),
+        );
+        let terminal_fu = calculate_fu_with_winning_tile(
+            &hand,
+            &[terminal_pon],
+            &[],
+            false,
+            TileType::EAST,
+            TileType::EAST,
+            Some(TileType(12)),
+        );
+
+        assert_eq!(simple_fu, 30);
+        assert_eq!(terminal_fu, 40);
     }
 }
