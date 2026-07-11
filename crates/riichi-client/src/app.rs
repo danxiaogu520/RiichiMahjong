@@ -14,6 +14,7 @@ pub struct App {
 
     pub phase: GamePhase,
     pub current_player: PlayerId,
+    pub pending_discard: Option<(PlayerId, Tile)>,
     pub hand_tiles: Vec<Tile>,
     pub hand_count: usize,
     pub points: [i32; 4],
@@ -50,6 +51,7 @@ impl App {
             action_tx: handle.action_tx,
             phase: GamePhase::ActionPhase,
             current_player: PlayerId(0),
+            pending_discard: None,
             hand_tiles: Vec::new(),
             hand_count: 0,
             points: [25000; 4],
@@ -84,6 +86,7 @@ impl App {
                 ServerEvent::StateUpdate {
                     phase,
                     current_player,
+                    pending_discard,
                     hand_tiles,
                     hand_count,
                     points,
@@ -98,6 +101,7 @@ impl App {
                 } => {
                     self.phase = phase;
                     self.current_player = current_player;
+                    self.pending_discard = pending_discard;
                     self.hand_tiles = hand_tiles;
                     self.hand_count = hand_count;
                     self.points = points;

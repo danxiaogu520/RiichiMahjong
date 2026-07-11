@@ -164,7 +164,14 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
 fn render_action_line(app: &App) -> Line<'static> {
     if !app.call_options.is_empty() {
         let mut spans = vec![Span::styled(
-            "响应: ",
+            match app.pending_discard {
+                Some((player, tile)) => format!(
+                    "响应: {}打出{} ",
+                    player,
+                    format_tile_type(tile.tile_type())
+                ),
+                None => "响应: ".to_string(),
+            },
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
