@@ -81,6 +81,11 @@ pub fn check_win(
             ));
         }
 
+        // 役满结算不再叠加普通役和宝牌；多个役满之间仍然保留并累计。
+        if all_yaku.iter().any(|result| result.han >= 13) {
+            all_yaku.retain(|result| result.han >= 13);
+        }
+
         let fu = calculate_fu_with_winning_tile(
             hand,
             &ctx.melds,
@@ -1377,5 +1382,41 @@ mod tests {
             yaku_han(&regular.yaku_results, YakuName::ChuurenPoutou9),
             None
         );
+    }
+
+    #[test]
+    fn yakuman_result_does_not_include_regular_yaku_or_dora() {
+        let hand_types = vec![
+            TileType(0),
+            TileType(0),
+            TileType(0),
+            TileType(8),
+            TileType(8),
+            TileType(8),
+            TileType(9),
+            TileType(9),
+            TileType(9),
+            TileType(17),
+            TileType(17),
+            TileType(17),
+            TileType(18),
+            TileType(18),
+        ];
+        let all_tiles = hand_types
+            .iter()
+            .enumerate()
+            .map(|(index, &tile_type)| tile_type.with_copy((index % 4) as u8))
+            .collect::<Vec<_>>();
+        let result = check_win(
+            &all_tiles,
+            &hand_types,
+            &context(true, Vec::new()),
+            false,
+            TileType(18).with_copy(3),
+        )
+        .expect("清老头应当和牌");
+        assert!(yaku_han(&result.yaku_results, YakuName::Chinroutou).is_some());
+        assert_eq!(yaku_han(&result.yaku_results, YakuName::Honroutou), None);
+        assert!(result.yaku_results.iter().all(|yaku| yaku.han >= 13));
     }
 }
