@@ -269,6 +269,16 @@ fn has_open_sequence(melds: &[Meld]) -> bool {
     melds.iter().any(|m| m.kind == MeldKind::Chi)
 }
 
+fn meld_sequence_start(meld: &Meld) -> Option<TileType> {
+    if meld.kind != MeldKind::Chi {
+        return None;
+    }
+    meld.tiles
+        .iter()
+        .map(|tile| tile.tile_type())
+        .min_by_key(|tile| tile.0)
+}
+
 fn is_pinfu_wait(hand: &WinningHand, winning_tile: Tile) -> bool {
     let winning_type = winning_tile.tile_type();
     hand.mentsu.iter().any(|m| {
@@ -833,6 +843,33 @@ fn detect_yaku(
                     break;
                 }
             }
+            if !found {
+                for meld in &ctx.melds {
+                    let Some(low) = meld_sequence_start(meld) else {
+                        continue;
+                    };
+                    if low.rank().0 != 1 {
+                        continue;
+                    }
+                    let suit = low.suit();
+                    let mid = TileType(suit_base(suit) + 3);
+                    let high = TileType(suit_base(suit) + 6);
+                    let has_start = |start: TileType| {
+                        hand.mentsu
+                            .iter()
+                            .any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == start)
+                            || ctx
+                                .melds
+                                .iter()
+                                .filter_map(meld_sequence_start)
+                                .any(|start_type| start_type == start)
+                    };
+                    if has_start(mid) && has_start(high) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
             if found {
                 yaku.push(YakuResult::new(
                     YakuName::Ittsu,
@@ -930,8 +967,8 @@ fn detect_yaku(
 
 #[cfg(test)]
 mod tests {
-    use super::check_win;
-    use crate::types::WinContext;
+    use super::{check_win, detect_yaku};
+    use crate::types::{HandType, Mentsu, MentsuKind, WinContext, WinningHand, YakuName};
     use riichi_core::meld::Meld;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::TileType;
@@ -1004,5 +1041,70 @@ mod tests {
             TileType(9).with_copy(2),
         );
         assert!(result.is_some());
+    }
+
+    fn sequence(tile_type: TileType) -> Mentsu {
+        Mentsu {
+            kind: MentsuKind::Shuntsu,
+            tile_type,
+            is_open: false,
+        }
+    }
+
+    fn triplet(tile_type: TileType) -> Mentsu {
+        Mentsu {
+            kind: MentsuKind::Koutsu,
+            tile_type,
+            is_open: false,
+        }
+    }
+
+    fn yaku_han(yaku: &[crate::types::YakuResult], target: YakuName) -> Option<u8> {
+        yaku.iter()
+            .find(|result| result.yaku == target)
+            .map(|result| result.han)
+    }
+
+    #[test]
+    fn open_yaku_use_their_reduced_han_values() {
+        let open_chi = |tiles: &[TileType]| {
+            let actual: Vec<_> = tiles
+                .iter()
+                .enumerate()
+                .map(|(i, &t)| t.with_copy(i as u8))
+                .collect();
+            Meld::chi(actual.clone(), actual[0], PlayerId(0))
+        };
+
+        // 副露混一色：2 翻。
+        let honitsu_meld = open_chi(&[TileType(0), TileType(1), TileType(2)]);
+        let honitsu_hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType::HAKU,
+            mentsu: vec![
+                sequence(TileType(3)),
+                sequence(TileType(6)),
+                triplet(TileType(0)),
+            ],
+        };
+        let mut honitsu_ctx = context(true, vec![honitsu_meld]);
+        honitsu_ctx.is_tsumo = true;
+        let yaku = detect_yaku(&[honitsu_hand], &honitsu_ctx, TileType(3).with_copy(0));
+        assert_eq!(yaku_han(&yaku, YakuName::Honitsu), Some(2));
+
+        // 副露一气通贯：1 翻。
+        let ittsu_meld = open_chi(&[TileType(0), TileType(1), TileType(2)]);
+        let ittsu_hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType(9),
+            mentsu: vec![
+                sequence(TileType(3)),
+                sequence(TileType(6)),
+                triplet(TileType(9)),
+            ],
+        };
+        let ittsu_ctx = context(true, vec![ittsu_meld]);
+        let yaku = detect_yaku(&[ittsu_hand], &ittsu_ctx, TileType(3).with_copy(0));
+        assert_eq!(yaku_han(&yaku, YakuName::Ittsu), Some(1));
     }
 }
