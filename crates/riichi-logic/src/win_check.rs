@@ -289,6 +289,37 @@ fn has_sequence_start(hand: &WinningHand, melds: &[Meld], start: TileType) -> bo
             .any(|meld_start| meld_start == start)
 }
 
+fn meld_has_yaochuuhai(meld: &Meld) -> bool {
+    match meld.kind {
+        MeldKind::Chi => meld_sequence_start(meld)
+            .is_some_and(|start| start.is_terminal() || TileType(start.0 + 2).is_terminal()),
+        MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan => meld
+            .tiles
+            .first()
+            .is_some_and(|tile| tile.tile_type().is_yaochuuhai()),
+    }
+}
+
+fn meld_has_terminal(meld: &Meld) -> bool {
+    match meld.kind {
+        MeldKind::Chi => meld_sequence_start(meld)
+            .is_some_and(|start| start.is_terminal() || TileType(start.0 + 2).is_terminal()),
+        MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan => meld
+            .tiles
+            .first()
+            .is_some_and(|tile| tile.tile_type().is_terminal()),
+    }
+}
+
+fn meld_triplet_tile(meld: &Meld) -> Option<TileType> {
+    matches!(
+        meld.kind,
+        MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan
+    )
+    .then(|| meld.tiles.first().map(|tile| tile.tile_type()))
+    .flatten()
+}
+
 fn is_pinfu_wait(hand: &WinningHand, winning_tile: Tile) -> bool {
     let winning_type = winning_tile.tile_type();
     hand.mentsu.iter().any(|m| {
@@ -695,6 +726,43 @@ fn detect_yaku(
                     break;
                 }
             }
+            if !found {
+                for tt in ctx.melds.iter().filter_map(meld_triplet_tile) {
+                    if !tt.is_number() {
+                        continue;
+                    }
+                    let rank = tt.rank().0;
+                    let suit = tt.suit();
+                    for other_suit in [Suit::Man, Suit::Pin, Suit::Sou] {
+                        if other_suit == suit {
+                            continue;
+                        }
+                        let other = TileType(suit_base(other_suit) + rank - 1);
+                        let third_suit = [Suit::Man, Suit::Pin, Suit::Sou]
+                            .iter()
+                            .find(|&&candidate| candidate != suit && candidate != other_suit)
+                            .unwrap();
+                        let third = TileType(suit_base(*third_suit) + rank - 1);
+                        let has_triplet = |target: TileType| {
+                            hand.mentsu
+                                .iter()
+                                .any(|m| m.kind == MentsuKind::Koutsu && m.tile_type == target)
+                                || ctx
+                                    .melds
+                                    .iter()
+                                    .filter_map(meld_triplet_tile)
+                                    .any(|meld_tile| meld_tile == target)
+                        };
+                        if has_triplet(other) && has_triplet(third) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if found {
+                        break;
+                    }
+                }
+            }
             if found {
                 yaku.push(YakuResult::new(YakuName::SanshokuDoukou, 2));
             }
@@ -719,11 +787,7 @@ fn detect_yaku(
                     }
                     MentsuKind::Koutsu => m.tile_type.is_yaochuuhai(),
                 }) && hand.jantai.is_yaochuuhai()
-                    && ctx.melds.iter().all(|m| {
-                        let first = m.tiles[0].tile_type();
-                        let last = m.tiles.last().unwrap().tile_type();
-                        first.is_yaochuuhai() || last.is_yaochuuhai()
-                    });
+                    && ctx.melds.iter().all(meld_has_yaochuuhai);
                 if all_groups_have_yaochuuhai && has_sequence {
                     yaku.push(YakuResult::new(
                         YakuName::Honchantai,
@@ -958,11 +1022,7 @@ fn detect_yaku(
                     }
                     MentsuKind::Koutsu => m.tile_type.is_terminal(),
                 }) && hand.jantai.is_terminal()
-                    && ctx.melds.iter().all(|m| {
-                        let first = m.tiles[0].tile_type();
-                        let last = m.tiles.last().unwrap().tile_type();
-                        first.is_terminal() || last.is_terminal()
-                    });
+                    && ctx.melds.iter().all(meld_has_terminal);
                 if all_groups_have_terminal && has_sequence {
                     yaku.push(YakuResult::new(
                         YakuName::Junchan,
