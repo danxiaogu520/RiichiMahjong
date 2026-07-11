@@ -73,7 +73,7 @@ impl GameState {
         self.phase = GamePhase::ActionPhase;
 
         // 记录局开始事件
-        self.events.push(GameEvent::RoundStarted {
+        self.record_event(GameEvent::RoundStarted {
             round_number: self.round,
             dealer: self.get_dealer(),
         });
@@ -91,7 +91,7 @@ impl GameState {
         let tile = self.wall.draw().ok_or(WallExhausted)?;
         self.drawn_tile = Some(tile);
         self.update_discard_furiten(self.current_player);
-        self.events.push(GameEvent::PlayerDrew {
+        self.record_event(GameEvent::PlayerDrew {
             player: self.current_player,
             tile,
         });
@@ -113,7 +113,7 @@ impl GameState {
             .ok_or(InvalidAction("岭上牌已耗尽".to_string()))?;
         self.drawn_tile = Some(tile);
         self.update_discard_furiten(self.current_player);
-        self.events.push(GameEvent::PlayerDrew {
+        self.record_event(GameEvent::PlayerDrew {
             player: self.current_player,
             tile,
         });
@@ -209,7 +209,7 @@ impl GameState {
         player.furiten.clear_round(); // 清除本轮振听
 
         // 记录打牌事件
-        self.events.push(GameEvent::PlayerDiscarded {
+        self.record_event(GameEvent::PlayerDiscarded {
             player: self.current_player,
             tile,
         });

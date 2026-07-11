@@ -170,7 +170,7 @@ impl GameState {
             }
         }
 
-        self.events.extend(new_events.clone());
+        self.record_events(&new_events);
         Ok(new_events)
     }
 
@@ -224,7 +224,7 @@ impl GameState {
             });
         }
         self.riichi_sticks = 0;
-        self.events.extend(events.clone());
+        self.record_events(&events);
         self.resolve_round_end(RoundEndReason::MultiWin {
             winners: winners.to_vec(),
         });
@@ -328,7 +328,6 @@ impl GameState {
             _ => return Err(GameError::InvalidAction("不在响应阶段".to_string())),
         }
 
-        self.events.extend(new_events.clone());
         Ok(new_events)
     }
 
@@ -635,7 +634,6 @@ impl GameState {
             self.resolve_round_end(RoundEndReason::SuuKantsu);
         }
 
-        self.events.extend(new_events.clone());
         Ok(new_events)
     }
 
@@ -736,7 +734,6 @@ impl GameState {
             meld_index,
         };
 
-        self.events.extend(new_events.clone());
         Ok(new_events)
     }
 }

@@ -30,6 +30,7 @@ impl GameState {
             current_player: PlayerId(0),
             wind: TileType::EAST,
             events: Vec::new(),
+            history: Vec::new(),
             phase: GamePhase::ActionPhase,
             drawn_tile: None,
             round: 1,
@@ -137,6 +138,7 @@ mod tests {
         state.start_round(&mut rng);
 
         assert_eq!(state.events.len(), 1);
+        assert_eq!(state.event_history().len(), 2);
         assert_eq!(state.players[0].wind, TileType::EAST);
         assert_eq!(state.players[1].wind, TileType::SOUTH);
         assert_eq!(state.players[2].wind, TileType::WEST);
