@@ -107,7 +107,12 @@ pub fn check_win(
             Some(winning_tile.tile_type()),
         );
         let total_han: u8 = all_yaku.iter().map(|y| y.han).sum();
-        let yakuman_count = all_yaku.iter().filter(|y| y.han >= 13).count() as u8;
+        // 役满项目可能是双倍役满（26 翻标记），不能只按项目数量计数。
+        let yakuman_count: u8 = all_yaku
+            .iter()
+            .filter(|y| y.han >= 13)
+            .map(|y| (y.han / 13).max(1))
+            .sum();
         let points = calculate_points_with_loser(
             total_han,
             fu,
