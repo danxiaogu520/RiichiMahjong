@@ -29,6 +29,27 @@ pub fn calculate_fu(
     seat_wind: TileType,
     field_wind: TileType,
 ) -> u32 {
+    calculate_fu_with_winning_tile(
+        hand,
+        melds,
+        yaku_results,
+        is_tsumo,
+        seat_wind,
+        field_wind,
+        None,
+    )
+}
+
+/// 计算符数，并在提供和了牌时计算单骑、边张、坎张符。
+pub fn calculate_fu_with_winning_tile(
+    hand: &WinningHand,
+    melds: &[Meld],
+    yaku_results: &[YakuResult],
+    is_tsumo: bool,
+    seat_wind: TileType,
+    field_wind: TileType,
+    winning_tile: Option<TileType>,
+) -> u32 {
     let has_pinfu = yaku_results.iter().any(|y| y.yaku == YakuName::Pinfu);
     let has_chiitoitsu = yaku_results.iter().any(|y| y.yaku == YakuName::Chiitoitsu);
 
@@ -106,9 +127,31 @@ pub fn calculate_fu(
         }
     }
 
-    // 听牌类型符（单骑/边张/坎张 +2）
-    // 需要配合和了牌的听牌类型判断，暂时在此处不处理
-    // TODO: 听牌类型符
+    // 听牌类型符（单骑/边张/坎张 +2）。
+    // 和了牌可能同时出现在多个候选分解中，取该分解能成立的最高符值。
+    if let Some(winning_tile) = winning_tile {
+        let mut wait_fu = 0;
+        if hand.jantai == winning_tile {
+            wait_fu = 2; // 单骑
+        }
+        for m in &hand.mentsu {
+            if m.kind != MentsuKind::Shuntsu {
+                continue;
+            }
+            let start = m.tile_type.rank().0;
+            let win_rank = winning_tile.rank().0;
+            if m.tile_type.suit() != winning_tile.suit() {
+                continue;
+            }
+            let edge_wait = (start == 1 && (win_rank == 1 || win_rank == 3))
+                || (start == 7 && (win_rank == 7 || win_rank == 9));
+            let closed_wait = (2..=7).contains(&start) && win_rank == start + 1;
+            if edge_wait || closed_wait {
+                wait_fu = 2;
+            }
+        }
+        fu += wait_fu;
+    }
 
     // 向上取整到 10
     if fu > 0 && !fu.is_multiple_of(10) {

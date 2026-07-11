@@ -6,7 +6,7 @@ use crate::analysis::{
     decompose_seven_pairs, is_standard_win_with_mentsu, is_winning,
 };
 use crate::dora::calculate_dora;
-use crate::fu::calculate_fu;
+use crate::fu::calculate_fu_with_winning_tile;
 use crate::scoring::calculate_points_with_loser;
 use crate::types::{
     HandType, MentsuKind, TileCounts, WinContext, WinResult, WinningHand, YakuName, YakuResult,
@@ -75,7 +75,13 @@ pub fn check_win(
     }
 
     // ── Step 5: 算符（高点法）──
-    let (best_fu, _) = calculate_best_fu(&decompositions, &ctx.melds, &all_yaku, ctx);
+    let (best_fu, _) = calculate_best_fu(
+        &decompositions,
+        &ctx.melds,
+        &all_yaku,
+        ctx,
+        winning_tile.tile_type(),
+    );
 
     // ── Step 6: 算点 ──
     let total_han: u8 = all_yaku.iter().map(|y| y.han).sum();
@@ -176,18 +182,20 @@ fn calculate_best_fu<'a>(
     melds: &[Meld],
     yaku_results: &[YakuResult],
     ctx: &WinContext,
+    winning_tile: TileType,
 ) -> (u32, &'a WinningHand) {
     let mut best_fu = 0u32;
     let mut best_hand = &decompositions[0];
 
     for hand in decompositions {
-        let fu = calculate_fu(
+        let fu = calculate_fu_with_winning_tile(
             hand,
             melds,
             yaku_results,
             ctx.is_tsumo,
             ctx.seat_wind,
             ctx.field_wind,
+            Some(winning_tile),
         );
         if fu > best_fu {
             best_fu = fu;
