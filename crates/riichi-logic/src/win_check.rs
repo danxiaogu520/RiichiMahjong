@@ -48,6 +48,7 @@ pub fn check_win(
         &ctx.dora_indicators,
         &ctx.ura_dora_indicators,
         ctx.is_riichi,
+        ctx.red_fives,
     );
     let mut best_result: Option<WinResult> = None;
     for hand in &decompositions {

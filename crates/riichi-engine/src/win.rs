@@ -103,6 +103,7 @@ impl GameState {
             is_chankan,
             is_haitei: no_tiles_left && is_tsumo,
             is_houtei: no_tiles_left && !is_tsumo,
+            red_fives: self.rules.red_fives,
             kuitan: self.rules.kuitan,
             atozuke: self.rules.atozuke,
             seat_wind: p.wind,
