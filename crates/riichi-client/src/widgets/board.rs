@@ -39,7 +39,13 @@ fn render_opponent(f: &mut Frame, app: &App, player_idx: usize, area: Rect) {
         String::new()
     };
 
-    let discards: Vec<Span> = app.discards[player_idx]
+    let mut visible_discards = app.discards[player_idx].clone();
+    if let Some((pending_player, pending_tile)) = app.pending_discard {
+        if pending_player.0 == player_idx {
+            visible_discards.push(pending_tile);
+        }
+    }
+    let discards: Vec<Span> = visible_discards
         .iter()
         .enumerate()
         .flat_map(|(j, &t)| {
