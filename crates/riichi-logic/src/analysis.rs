@@ -15,6 +15,17 @@ pub fn is_winning(counts: &mut TileCounts) -> bool {
 pub fn is_standard_win(counts: &mut TileCounts) -> bool {
     let total: u8 = counts.inner().iter().sum();
     let num_mentsu = (total as usize).saturating_sub(2) / 3;
+    is_standard_win_with_mentsu(counts, num_mentsu)
+}
+
+/// 检查指定数量的门清面子是否能和牌。
+///
+/// 开门手的副露不在 `counts` 中，因此不能根据牌数推断面子数量；
+/// 调用方必须传入 `4 - open_meld_count`。
+pub fn is_standard_win_with_mentsu(
+    counts: &mut TileCounts,
+    num_mentsu: usize,
+) -> bool {
     for i in 0..34u8 {
         let tt = TileType(i);
         if counts.get(tt) >= 2 {
@@ -138,6 +149,14 @@ pub fn decompose_standard(counts: &mut TileCounts) -> Option<WinningHand> {
 pub fn decompose_all_standard(counts: &mut TileCounts) -> Vec<WinningHand> {
     let total: u8 = counts.inner().iter().sum();
     let num_mentsu = (total as usize).saturating_sub(2) / 3;
+    decompose_all_standard_with_mentsu(counts, num_mentsu)
+}
+
+/// 枚举指定门清面子数量的标准和牌分解。
+pub fn decompose_all_standard_with_mentsu(
+    counts: &mut TileCounts,
+    num_mentsu: usize,
+) -> Vec<WinningHand> {
     let mut results = Vec::new();
     for i in 0..34u8 {
         let tt = TileType(i);
