@@ -148,8 +148,9 @@ pub fn calculate_fu_with_winning_tile(
             if m.tile_type.suit() != winning_tile.suit() {
                 continue;
             }
-            let edge_wait = (start == 1 && (win_rank == 1 || win_rank == 3))
-                || (start == 7 && (win_rank == 7 || win_rank == 9));
+            // 只有 12 听 3、89 听 7 才是边张；
+            // 123 听 1 与 789 听 9 属于两面听，不加边张符。
+            let edge_wait = (start == 1 && win_rank == 3) || (start == 7 && win_rank == 7);
             let closed_wait = (2..=7).contains(&start) && win_rank == start + 1;
             if edge_wait || closed_wait {
                 wait_fu = 2;
@@ -216,5 +217,41 @@ mod tests {
         );
         // 底符20 + 门清荣和10 + 连风雀头4 + 明刻2 + 暗刻4 = 40符。
         assert_eq!(fu, 40);
+    }
+
+    #[test]
+    fn edge_wait_fu_only_applies_to_the_edge_side() {
+        let hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType(10),
+            mentsu: vec![
+                sequence(TileType(0)),
+                sequence(TileType(3)),
+                sequence(TileType(6)),
+                sequence(TileType(1)),
+            ],
+        };
+
+        let two_sided = calculate_fu_with_winning_tile(
+            &hand,
+            &[],
+            &[],
+            false,
+            TileType::EAST,
+            TileType::EAST,
+            Some(TileType(0)),
+        );
+        let edge = calculate_fu_with_winning_tile(
+            &hand,
+            &[],
+            &[],
+            false,
+            TileType::EAST,
+            TileType::EAST,
+            Some(TileType(2)),
+        );
+
+        assert_eq!(two_sided, 30);
+        assert_eq!(edge, 40);
     }
 }
