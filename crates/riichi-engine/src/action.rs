@@ -19,6 +19,10 @@ impl GameState {
     /// - Ankan: 暗杠
     /// - Kakan: 加杠
     pub fn execute_action(&mut self, action: TurnAction) -> Result<Vec<GameEvent>, GameError> {
+        self.validate_action(
+            self.current_player,
+            &crate::legal::LegalAction::Turn(action.clone()),
+        )?;
         // 检查是否处于行动阶段
         if !matches!(self.phase, GamePhase::ActionPhase) {
             return Err(GameError::InvalidAction("不在行动阶段".to_string()));
@@ -146,7 +150,25 @@ impl GameState {
             GamePhase::ResponsePhase {
                 discarded_tile,
                 discarder,
-            } => crate::call::detect_calls(&self.players, discarded_tile, discarder),
+            } => {
+                let mut options =
+                    crate::call::detect_calls(&self.players, discarded_tile, discarder);
+                // 仅完成牌型不代表可以荣和：还必须满足振听、至少一役和
+                // 当前副露上下文。候选动作必须与真正结算使用同一判定入口。
+                options.retain(|option| {
+                    !matches!(&option.call_type, CallType::Ron)
+                        || self
+                            .check_win(
+                                option.player,
+                                false,
+                                discarded_tile,
+                                Some(discarder),
+                                false,
+                            )
+                            .is_some()
+                });
+                options
+            }
             GamePhase::ChankanResponse {
                 kakan_tile,
                 kakan_player,
@@ -159,10 +181,7 @@ impl GameState {
                     if pid == kakan_player {
                         continue;
                     }
-                    let mut test_tiles: Vec<Tile> = self.players[idx].hand.tiles().to_vec();
-                    test_tiles.push(kakan_tile);
-                    let mut counts = riichi_logic::types::TileCounts::from_tiles(&test_tiles);
-                    if riichi_logic::analysis::is_winning(&mut counts) {
+                    if self.check_win(pid, false, kakan_tile, Some(kakan_player), true).is_some() {
                         options.push(CallOption {
                             player: pid,
                             call_type: CallType::Ron,
@@ -185,6 +204,7 @@ impl GameState {
         player: PlayerId,
         action: ResponseAction,
     ) -> Result<Vec<GameEvent>, GameError> {
+        self.validate_action(player, &crate::legal::LegalAction::Response(action.clone()))?;
         let mut new_events = Vec::new();
 
         match self.phase {
