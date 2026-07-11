@@ -110,7 +110,7 @@ pub struct WinContext {
     pub red_fives: [u8; 3],
     /// 是否允许副露断幺九（食断）。
     pub kuitan: bool,
-    /// 是否允许和牌役由和了牌临门补足（后付）。
+    /// 兼容旧配置字段。当前按具体和了牌逐张判役，偏听由该判定自然产生。
     pub atozuke: bool,
     // 风位
     pub seat_wind: TileType,
