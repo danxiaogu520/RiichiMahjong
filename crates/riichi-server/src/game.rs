@@ -316,18 +316,21 @@ impl GameLoop {
                     ron_players.push(pid);
                 }
                 CallResponseMsg::Pon { hand_tiles } => {
-                    if accepted_call.is_none() {
-                        accepted_call = Some((pid, ResponseAction::Pon { hand_tiles }));
+                    let candidate = ResponseAction::Pon { hand_tiles };
+                    if should_replace_call(accepted_call.as_ref(), pid, &candidate, discarder) {
+                        accepted_call = Some((pid, candidate));
                     }
                 }
                 CallResponseMsg::Chi { hand_tiles } => {
-                    if accepted_call.is_none() {
-                        accepted_call = Some((pid, ResponseAction::Chi { hand_tiles }));
+                    let candidate = ResponseAction::Chi { hand_tiles };
+                    if should_replace_call(accepted_call.as_ref(), pid, &candidate, discarder) {
+                        accepted_call = Some((pid, candidate));
                     }
                 }
                 CallResponseMsg::Minkan { hand_tiles } => {
-                    if accepted_call.is_none() {
-                        accepted_call = Some((pid, ResponseAction::Minkan { hand_tiles }));
+                    let candidate = ResponseAction::Minkan { hand_tiles };
+                    if should_replace_call(accepted_call.as_ref(), pid, &candidate, discarder) {
+                        accepted_call = Some((pid, candidate));
                     }
                 }
                 _ => {
@@ -561,5 +564,63 @@ impl GameLoop {
             self.game.players[2].points,
             self.game.players[3].points,
         ]
+    }
+}
+
+fn should_replace_call(
+    current: Option<&(PlayerId, ResponseAction)>,
+    candidate_player: PlayerId,
+    candidate: &ResponseAction,
+    discarder: PlayerId,
+) -> bool {
+    let candidate_key = call_priority_key(candidate_player, candidate, discarder);
+    current
+        .map(|(player, action)| candidate_key > call_priority_key(*player, action, discarder))
+        .unwrap_or(true)
+}
+
+fn call_priority_key(player: PlayerId, action: &ResponseAction, discarder: PlayerId) -> (u8, u8) {
+    let priority = match action {
+        ResponseAction::Pon { .. } | ResponseAction::Minkan { .. } => 2,
+        ResponseAction::Chi { .. } => 1,
+        ResponseAction::Pass | ResponseAction::Ron => 0,
+    };
+    let distance = ((player.0 + 4 - discarder.0) % 4) as u8;
+    (priority, 4 - distance)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{call_priority_key, should_replace_call};
+    use riichi_core::game::ResponseAction;
+    use riichi_core::player::PlayerId;
+    use riichi_core::tile::Tile;
+
+    #[test]
+    fn pon_beats_chi_and_nearer_call_wins_same_priority() {
+        let chi = ResponseAction::Chi {
+            hand_tiles: [Tile::from_raw(0), Tile::from_raw(4)],
+        };
+        let pon = ResponseAction::Pon {
+            hand_tiles: [Tile::from_raw(8), Tile::from_raw(12)],
+        };
+        let discarder = PlayerId(0);
+        assert!(should_replace_call(
+            Some(&(PlayerId(1), chi.clone())),
+            PlayerId(2),
+            &pon,
+            discarder,
+        ));
+
+        let farther_pon = ResponseAction::Pon {
+            hand_tiles: [Tile::from_raw(16), Tile::from_raw(20)],
+        };
+        assert!(!should_replace_call(
+            Some(&(PlayerId(1), pon)),
+            PlayerId(2),
+            &farther_pon,
+            discarder,
+        ));
+        assert_eq!(call_priority_key(PlayerId(1), &chi, discarder).0, 1);
     }
 }

@@ -3,7 +3,7 @@ use riichi_core::game::GameError::{InvalidAction, WallExhausted};
 use riichi_core::game::{GameEvent, RoundEndReason};
 use riichi_core::hand::Hand;
 use riichi_core::player::FuritenState;
-use riichi_core::tile::{Tile, TileType};
+use riichi_core::tile::Tile;
 use riichi_core::wall::Wall;
 
 use crate::game::{GameError, GamePhase, GameState};
@@ -22,6 +22,7 @@ impl GameState {
         // 事件历史属于单局上下文。跨局保留事件会污染一发、双立直、
         // 四家立直和首巡等状态判断；完整对局回放应由外部日志保存。
         self.events.clear();
+        self.kuikae_forbidden = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
 
         // 创建新牌山
         self.wall = Wall::new(rng);
@@ -143,26 +144,7 @@ impl GameState {
     pub fn discard(&mut self, tile: Tile) -> Result<(), GameError> {
         let cp = self.current_player.0;
 
-        // 食替检查：查询最近一次副露事件，计算禁打牌
-        let forbidden: Vec<TileType> = self
-            .events
-            .iter()
-            .rev()
-            .find_map(|e| match e {
-                GameEvent::PlayerCalledPon { player, tiles, .. }
-                    if *player == self.current_player =>
-                {
-                    Some(tiles.iter().map(|t| t.tile_type()).collect::<Vec<_>>())
-                }
-                GameEvent::PlayerCalledChi { player, tiles, .. }
-                    if *player == self.current_player =>
-                {
-                    Some(tiles.iter().map(|t| t.tile_type()).collect::<Vec<_>>())
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
-        if forbidden.contains(&tile.tile_type()) {
+        if self.kuikae_forbidden[cp].contains(&tile.tile_type()) {
             return Err(GameError::InvalidAction(format!(
                 "食替：{} 不能立刻打出",
                 tile
@@ -207,6 +189,7 @@ impl GameState {
         }
         player.all_discarded_types.insert(tile.tile_type()); // 记录舍牌类型
         player.furiten.clear_round(); // 清除本轮振听
+        self.kuikae_forbidden[cp].clear();
 
         // 记录打牌事件
         self.record_event(GameEvent::PlayerDiscarded {

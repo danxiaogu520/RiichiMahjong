@@ -31,6 +31,7 @@ impl GameState {
             wind: TileType::EAST,
             events: Vec::new(),
             history: Vec::new(),
+            kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             phase: GamePhase::ActionPhase,
             drawn_tile: None,
             round: 1,
