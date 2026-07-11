@@ -42,69 +42,79 @@ pub fn check_win(
         return None;
     }
 
-    let yaku_results = detect_yaku(&decompositions, ctx, winning_tile);
-    if yaku_results.is_empty() {
-        return None;
-    }
-
-    // ── Step 4: 算翻（宝牌）──
+    // ── Step 4: 对每个完整分解独立计算役、宝牌、符和点数 ──
     let dora_result = calculate_dora(
         all_tiles,
         &ctx.dora_indicators,
         &ctx.ura_dora_indicators,
         ctx.is_riichi,
     );
-    let mut all_yaku = yaku_results;
-    if dora_result.dora > 0 {
-        all_yaku.push(YakuResult::new(
-            crate::types::YakuName::Dora,
-            dora_result.dora,
-        ));
+    let mut best_result: Option<WinResult> = None;
+    for hand in &decompositions {
+        // detect_yaku 对单个分解调用，避免把一个分解的役和另一个分解的
+        // 符组合在一起。
+        let yaku_results = detect_yaku(std::slice::from_ref(hand), ctx, winning_tile);
+        if yaku_results.is_empty() {
+            continue;
+        }
+        let mut all_yaku = yaku_results;
+        if dora_result.dora > 0 {
+            all_yaku.push(YakuResult::new(
+                crate::types::YakuName::Dora,
+                dora_result.dora,
+            ));
+        }
+        if dora_result.aka_dora > 0 {
+            all_yaku.push(YakuResult::new(
+                crate::types::YakuName::AkaDora,
+                dora_result.aka_dora,
+            ));
+        }
+        if dora_result.ura_dora > 0 {
+            all_yaku.push(YakuResult::new(
+                crate::types::YakuName::UraDora,
+                dora_result.ura_dora,
+            ));
+        }
+
+        let fu = calculate_fu_with_winning_tile(
+            hand,
+            &ctx.melds,
+            &all_yaku,
+            ctx.is_tsumo,
+            ctx.seat_wind,
+            ctx.field_wind,
+            Some(winning_tile.tile_type()),
+        );
+        let total_han: u8 = all_yaku.iter().map(|y| y.han).sum();
+        let yakuman_count = all_yaku.iter().filter(|y| y.han >= 13).count() as u8;
+        let points = calculate_points_with_loser(
+            total_han,
+            fu,
+            yakuman_count,
+            ctx.winner,
+            ctx.loser,
+            ctx.dealer,
+            ctx.riichi_sticks,
+            ctx.honba,
+            ctx.is_tsumo,
+        );
+        let candidate = WinResult {
+            yaku_results: all_yaku,
+            total_han,
+            fu,
+            points,
+        };
+        let is_better = match best_result.as_ref() {
+            None => true,
+            Some(best) => candidate.points[ctx.winner] > best.points[ctx.winner],
+        };
+        if is_better {
+            best_result = Some(candidate);
+        }
     }
-    if dora_result.aka_dora > 0 {
-        all_yaku.push(YakuResult::new(
-            crate::types::YakuName::AkaDora,
-            dora_result.aka_dora,
-        ));
-    }
-    if dora_result.ura_dora > 0 {
-        all_yaku.push(YakuResult::new(
-            crate::types::YakuName::UraDora,
-            dora_result.ura_dora,
-        ));
-    }
 
-    // ── Step 5: 算符（高点法）──
-    let (best_fu, _) = calculate_best_fu(
-        &decompositions,
-        &ctx.melds,
-        &all_yaku,
-        ctx,
-        winning_tile.tile_type(),
-    );
-
-    // ── Step 6: 算点 ──
-    let total_han: u8 = all_yaku.iter().map(|y| y.han).sum();
-    let yakuman_count = all_yaku.iter().filter(|y| y.han >= 13).count() as u8;
-
-    let points = calculate_points_with_loser(
-        total_han,
-        best_fu,
-        yakuman_count,
-        ctx.winner,
-        ctx.loser,
-        ctx.dealer,
-        ctx.riichi_sticks,
-        ctx.honba,
-        ctx.is_tsumo,
-    );
-
-    Some(WinResult {
-        yaku_results: all_yaku,
-        total_han,
-        fu: best_fu,
-        points,
-    })
+    best_result
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -170,40 +180,6 @@ pub fn decompose_hand_with_open_melds(
         }
     }
     results
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  高点法算符
-// ═══════════════════════════════════════════════════════════════
-
-/// 对所有拆解计算符数，返回最高符数
-fn calculate_best_fu<'a>(
-    decompositions: &'a [WinningHand],
-    melds: &[Meld],
-    yaku_results: &[YakuResult],
-    ctx: &WinContext,
-    winning_tile: TileType,
-) -> (u32, &'a WinningHand) {
-    let mut best_fu = 0u32;
-    let mut best_hand = &decompositions[0];
-
-    for hand in decompositions {
-        let fu = calculate_fu_with_winning_tile(
-            hand,
-            melds,
-            yaku_results,
-            ctx.is_tsumo,
-            ctx.seat_wind,
-            ctx.field_wind,
-            Some(winning_tile),
-        );
-        if fu > best_fu {
-            best_fu = fu;
-            best_hand = hand;
-        }
-    }
-
-    (best_fu, best_hand)
 }
 
 fn suit_base(suit: Suit) -> u8 {
