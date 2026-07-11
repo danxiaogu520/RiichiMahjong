@@ -105,6 +105,7 @@ impl App {
                 ServerEvent::ActionRequired {
                     can_tsumo,
                     can_riichi,
+                    ..
                 } => {
                     self.can_tsumo = can_tsumo;
                     self.can_riichi = can_riichi;
@@ -118,6 +119,9 @@ impl App {
                     self.scores = scores;
                     self.game_over = true;
                     self.show_result = true;
+                }
+                ServerEvent::Error(message) => {
+                    self.messages.push(message);
                 }
             }
         }

@@ -29,6 +29,10 @@ pub enum ServerEvent {
     ActionRequired {
         can_tsumo: bool,
         can_riichi: bool,
+        discard_options: Vec<Tile>,
+        ankan_options: Vec<Tile>,
+        kakan_options: Vec<(usize, Tile)>,
+        can_kyuushu: bool,
     },
     CallRequired {
         options: Vec<CallOption>,
@@ -36,6 +40,7 @@ pub enum ServerEvent {
     GameOver {
         scores: [i32; 4],
     },
+    Error(String),
 }
 
 // ═══════════════════════════════════════════════════════════════

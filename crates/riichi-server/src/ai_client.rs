@@ -35,10 +35,11 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 state.current_player = current_player;
                 state.hand_tiles = hand_tiles;
             }
-            ServerEvent::ActionRequired {
-                can_tsumo,
-                can_riichi,
-            } => {
+                ServerEvent::ActionRequired {
+                    can_tsumo,
+                    can_riichi,
+                    ..
+                } => {
                 state.can_tsumo = can_tsumo;
                 state.can_riichi = can_riichi;
 
@@ -50,6 +51,7 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 let _ = handle.action_tx.send(msg).await;
             }
             ServerEvent::GameOver { .. } => break,
+            ServerEvent::Error(_) => {}
         }
     }
 }
