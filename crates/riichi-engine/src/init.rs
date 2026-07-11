@@ -9,9 +9,18 @@ use crate::game::{GamePhase, GameState};
 impl GameState {
     /// 创建新的游戏状态（默认值）
     ///
-    /// 初始化为东一局、0 本场、无立直棒、空牌山
+    /// 初始化为东一局、0 本场、无立直棒、空牌山。
+    ///
+    /// `round` 使用 1-based 编号：1..=4 为东场，5..=8 为南场。
     pub fn new() -> Self {
-        Self {
+        Self::new_with_rules(crate::rules::RuleConfig::default())
+    }
+
+    /// 使用指定规则创建新的牌局状态。
+    pub fn new_with_rules(rules: crate::rules::RuleConfig) -> Self {
+        let starting_points = rules.starting_points;
+        let mut state = Self {
+            rules,
             players: [
                 Player::new(PlayerId(0), wind_from_index(0)),
                 Player::new(PlayerId(1), wind_from_index(1)),
@@ -23,14 +32,18 @@ impl GameState {
             events: Vec::new(),
             phase: GamePhase::ActionPhase,
             drawn_tile: None,
-            round: 0,
+            round: 1,
             honba: 0,
             riichi_sticks: 0,
             wall: Wall::empty(),
             dora: Vec::new(),
             dora_indicators: Vec::new(),
             ura_dora_indicators: Vec::new(),
+        };
+        for player in &mut state.players {
+            player.points = starting_points;
         }
+        state
     }
 
     /// 获取当前庄家

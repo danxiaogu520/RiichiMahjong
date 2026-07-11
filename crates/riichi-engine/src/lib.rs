@@ -1,6 +1,8 @@
 pub mod action;
 pub mod call;
 pub mod game;
+pub mod legal;
+pub mod rules;
 mod init;
 mod riichi;
 mod round;

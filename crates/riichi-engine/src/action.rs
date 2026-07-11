@@ -89,10 +89,11 @@ impl GameState {
                 let result = self.check_win(self.current_player, true, winning_tile, None, false);
                 if let Some((changes, yaku_names)) = result {
                     self.insert_tile(); // 提交自摸牌到手牌
-                                        // 应用点数变化
+                    // 应用点数变化
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
+                    self.riichi_sticks = 0;
                     new_events.push(GameEvent::PlayerWon {
                         player: self.current_player,
                         is_tsumo: true,
@@ -263,6 +264,8 @@ impl GameState {
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
+                    // 本局和牌后，场上供托由赢家取得；结算结果已经包含供托点数。
+                    self.riichi_sticks = 0;
                     new_events.push(GameEvent::PlayerWon {
                         player,
                         is_tsumo: false,
@@ -404,6 +407,7 @@ impl GameState {
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
+                    self.riichi_sticks = 0;
                     new_events.push(GameEvent::PlayerWon {
                         player,
                         is_tsumo: false,

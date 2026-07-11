@@ -19,6 +19,10 @@ impl GameState {
     /// 5. 庄家摸第 14 张牌进入自摸牌缓冲区
     /// 6. 进入行动阶段
     pub fn start_round(&mut self, rng: &mut impl Rng) {
+        // 事件历史属于单局上下文。跨局保留事件会污染一发、双立直、
+        // 四家立直和首巡等状态判断；完整对局回放应由外部日志保存。
+        self.events.clear();
+
         // 创建新牌山
         self.wall = Wall::new(rng);
         self.drawn_tile = None;
@@ -33,8 +37,11 @@ impl GameState {
         self.ura_dora_indicators
             .push(self.wall.ura_dora_indicator(0).tile_type());
 
-        // 重置所有玩家状态
-        for player in &mut self.players {
+        // 重置所有玩家状态，并根据当前庄家重新分配座风。
+        let dealer = self.get_dealer();
+        for (idx, player) in self.players.iter_mut().enumerate() {
+            let relative_seat = (idx + 4 - dealer.0) % 4;
+            player.wind = riichi_core::player::wind_from_index(relative_seat);
             player.hand = Hand::new();
             player.discards.clear();
             player.melds.clear();
