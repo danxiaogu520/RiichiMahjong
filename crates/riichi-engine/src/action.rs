@@ -607,7 +607,9 @@ impl GameState {
         tile: Tile,
     ) -> Result<Vec<GameEvent>, GameError> {
         let tt = tile.tile_type();
-        if self.players[player.0].hand.count_type(tt.0) < 4 {
+        let available = self.players[player.0].hand.count_type(tt.0)
+            + usize::from(self.drawn_tile.is_some_and(|drawn| drawn.tile_type() == tt));
+        if available < 4 {
             return Err(GameError::InvalidAction("手中没有 4 张相同牌".to_string()));
         }
 
@@ -627,6 +629,11 @@ impl GameState {
                 ));
             }
         }
+
+        // 行动阶段的摸牌暂存在 drawn_tile。暗杠后它仍属于手牌，
+        // 因此先并入手牌，再统一移除四张杠牌；若摸到的正是杠牌，
+        // 该牌也会被一并移入暗杠。
+        self.insert_tile();
 
         // 从手牌移除 4 张牌
         let tiles_to_remove: Vec<Tile> = self.players[player.0]
