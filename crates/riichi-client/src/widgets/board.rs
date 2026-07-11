@@ -189,7 +189,10 @@ fn render_action_line(app: &App) -> Line<'static> {
         spans.push(Span::styled("[k]加杠 ", Style::default().fg(Color::Yellow)));
     }
     if app.can_kyuushu {
-        spans.push(Span::styled("[9]九种九牌 ", Style::default().fg(Color::Yellow)));
+        spans.push(Span::styled(
+            "[9]九种九牌 ",
+            Style::default().fg(Color::Yellow),
+        ));
     }
     spans.push(Span::styled(
         "[←→]选择 [Enter]打牌",

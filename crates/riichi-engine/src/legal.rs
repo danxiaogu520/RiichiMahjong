@@ -57,9 +57,7 @@ impl GameState {
                 .map(|option| {
                     let response = match option.call_type {
                         CallType::Ron => ResponseAction::Ron,
-                        CallType::Minkan { hand_tiles } => {
-                            ResponseAction::Minkan { hand_tiles }
-                        }
+                        CallType::Minkan { hand_tiles } => ResponseAction::Minkan { hand_tiles },
                         CallType::Pon { hand_tiles } => ResponseAction::Pon { hand_tiles },
                         CallType::Chi { hand_tiles } => ResponseAction::Chi { hand_tiles },
                     };
@@ -81,18 +79,14 @@ impl GameState {
     ) -> Result<(), riichi_core::game::GameError> {
         match action {
             LegalAction::Turn(turn) => {
-                if !matches!(&self.phase, GamePhase::ActionPhase)
-                    || player != self.current_player
-                {
+                if !matches!(&self.phase, GamePhase::ActionPhase) || player != self.current_player {
                     return Err(riichi_core::game::GameError::InvalidAction(
                         "当前不是该玩家的行动阶段".to_string(),
                     ));
                 }
                 match turn {
                     TurnAction::Discard(tile) => {
-                        if self.players[player.0].is_riichi
-                            && self.drawn_tile != Some(*tile)
-                        {
+                        if self.players[player.0].is_riichi && self.drawn_tile != Some(*tile) {
                             return Err(riichi_core::game::GameError::InvalidAction(
                                 "立直后只能摸切".to_string(),
                             ));
@@ -132,10 +126,7 @@ impl GameState {
                         }
                     }
                     TurnAction::Kakan(index, tile) => {
-                        if !self
-                            .get_kakan_options(player)
-                            .contains(&(*index, *tile))
-                        {
+                        if !self.get_kakan_options(player).contains(&(*index, *tile)) {
                             return Err(riichi_core::game::GameError::InvalidAction(
                                 "当前不能加杠该牌".to_string(),
                             ));
@@ -152,14 +143,8 @@ impl GameState {
             }
             LegalAction::Response(response) => {
                 let discarder = match &self.phase {
-                    GamePhase::ResponsePhase {
-                        discarder,
-                        ..
-                    } => *discarder,
-                    GamePhase::ChankanResponse {
-                        kakan_player,
-                        ..
-                    } => *kakan_player,
+                    GamePhase::ResponsePhase { discarder, .. } => *discarder,
+                    GamePhase::ChankanResponse { kakan_player, .. } => *kakan_player,
                     _ => {
                         return Err(riichi_core::game::GameError::InvalidAction(
                             "当前不在响应阶段".to_string(),
@@ -182,24 +167,31 @@ impl GameState {
                     match (&option.call_type, response) {
                         (CallType::Ron, ResponseAction::Ron) => true,
                         (
-                            CallType::Minkan { hand_tiles: expected },
+                            CallType::Minkan {
+                                hand_tiles: expected,
+                            },
                             ResponseAction::Minkan { hand_tiles },
                         ) => expected == hand_tiles,
                         (
-                            CallType::Pon { hand_tiles: expected },
+                            CallType::Pon {
+                                hand_tiles: expected,
+                            },
                             ResponseAction::Pon { hand_tiles },
                         ) => expected == hand_tiles,
                         (
-                            CallType::Chi { hand_tiles: expected },
+                            CallType::Chi {
+                                hand_tiles: expected,
+                            },
                             ResponseAction::Chi { hand_tiles },
                         ) => expected == hand_tiles,
                         _ => false,
                     }
                 });
                 if !valid {
-                    return Err(riichi_core::game::GameError::InvalidAction(
-                        format!("玩家 {} 当前不能执行该响应", player),
-                    ));
+                    return Err(riichi_core::game::GameError::InvalidAction(format!(
+                        "玩家 {} 当前不能执行该响应",
+                        player
+                    )));
                 }
             }
         }

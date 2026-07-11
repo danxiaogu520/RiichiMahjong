@@ -127,7 +127,7 @@ impl GameState {
                 let result = self.check_win(self.current_player, true, winning_tile, None, false);
                 if let Some((changes, yaku_names)) = result {
                     self.insert_tile(); // 提交自摸牌到手牌
-                    // 应用点数变化
+                                        // 应用点数变化
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
@@ -249,13 +249,7 @@ impl GameState {
                 options.retain(|option| {
                     !matches!(&option.call_type, CallType::Ron)
                         || self
-                            .check_win(
-                                option.player,
-                                false,
-                                discarded_tile,
-                                Some(discarder),
-                                false,
-                            )
+                            .check_win(option.player, false, discarded_tile, Some(discarder), false)
                             .is_some()
                 });
                 options
@@ -272,7 +266,10 @@ impl GameState {
                     if pid == kakan_player {
                         continue;
                     }
-                    if self.check_win(pid, false, kakan_tile, Some(kakan_player), true).is_some() {
+                    if self
+                        .check_win(pid, false, kakan_tile, Some(kakan_player), true)
+                        .is_some()
+                    {
                         options.push(CallOption {
                             player: pid,
                             call_type: CallType::Ron,
@@ -758,11 +755,9 @@ mod tests {
         for _ in 0..4 {
             state.players[0].hand.add(tile);
         }
-        state.players[0].melds.push(Meld::pon(
-            vec![tile; 3],
-            tile,
-            PlayerId(1),
-        ));
+        state.players[0]
+            .melds
+            .push(Meld::pon(vec![tile; 3], tile, PlayerId(1)));
         state.current_player = PlayerId(0);
 
         let initial_dora_count = state.dora.len();
