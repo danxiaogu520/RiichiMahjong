@@ -26,6 +26,9 @@ pub const RINSHAN_START: usize = 135;
 pub struct Wall {
     tiles: Vec<Tile>,
     draw_index: usize,
+    /// 正常摸牌区的独占上界。初始为 122，每次成功开杠后减少一张，
+    /// 以保持王牌始终包含 14 张牌。
+    live_end: usize,
     kan_count: usize,
 }
 
@@ -37,6 +40,7 @@ impl Wall {
         Self {
             tiles,
             draw_index: 0,
+            live_end: DEAD_WALL_START,
             kan_count: 0,
         }
     }
@@ -46,13 +50,14 @@ impl Wall {
         Self {
             tiles: Vec::new(),
             draw_index: 0,
+            live_end: DEAD_WALL_START,
             kan_count: 0,
         }
     }
 
     /// 从正常摸牌区摸一张牌。耗尽时返回 None。
     pub fn draw(&mut self) -> Option<Tile> {
-        if self.draw_index >= DEAD_WALL_START {
+        if self.draw_index >= self.live_end || self.draw_index >= self.tiles.len() {
             return None;
         }
         let tile = self.tiles[self.draw_index];
@@ -62,7 +67,7 @@ impl Wall {
 
     /// 正常摸牌区剩余可摸牌数。
     pub fn remaining(&self) -> usize {
-        DEAD_WALL_START.saturating_sub(self.draw_index)
+        self.live_end.saturating_sub(self.draw_index)
     }
 
     /// 从岭上区摸一张牌（杠后补摸）。
@@ -71,8 +76,14 @@ impl Wall {
             return None;
         }
         let index = RINSHAN_START - self.kan_count;
+        if self.draw_index >= self.live_end || index >= self.tiles.len() {
+            return None;
+        }
         let tile = self.tiles[index];
         self.kan_count += 1;
+        // 牌墙末端的一张正常摸牌牌进入扩展后的王牌区域。由于牌山已
+        // 洗牌，逻辑上只需收缩 live_end；该牌不再从正常摸牌区取出。
+        self.live_end -= 1;
         Some(tile)
     }
 
@@ -104,6 +115,11 @@ impl Wall {
     /// 当前正常摸牌指针。
     pub fn draw_index(&self) -> usize {
         self.draw_index
+    }
+
+    /// 当前正常摸牌区的独占上界。
+    pub fn live_end(&self) -> usize {
+        self.live_end
     }
 
     /// 判断一张牌是否来自岭上区
