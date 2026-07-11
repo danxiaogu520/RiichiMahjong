@@ -505,6 +505,13 @@ impl GameLoop {
             players[2].discards.clone(),
             players[3].discards.clone(),
         ];
+        let pending_discard = match self.game.phase {
+            GamePhase::ResponsePhase {
+                discarded_tile,
+                discarder,
+            } => Some((discarder, discarded_tile)),
+            _ => None,
+        };
         let melds_count = [
             players[0].melds.len(),
             players[1].melds.len(),
@@ -527,6 +534,7 @@ impl GameLoop {
             let event = ServerEvent::StateUpdate {
                 phase: self.game.phase.clone(),
                 current_player: self.game.current_player,
+                pending_discard,
                 drawn_tile: if self.game.current_player == pid {
                     self.game.drawn_tile
                 } else {
