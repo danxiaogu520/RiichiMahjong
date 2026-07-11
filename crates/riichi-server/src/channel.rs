@@ -40,6 +40,7 @@ pub enum ServerEvent {
     },
     GameOver {
         scores: [i32; 4],
+        ranking: [usize; 4],
     },
     Error(String),
 }

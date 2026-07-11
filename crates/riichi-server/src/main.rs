@@ -98,8 +98,8 @@ async fn main() {
                     ))
                     .await;
             }
-            ServerEvent::GameOver { scores } => {
-                println!("游戏结束: {:?}", scores);
+            ServerEvent::GameOver { scores, ranking } => {
+                println!("游戏结束: {:?}，排名: {:?}", scores, ranking);
                 break;
             }
             ServerEvent::Error(message) => {

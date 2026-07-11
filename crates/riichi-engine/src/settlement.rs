@@ -5,6 +5,13 @@ use riichi_logic::shanten::ShantenCalculator;
 use crate::game::{GamePhase, GameState};
 
 impl GameState {
+    /// 返回终局排名，按点数从高到低排列；同分时按座位编号稳定排序。
+    pub fn final_ranking(&self) -> [usize; 4] {
+        let mut ranking = [0usize, 1, 2, 3];
+        ranking.sort_by_key(|&player| (std::cmp::Reverse(self.players[player].points), player));
+        ranking
+    }
+
     /// 荒牌流局结算：计算不听罚符，更新点棒
     ///
     /// 规则：
@@ -120,7 +127,7 @@ impl GameState {
 
     /// 游戏是否结束（南四局过庄后）
     pub fn is_game_over(&self) -> bool {
-        self.round > 8
+        self.round > 8 || (self.rules.tobi && self.players.iter().any(|p| p.points < 0))
     }
 
     /// 统一处理局结束：荒牌罚符 + 连庄/过庄 + 设置 RoundOver
@@ -134,5 +141,28 @@ impl GameState {
 
         self.record_event(GameEvent::RoundEnded { reason });
         self.phase = GamePhase::RoundOver;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GameState;
+
+    #[test]
+    fn final_ranking_orders_points_stably() {
+        let mut state = GameState::new();
+        state.players[0].points = 20_000;
+        state.players[1].points = 35_000;
+        state.players[2].points = 35_000;
+        state.players[3].points = 10_000;
+        assert_eq!(state.final_ranking(), [1, 2, 0, 3]);
+    }
+
+    #[test]
+    fn tobi_ends_game_when_enabled() {
+        let mut state = GameState::new();
+        state.rules.tobi = true;
+        state.players[2].points = -100;
+        assert!(state.is_game_over());
     }
 }
