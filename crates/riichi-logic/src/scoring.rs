@@ -100,9 +100,9 @@ pub fn calculate_points_with_loser(
         } else {
             round_up_100(bp * 4)
         };
-        let pay = hand_pay + (honba * 300) as i32 + riichi_bonus;
+        let pay = hand_pay + (honba * 300) as i32;
 
-        changes[winner] = pay;
+        changes[winner] = pay + riichi_bonus;
         if let Some(loser) = loser {
             if loser < changes.len() && loser != winner {
                 changes[loser] -= pay;
@@ -161,5 +161,11 @@ mod tests {
     fn double_yakuman_uses_two_yakuman_sticks() {
         let changes = calculate_points_with_loser(26, 0, 2, 0, Some(2), 1, 0, 0, false);
         assert_eq!(changes, [64_000, 0, -64_000, 0]);
+    }
+
+    #[test]
+    fn ron_riichi_sticks_are_not_paid_by_the_loser() {
+        let changes = calculate_points_with_loser(1, 30, 0, 0, Some(2), 1, 2, 0, false);
+        assert_eq!(changes, [3_000, 0, -1_000, 0]);
     }
 }
