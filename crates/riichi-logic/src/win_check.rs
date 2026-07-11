@@ -2,7 +2,8 @@ use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::tile::{Suit, Tile, TileType};
 
 use crate::analysis::{
-    decompose_all_standard, decompose_kokushi, decompose_seven_pairs, is_winning,
+    decompose_all_standard_with_mentsu, decompose_kokushi,
+    decompose_seven_pairs, is_standard_win_with_mentsu, is_winning,
 };
 use crate::dora::calculate_dora;
 use crate::fu::calculate_fu;
@@ -31,12 +32,12 @@ pub fn check_win(
     }
 
     // ── Step 2: 判形 ──
-    if !is_win_shape(hand_tiles) {
+    if !is_win_shape_with_open_melds(hand_tiles, ctx.melds.len()) {
         return None;
     }
 
     // ── Step 3: 判役 ──
-    let decompositions = decompose_hand(hand_tiles);
+    let decompositions = decompose_hand_with_open_melds(hand_tiles, ctx.melds.len());
     if decompositions.is_empty() {
         return None;
     }
@@ -113,6 +114,21 @@ pub fn is_win_shape(tiles: &[TileType]) -> bool {
     is_winning(&mut counts)
 }
 
+/// 判定包含固定副露的和牌形。
+pub fn is_win_shape_with_open_melds(tiles: &[TileType], open_meld_count: usize) -> bool {
+    if open_meld_count == 0 {
+        return is_win_shape(tiles);
+    }
+    if open_meld_count > 4 {
+        return false;
+    }
+    let mut counts = TileCounts::new();
+    for &tt in tiles {
+        counts.inc(tt);
+    }
+    is_standard_win_with_mentsu(&mut counts, 4 - open_meld_count)
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  拆解
 // ═══════════════════════════════════════════════════════════════
@@ -121,17 +137,31 @@ pub fn is_win_shape(tiles: &[TileType]) -> bool {
 ///
 /// 接收门清部分的牌（不含副露），返回所有标准形+七对子+国士无双的分解
 pub fn decompose_hand(hand_tiles: &[TileType]) -> Vec<WinningHand> {
+    decompose_hand_with_open_melds(hand_tiles, 0)
+}
+
+/// 分解包含固定副露的和牌。
+///
+/// `hand_tiles` 只包含门清部分和和了牌；`open_meld_count` 个副露作为
+/// 已完成面子，不参与门清牌的分解。
+pub fn decompose_hand_with_open_melds(
+    hand_tiles: &[TileType],
+    open_meld_count: usize,
+) -> Vec<WinningHand> {
     let mut counts = TileCounts::new();
     for &tt in hand_tiles {
         counts.inc(tt);
     }
 
-    let mut results = decompose_all_standard(&mut counts);
-    if let Some(sp) = decompose_seven_pairs(&counts) {
-        results.push(sp);
-    }
-    if let Some(k) = decompose_kokushi(&counts) {
-        results.push(k);
+    let required_mentsu = 4usize.saturating_sub(open_meld_count);
+    let mut results = decompose_all_standard_with_mentsu(&mut counts, required_mentsu);
+    if open_meld_count == 0 {
+        if let Some(sp) = decompose_seven_pairs(&counts) {
+            results.push(sp);
+        }
+        if let Some(k) = decompose_kokushi(&counts) {
+            results.push(k);
+        }
     }
     results
 }
