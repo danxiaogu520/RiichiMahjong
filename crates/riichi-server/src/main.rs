@@ -102,6 +102,9 @@ async fn main() {
                 println!("游戏结束: {:?}", scores);
                 break;
             }
+            ServerEvent::Error(message) => {
+                eprintln!("动作错误: {}", message);
+            }
         }
     }
 }

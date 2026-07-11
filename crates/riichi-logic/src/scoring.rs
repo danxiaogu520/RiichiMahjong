@@ -100,7 +100,7 @@ pub fn calculate_points_with_loser(
         } else {
             round_up_100(bp * 4)
         };
-        let pay = hand_pay + honba * 300i32 + riichi_bonus;
+        let pay = hand_pay + (honba * 300) as i32 + riichi_bonus;
 
         changes[winner] = pay;
         if let Some(loser) = loser {

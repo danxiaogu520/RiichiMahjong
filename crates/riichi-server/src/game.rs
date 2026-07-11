@@ -56,12 +56,20 @@ impl GameLoop {
                     let player = self.game.current_player;
                     let can_tsumo = self.game.check_tsumo(player).is_some();
                     let can_riichi = self.game.can_declare_riichi(player);
+                    let discard_options = self.game.players[player.0].hand.tiles().to_vec();
+                    let ankan_options = self.game.get_ankan_options(player);
+                    let kakan_options = self.game.get_kakan_options(player);
+                    let can_kyuushu = self.game.can_declare_kyuushu(player);
 
                     self.send_to(
                         player,
                         ServerEvent::ActionRequired {
                             can_tsumo,
                             can_riichi,
+                            discard_options,
+                            ankan_options,
+                            kakan_options,
+                            can_kyuushu,
                         },
                     )
                     .await;
@@ -86,12 +94,18 @@ impl GameLoop {
     async fn apply_turn_action(&mut self, player: PlayerId, action: TurnActionMsg) {
         match action {
             TurnActionMsg::Discard(tile) => {
-                let _ = self.game.execute_action(TurnAction::Discard(tile));
+                if let Err(error) = self.game.execute_action(TurnAction::Discard(tile)) {
+                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    return;
+                }
                 self.broadcast_state().await;
                 self.handle_after_turn().await;
             }
             TurnActionMsg::Tsumo => {
-                let _ = self.game.execute_action(TurnAction::Tsumo);
+                if let Err(error) = self.game.execute_action(TurnAction::Tsumo) {
+                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    return;
+                }
                 self.broadcast_state().await;
                 self.handle_round_end().await;
             }
@@ -118,33 +132,27 @@ impl GameLoop {
                 }
             }
             TurnActionMsg::Ankan(tile) => {
-                if self
-                    .game
-                    .execute_action(TurnAction::Ankan(tile))
-                    .is_ok()
-                {
-                    self.broadcast_state().await;
+                if let Err(error) = self.game.execute_action(TurnAction::Ankan(tile)) {
+                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    return;
                 }
+                self.broadcast_state().await;
             }
             TurnActionMsg::Kakan(index, tile) => {
-                if self
-                    .game
-                    .execute_action(TurnAction::Kakan(index, tile))
-                    .is_ok()
-                {
-                    self.broadcast_state().await;
-                    self.handle_after_turn().await;
+                if let Err(error) = self.game.execute_action(TurnAction::Kakan(index, tile)) {
+                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    return;
                 }
+                self.broadcast_state().await;
+                self.handle_after_turn().await;
             }
             TurnActionMsg::KyuushuKyuuhai => {
-                if self
-                    .game
-                    .execute_action(TurnAction::KyuushuKyuuhai)
-                    .is_ok()
-                {
-                    self.broadcast_state().await;
-                    self.handle_round_end().await;
+                if let Err(error) = self.game.execute_action(TurnAction::KyuushuKyuuhai) {
+                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    return;
                 }
+                self.broadcast_state().await;
+                self.handle_round_end().await;
             }
         }
     }
