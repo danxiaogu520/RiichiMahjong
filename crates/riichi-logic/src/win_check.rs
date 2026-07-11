@@ -311,8 +311,8 @@ fn is_pinfu_wait(hand: &WinningHand, winning_tile: Tile) -> bool {
         let start = m.tile_type.rank().0;
         let win_rank = winning_type.rank().0;
         // 23 听 1/4、34 听 2/5……；12 听 3 和 78 听 7 属边张，不能算平和。
-        (win_rank == start && (2..=6).contains(&start))
-            || (win_rank == start + 2 && (1..=5).contains(&start))
+        (win_rank == start && (1..=6).contains(&start))
+            || (win_rank == start + 2 && (2..=7).contains(&start))
     })
 }
 
@@ -370,11 +370,14 @@ fn detect_yaku(
         };
         let mut yaku = Vec::new();
 
-        let num_koutsu = hand
-            .mentsu
-            .iter()
-            .filter(|m| m.kind == MentsuKind::Koutsu)
-            .count();
+        let num_koutsu = if hand.hand_type == HandType::SevenPairs {
+            0
+        } else {
+            hand.mentsu
+                .iter()
+                .filter(|m| m.kind == MentsuKind::Koutsu)
+                .count()
+        };
         let num_shuntsu = hand
             .mentsu
             .iter()
@@ -382,12 +385,17 @@ fn detect_yaku(
             .count();
         let is_menzen = ctx.melds.iter().all(|m| m.is_concealed());
 
-        let koutsu_in_hand = num_koutsu + concealed_triplets_melds;
+        let koutsu_in_hand = if hand.hand_type == HandType::SevenPairs {
+            0
+        } else {
+            num_koutsu + concealed_triplets_melds
+        };
         let total_koutsu = koutsu_in_hand + open_triplets;
         let total_kans = count_kans(&ctx.melds);
 
         let mut concealed_triplet_count = koutsu_in_hand;
-        if !ctx.is_tsumo
+        if hand.hand_type != HandType::SevenPairs
+            && !ctx.is_tsumo
             && hand
                 .mentsu
                 .iter()
@@ -476,9 +484,12 @@ fn detect_yaku(
             }
         }
 
-        if ctx.is_tsumo && concealed_triplet_count >= 4 {
+        if hand.hand_type != HandType::SevenPairs && ctx.is_tsumo && concealed_triplet_count >= 4 {
             yaku.push(YakuResult::new(YakuName::Suuankou, 13));
-        } else if !ctx.is_tsumo && concealed_triplet_count >= 4 {
+        } else if hand.hand_type != HandType::SevenPairs
+            && !ctx.is_tsumo
+            && concealed_triplet_count >= 4
+        {
             if hand.jantai == winning_tile.tile_type() {
                 yaku.push(YakuResult::new(YakuName::SuuankouTanki, 26));
             } else {
@@ -489,9 +500,11 @@ fn detect_yaku(
         let dragon_koutsu = (31..=33u8)
             .filter(|&i| {
                 let tt = TileType(i);
-                hand.mentsu
-                    .iter()
-                    .any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu)
+                (hand.hand_type != HandType::SevenPairs
+                    && hand
+                        .mentsu
+                        .iter()
+                        .any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu))
                     || ctx.melds.iter().any(|m| {
                         m.tiles[0].tile_type() == tt
                             && matches!(
@@ -511,9 +524,11 @@ fn detect_yaku(
         let wind_koutsu = (27..=30u8)
             .filter(|&i| {
                 let tt = TileType(i);
-                hand.mentsu
-                    .iter()
-                    .any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu)
+                (hand.hand_type != HandType::SevenPairs
+                    && hand
+                        .mentsu
+                        .iter()
+                        .any(|m| m.tile_type == tt && m.kind == MentsuKind::Koutsu))
                     || ctx.melds.iter().any(|m| {
                         m.tiles[0].tile_type() == tt
                             && matches!(
@@ -576,7 +591,7 @@ fn detect_yaku(
         }
 
         if is_menzen && hand.hand_type != HandType::SevenPairs {
-            let mut found = false;
+            let mut duplicate_sequence_pairs = 0usize;
             for i in 0..hand.mentsu.len() {
                 if hand.mentsu[i].kind != MentsuKind::Shuntsu {
                     continue;
@@ -585,15 +600,12 @@ fn detect_yaku(
                     if hand.mentsu[j].kind == MentsuKind::Shuntsu
                         && hand.mentsu[i].tile_type == hand.mentsu[j].tile_type
                     {
-                        found = true;
-                        break;
+                        duplicate_sequence_pairs += 1;
                     }
                 }
-                if found {
-                    break;
-                }
             }
-            if found {
+            // 两杯口已经覆盖一杯口，不能重复计番。
+            if duplicate_sequence_pairs == 1 {
                 yaku.push(YakuResult::new(YakuName::Iipeiko, 1));
             }
         }
@@ -601,7 +613,10 @@ fn detect_yaku(
         // 役牌必须来自刻子/杠子，雀头不能单独构成役牌。
         let mut yakuhai_triplets = Vec::new();
         for mentsu in &hand.mentsu {
-            if mentsu.kind == MentsuKind::Koutsu && !yakuhai_triplets.contains(&mentsu.tile_type) {
+            if hand.hand_type != HandType::SevenPairs
+                && mentsu.kind == MentsuKind::Koutsu
+                && !yakuhai_triplets.contains(&mentsu.tile_type)
+            {
                 yakuhai_triplets.push(mentsu.tile_type);
             }
         }
@@ -651,7 +666,7 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::Toitoi, 2));
         }
 
-        if concealed_triplet_count >= 3 {
+        if hand.hand_type != HandType::SevenPairs && concealed_triplet_count >= 3 {
             yaku.push(YakuResult::new(YakuName::Sananko, 2));
         }
 
@@ -1189,6 +1204,62 @@ mod tests {
             .map(|result| result.han)
     }
 
+    fn parse_hand(spec: &str) -> Vec<TileType> {
+        let mut result = Vec::new();
+        let mut digits = Vec::new();
+        for ch in spec.chars() {
+            match ch {
+                '1'..='9' => digits.push(ch as u8 - b'0'),
+                'm' | 'p' | 's' | 'z' => {
+                    let base = match ch {
+                        'm' => 0,
+                        'p' => 9,
+                        's' => 18,
+                        'z' => 27,
+                        _ => unreachable!(),
+                    };
+                    result.extend(digits.drain(..).map(|rank| TileType(base + rank - 1)));
+                }
+                ' ' => {}
+                _ => panic!("invalid test hand character: {ch}"),
+            }
+        }
+        assert!(digits.is_empty(), "unfinished test hand segment: {spec}");
+        result
+    }
+
+    fn physical_tiles(types: &[TileType]) -> Vec<riichi_core::tile::Tile> {
+        let mut next_copy = [0u8; 34];
+        types
+            .iter()
+            .map(|&tile_type| {
+                let copy = next_copy[tile_type.0 as usize];
+                next_copy[tile_type.0 as usize] += 1;
+                tile_type.with_copy(copy)
+            })
+            .collect()
+    }
+
+    fn evaluate_closed(
+        spec: &str,
+        winning_tile: TileType,
+        is_tsumo: bool,
+    ) -> crate::types::WinResult {
+        let hand_types = parse_hand(spec);
+        assert_eq!(hand_types.len(), 14);
+        let all_tiles = physical_tiles(&hand_types);
+        let mut ctx = context(true, Vec::new());
+        ctx.is_tsumo = is_tsumo;
+        check_win(
+            &all_tiles,
+            &hand_types,
+            &ctx,
+            false,
+            winning_tile.with_copy(3),
+        )
+        .expect("test hand should be a valid win")
+    }
+
     #[test]
     fn open_yaku_use_their_reduced_han_values() {
         let open_chi = |tiles: &[TileType]| {
@@ -1230,6 +1301,36 @@ mod tests {
         let ittsu_ctx = context(true, vec![ittsu_meld]);
         let yaku = detect_yaku(&[ittsu_hand], &ittsu_ctx, TileType(3).with_copy(0));
         assert_eq!(yaku_han(&yaku, YakuName::Ittsu), Some(1));
+    }
+
+    #[test]
+    fn mortal_chiitoitsu_case_keeps_tanyao_and_fixed_25_fu() {
+        let result = evaluate_closed("2255m445p667788s5p", TileType(13), false);
+        assert_eq!(result.fu, 25);
+        assert_eq!(result.total_han, 3);
+        assert_eq!(
+            yaku_han(&result.yaku_results, YakuName::Chiitoitsu),
+            Some(2)
+        );
+        assert_eq!(yaku_han(&result.yaku_results, YakuName::Tanyao), Some(1));
+    }
+
+    #[test]
+    fn mortal_ryanpeiko_pinfu_case_selects_the_highest_decomposition() {
+        let pinfu = evaluate_closed("666677778888m99p", TileType(7), false);
+        assert_eq!(pinfu.fu, 30);
+        assert_eq!(pinfu.total_han, 4);
+        assert_eq!(yaku_han(&pinfu.yaku_results, YakuName::Ryanpeiko), Some(3));
+        assert_eq!(yaku_han(&pinfu.yaku_results, YakuName::Pinfu), Some(1));
+
+        let ryanpeiko = evaluate_closed("666677778888m99p", TileType(6), false);
+        assert_eq!(ryanpeiko.fu, 40);
+        assert_eq!(ryanpeiko.total_han, 3);
+        assert_eq!(
+            yaku_han(&ryanpeiko.yaku_results, YakuName::Ryanpeiko),
+            Some(3)
+        );
+        assert_eq!(yaku_han(&ryanpeiko.yaku_results, YakuName::Pinfu), None);
     }
 
     #[test]
