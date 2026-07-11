@@ -156,4 +156,10 @@ mod tests {
         assert_eq!(changes, [1700, -700, -500, -500]);
         assert_eq!(changes.iter().sum::<i32>(), 0);
     }
+
+    #[test]
+    fn double_yakuman_uses_two_yakuman_sticks() {
+        let changes = calculate_points_with_loser(26, 0, 2, 0, Some(2), 1, 0, 0, false);
+        assert_eq!(changes, [64_000, 0, -64_000, 0]);
+    }
 }
