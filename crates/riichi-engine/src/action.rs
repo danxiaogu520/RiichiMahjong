@@ -293,6 +293,27 @@ impl GameState {
         action: ResponseAction,
     ) -> Result<Vec<GameEvent>, GameError> {
         self.validate_action(player, &crate::legal::LegalAction::Response(action.clone()))?;
+        self.execute_call_inner(player, action)
+    }
+
+    /// 完成响应窗口的 Pass。
+    ///
+    /// 这是服务端在所有有资格响应的玩家都 Pass 后调用的内部推进动作，
+    /// 不是玩家动作，因此允许由当前弃牌者/加杠者完成窗口。
+    pub fn complete_response_pass(&mut self) -> Result<Vec<GameEvent>, GameError> {
+        let player = match self.phase {
+            GamePhase::ResponsePhase { discarder, .. } => discarder,
+            GamePhase::ChankanResponse { kakan_player, .. } => kakan_player,
+            _ => return Err(GameError::InvalidAction("不在响应阶段".to_string())),
+        };
+        self.execute_call_inner(player, ResponseAction::Pass)
+    }
+
+    fn execute_call_inner(
+        &mut self,
+        player: PlayerId,
+        action: ResponseAction,
+    ) -> Result<Vec<GameEvent>, GameError> {
         let mut new_events = Vec::new();
 
         match self.phase {
@@ -325,6 +346,7 @@ impl GameState {
             _ => return Err(GameError::InvalidAction("不在响应阶段".to_string())),
         }
 
+        self.record_events(&new_events);
         Ok(new_events)
     }
 
@@ -779,5 +801,18 @@ mod tests {
             )
             .unwrap();
         assert_eq!(state.dora.len(), initial_dora_count + 1);
+    }
+
+    #[test]
+    fn response_pass_by_discarder_advances_to_draw_phase() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(31);
+        state.start_round(&mut rng);
+        let drawn = state.drawn_tile.unwrap();
+
+        state.execute_action(TurnAction::Discard(drawn)).unwrap();
+        assert!(matches!(state.phase, GamePhase::ResponsePhase { .. }));
+        state.complete_response_pass().unwrap();
+        assert!(matches!(state.phase, GamePhase::DrawPhase));
     }
 }

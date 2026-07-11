@@ -387,7 +387,10 @@ impl GameLoop {
             return;
         }
 
-        let _ = self.game.execute_call(discarder, ResponseAction::Pass);
+        if let Err(error) = self.game.complete_response_pass() {
+            self.broadcast(ServerEvent::Error(error.to_string())).await;
+            return;
+        }
         self.broadcast_state().await;
 
         if matches!(self.game.phase, GamePhase::DrawPhase) {
