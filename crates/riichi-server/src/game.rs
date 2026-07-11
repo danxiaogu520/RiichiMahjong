@@ -113,10 +113,8 @@ impl GameLoop {
         let action_tx = self.action_tx.clone();
         tokio::spawn(async move {
             while let Some(message) = action_rx.recv().await {
-                if message.0 == player {
-                    if action_tx.send(message).await.is_err() {
-                        break;
-                    }
+                if message.0 == player && action_tx.send(message).await.is_err() {
+                    break;
                 }
             }
         });

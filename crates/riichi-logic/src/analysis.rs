@@ -510,31 +510,6 @@ fn analyze_kokushi_tenpai(base: &TileCounts) -> Option<WaitInfo> {
     None
 }
 
-#[cfg(test)]
-mod tests {
-    use super::analyze_wait_tiles_with_open_melds;
-    use riichi_core::tile::Tile;
-
-    #[test]
-    fn open_hand_wait_uses_remaining_concealed_mentsu() {
-        // 一组已副露面子之外，门清部分为 123/456/789 + 1p，听 1p。
-        let hand = [
-            Tile::from_raw(0),
-            Tile::from_raw(4),
-            Tile::from_raw(8),
-            Tile::from_raw(12),
-            Tile::from_raw(16),
-            Tile::from_raw(20),
-            Tile::from_raw(24),
-            Tile::from_raw(28),
-            Tile::from_raw(32),
-            Tile::from_raw(36),
-        ];
-        let waits = analyze_wait_tiles_with_open_melds(&hand, 1);
-        assert!(waits.iter().any(|wait| wait.tile_type.0 == 9));
-    }
-}
-
 /// 根据已拆解的手牌，判断和了牌在该拆解中的听牌类型
 ///
 /// 同一张牌可能出现在多个面子中（如 2m 同时在 1m2m3m 和 2m3m4m 中），
@@ -594,4 +569,29 @@ pub(crate) fn classify_wait(hand: &WinningHand, winning_tile: TileType) -> Vec<W
         result.push(WaitType::Tanki);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::analyze_wait_tiles_with_open_melds;
+    use riichi_core::tile::Tile;
+
+    #[test]
+    fn open_hand_wait_uses_remaining_concealed_mentsu() {
+        // 一组已副露面子之外，门清部分为 123/456/789 + 1p，听 1p。
+        let hand = [
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+        ];
+        let waits = analyze_wait_tiles_with_open_melds(&hand, 1);
+        assert!(waits.iter().any(|wait| wait.tile_type.0 == 9));
+    }
 }
