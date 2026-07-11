@@ -77,9 +77,11 @@ impl GameState {
                         .collect();
                     for i in 0..4 {
                         if !tenpai[i] {
-                            payments[i] -= 1500 * winners.len() as i32;
+                            // 两家听牌时，两家不听牌各付1500，
+                            // 每位听牌者各收1500。
+                            payments[i] -= 1500;
                             for &w in &winners {
-                                payments[w] += 1500;
+                                payments[w] += 750;
                             }
                         }
                     }
