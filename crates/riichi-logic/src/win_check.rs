@@ -253,6 +253,24 @@ fn is_yakuhai(t: TileType, ctx: &WinContext) -> bool {
     t.is_dragon() || t == ctx.seat_wind || t == ctx.field_wind
 }
 
+fn has_open_sequence(melds: &[Meld]) -> bool {
+    melds.iter().any(|m| m.kind == MeldKind::Chi)
+}
+
+fn is_pinfu_wait(hand: &WinningHand, winning_tile: Tile) -> bool {
+    let winning_type = winning_tile.tile_type();
+    hand.mentsu.iter().any(|m| {
+        if m.kind != MentsuKind::Shuntsu || m.tile_type.suit() != winning_type.suit() {
+            return false;
+        }
+        let start = m.tile_type.rank().0;
+        let win_rank = winning_type.rank().0;
+        // 23 听 1/4、34 听 2/5……；12 听 3 和 78 听 7 属边张，不能算平和。
+        (win_rank == start && (2..=6).contains(&start))
+            || (win_rank == start + 2 && (1..=5).contains(&start))
+    })
+}
+
 fn collect_hand_tiles(hand: &WinningHand) -> Vec<TileType> {
     let mut tiles = vec![hand.jantai; 2];
     for m in &hand.mentsu {
@@ -468,11 +486,11 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::MenzenTsumo, 1));
         }
 
-        if ctx.is_riichi {
+        if ctx.is_riichi && is_menzen {
             yaku.push(YakuResult::new(YakuName::Riichi, 1));
         }
 
-        if ctx.is_ippatsu {
+        if ctx.is_ippatsu && is_menzen {
             yaku.push(YakuResult::new(YakuName::Ippatsu, 1));
         }
 
@@ -484,6 +502,7 @@ fn detect_yaku(
             && hand.hand_type != HandType::SevenPairs
             && num_shuntsu == 4
             && !is_yakuhai(hand.jantai, ctx)
+            && is_pinfu_wait(hand, winning_tile)
         {
             yaku.push(YakuResult::new(YakuName::Pinfu, 1));
         }
@@ -651,10 +670,11 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::Honroutou, 2));
         }
 
-        if hand.hand_type != HandType::SevenPairs && is_menzen {
+        if hand.hand_type != HandType::SevenPairs {
             let has_honor = all_tiles.iter().any(|t| t.is_honor());
             let has_number = all_tiles.iter().any(|t| t.is_number());
             if has_honor && has_number {
+                let has_sequence = num_shuntsu > 0 || has_open_sequence(&ctx.melds);
                 let all_groups_have_yaochuuhai = hand.mentsu.iter().all(|m| match m.kind {
                     MentsuKind::Shuntsu => {
                         m.tile_type.is_yaochuuhai() || TileType(m.tile_type.0 + 2).is_yaochuuhai()
@@ -666,8 +686,11 @@ fn detect_yaku(
                         let last = m.tiles.last().unwrap().tile_type();
                         first.is_yaochuuhai() || last.is_yaochuuhai()
                     });
-                if all_groups_have_yaochuuhai {
-                    yaku.push(YakuResult::new(YakuName::Honchantai, 2));
+                if all_groups_have_yaochuuhai && has_sequence {
+                    yaku.push(YakuResult::new(
+                        YakuName::Honchantai,
+                        if is_menzen { 2 } else { 1 },
+                    ));
                 }
             }
         }
@@ -735,7 +758,10 @@ fn detect_yaku(
                 }
             }
             if found {
-                yaku.push(YakuResult::new(YakuName::SanshokuDoujun, 2));
+                yaku.push(YakuResult::new(
+                    YakuName::SanshokuDoujun,
+                    if is_menzen { 2 } else { 1 },
+                ));
             }
         }
 
@@ -790,7 +816,10 @@ fn detect_yaku(
                 }
             }
             if found {
-                yaku.push(YakuResult::new(YakuName::Ittsu, 2));
+                yaku.push(YakuResult::new(
+                    YakuName::Ittsu,
+                    if is_menzen { 2 } else { 1 },
+                ));
             }
         }
 
@@ -814,9 +843,15 @@ fn detect_yaku(
             }
             if single && single_suit.is_some() {
                 if !has_honor {
-                    yaku.push(YakuResult::new(YakuName::Chinitsu, 6));
+                    yaku.push(YakuResult::new(
+                        YakuName::Chinitsu,
+                        if is_menzen { 6 } else { 5 },
+                    ));
                 } else {
-                    yaku.push(YakuResult::new(YakuName::Honitsu, 3));
+                    yaku.push(YakuResult::new(
+                        YakuName::Honitsu,
+                        if is_menzen { 3 } else { 2 },
+                    ));
                 }
             }
         }
@@ -824,7 +859,8 @@ fn detect_yaku(
         if hand.hand_type != HandType::SevenPairs {
             let has_honor = all_tiles.iter().any(|t| t.is_honor());
             let has_number = all_tiles.iter().any(|t| t.is_number());
-            if !has_honor && has_number && is_menzen {
+            if !has_honor && has_number {
+                let has_sequence = num_shuntsu > 0 || has_open_sequence(&ctx.melds);
                 let all_groups_have_terminal = hand.mentsu.iter().all(|m| match m.kind {
                     MentsuKind::Shuntsu => {
                         m.tile_type.is_terminal() || TileType(m.tile_type.0 + 2).is_terminal()
@@ -836,8 +872,11 @@ fn detect_yaku(
                         let last = m.tiles.last().unwrap().tile_type();
                         first.is_terminal() || last.is_terminal()
                     });
-                if all_groups_have_terminal {
-                    yaku.push(YakuResult::new(YakuName::Junchan, 3));
+                if all_groups_have_terminal && has_sequence {
+                    yaku.push(YakuResult::new(
+                        YakuName::Junchan,
+                        if is_menzen { 3 } else { 2 },
+                    ));
                 }
             }
         }
