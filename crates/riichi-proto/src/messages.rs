@@ -43,6 +43,7 @@ pub enum ServerMessage {
     RoundResult(RoundResultView),
     GameOver {
         scores: [i32; 4],
+        ranking: [usize; 4],
     },
     Error(String),
 }
@@ -162,6 +163,7 @@ pub enum GameEventView {
 pub enum RoundEndReasonView {
     ExhaustiveDraw,
     Win { winner: PlayerId, is_tsumo: bool },
+    MultiWin { winners: Vec<PlayerId> },
     KyuushuKyuuhai,
     SuufonRenda,
     SuuchaRiichi,
@@ -173,8 +175,11 @@ pub struct ActionRequest {
     pub player: PlayerId,
     pub can_tsumo: bool,
     pub can_riichi: bool,
+    pub riichi_options: Vec<Tile>,
+    pub discard_options: Vec<Tile>,
     pub ankan_options: Vec<Tile>,
     pub kakan_options: Vec<(usize, Tile)>,
+    pub can_kyuushu: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
