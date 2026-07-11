@@ -838,9 +838,9 @@ mod tests {
             Tile::from_raw(12),
             Tile::from_raw(16),
             Tile::from_raw(20),
+            Tile::from_raw(21),
             Tile::from_raw(24),
             Tile::from_raw(28),
-            Tile::from_raw(32),
             Tile::from_raw(36),
         ]);
         state.phase = GamePhase::ResponsePhase {
@@ -850,6 +850,38 @@ mod tests {
 
         let options = state.get_call_options();
         assert!(options.iter().any(|option| {
+            option.player == PlayerId(1) && matches!(option.call_type, CallType::Ron)
+        }));
+    }
+
+    #[test]
+    fn shape_only_wait_without_yaku_does_not_offer_ron() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(59);
+        state.start_round(&mut rng);
+        state.players[1].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(21),
+            Tile::from_raw(60),
+            Tile::from_raw(64),
+            Tile::from_raw(68),
+            Tile::from_raw(40),
+        ]);
+        let discarded_tile = Tile::from_raw(41);
+        state.phase = GamePhase::ResponsePhase {
+            discarded_tile,
+            discarder: PlayerId(0),
+        };
+
+        let options = state.get_call_options();
+        assert!(!options.iter().any(|option| {
             option.player == PlayerId(1) && matches!(option.call_type, CallType::Ron)
         }));
     }
