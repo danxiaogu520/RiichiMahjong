@@ -549,6 +549,12 @@ impl GameLoop {
             players[2].melds.len(),
             players[3].melds.len(),
         ];
+        let melds = [
+            players[0].melds.clone(),
+            players[1].melds.clone(),
+            players[2].melds.clone(),
+            players[3].melds.clone(),
+        ];
 
         #[allow(clippy::needless_range_loop)]
         for idx in 0..4 {
@@ -576,6 +582,7 @@ impl GameLoop {
                 points,
                 discards: discards.clone(),
                 melds_count,
+                melds: melds.clone(),
                 dora: self.game.dora.clone(),
                 remaining_tiles: self.game.remaining_tiles(),
                 round: self.game.round,

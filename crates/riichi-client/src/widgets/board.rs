@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use riichi_core::game::CallType;
+use riichi_core::meld::{Meld, MeldKind};
 
 use crate::app::App;
 use crate::ui::{format_tile_type, tile_color};
@@ -31,13 +32,7 @@ pub fn render_board(f: &mut Frame, app: &App, area: Rect) {
 fn render_opponent(f: &mut Frame, app: &App, player_idx: usize, area: Rect) {
     let name = app.player_name(player_idx);
     let points = app.points[player_idx];
-    let meld_count = app.melds_count[player_idx];
-
-    let melds_display = if meld_count > 0 {
-        format!("  副露:{}", meld_count)
-    } else {
-        String::new()
-    };
+    let melds_display = format_melds(&app.melds[player_idx]);
 
     let mut visible_discards = app.discards[player_idx].clone();
     if let Some((pending_player, pending_tile)) = app.pending_discard {
@@ -73,7 +68,7 @@ fn render_opponent(f: &mut Frame, app: &App, player_idx: usize, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!(" [{}]{}", points, melds_display),
+            format!(" [{}] {}", points, melds_display),
             Style::default().fg(Color::White),
         ),
         Span::raw(format!("  手牌:{}张", hand_count)),
@@ -99,8 +94,6 @@ fn render_opponent(f: &mut Frame, app: &App, player_idx: usize, area: Rect) {
 fn render_human(f: &mut Frame, app: &App, area: Rect) {
     let name = app.player_name(0);
     let points = app.points[0];
-    let meld_count = app.melds_count[0];
-
     let tiles = &app.hand_tiles;
 
     let mut hand_spans: Vec<Span> = Vec::new();
@@ -120,11 +113,7 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
         hand_spans.push(Span::styled(format!("{} ", format_tile_type(tt)), style));
     }
 
-    let melds_display = if meld_count > 0 {
-        format!("  副露:{}", meld_count)
-    } else {
-        String::new()
-    };
+    let melds_display = format_melds(&app.melds[0]);
 
     let line1 = Line::from(vec![
         Span::styled(
@@ -134,7 +123,7 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!(" [{}]{}", points, melds_display),
+            format!(" [{}] {}", points, melds_display),
             Style::default().fg(Color::White),
         ),
     ]);
@@ -165,6 +154,30 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
 
     let para = Paragraph::new(vec![line1, line2, line3, action_line]).block(block);
     f.render_widget(para, area);
+}
+
+fn format_melds(melds: &[Meld]) -> String {
+    if melds.is_empty() {
+        return String::new();
+    }
+    let mut result = String::from("副露:");
+    for meld in melds {
+        let kind = match meld.kind {
+            MeldKind::Chi => "吃",
+            MeldKind::Pon => "碰",
+            MeldKind::Ankan => "暗杠",
+            MeldKind::Minkan => "明杠",
+            MeldKind::Kakan => "加杠",
+        };
+        result.push('[');
+        result.push_str(kind);
+        result.push(' ');
+        for tile in &meld.tiles {
+            result.push_str(&format_tile_type(tile.tile_type()));
+        }
+        result.push(']');
+    }
+    result
 }
 
 fn render_action_line(app: &App) -> Line<'static> {

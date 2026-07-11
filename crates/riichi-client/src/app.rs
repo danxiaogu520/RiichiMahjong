@@ -1,4 +1,5 @@
 use riichi_core::game::CallOption;
+use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
@@ -20,6 +21,7 @@ pub struct App {
     pub points: [i32; 4],
     pub discards: [Vec<Tile>; 4],
     pub melds_count: [usize; 4],
+    pub melds: [Vec<Meld>; 4],
     pub dora: Vec<TileType>,
     pub remaining_tiles: usize,
     pub round: u32,
@@ -57,6 +59,7 @@ impl App {
             points: [25000; 4],
             discards: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             melds_count: [0; 4],
+            melds: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             dora: Vec::new(),
             remaining_tiles: 0,
             round: 1,
@@ -92,6 +95,7 @@ impl App {
                     points,
                     discards,
                     melds_count,
+                    melds,
                     dora,
                     remaining_tiles,
                     round,
@@ -107,6 +111,7 @@ impl App {
                     self.points = points;
                     self.discards = discards;
                     self.melds_count = melds_count;
+                    self.melds = melds;
                     self.dora = dora;
                     self.remaining_tiles = remaining_tiles;
                     self.round = round;
