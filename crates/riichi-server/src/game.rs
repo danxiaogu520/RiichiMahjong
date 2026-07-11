@@ -482,20 +482,7 @@ impl GameLoop {
     }
 
     fn riichi_options(&self, player: PlayerId) -> Vec<Tile> {
-        let calc = ShantenCalculator::new();
-        let mut tiles = self.game.players[player.0].hand.tiles().to_vec();
-        if let Some(drawn) = self.game.drawn_tile {
-            tiles.push(drawn);
-        }
-        let counts = riichi_logic::types::TileCounts::from_tiles(&tiles);
-        tiles
-            .into_iter()
-            .filter(|tile| {
-                let mut after = counts;
-                after.dec(tile.tile_type());
-                calc.lookup(&after) == 0
-            })
-            .collect()
+        self.game.get_riichi_discard_options(player)
     }
 
     async fn broadcast_state(&self) {

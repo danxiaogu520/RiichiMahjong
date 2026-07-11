@@ -1,7 +1,7 @@
 use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::analysis::{analyze_wait_tiles, is_standard_win};
+use riichi_logic::analysis::analyze_wait_tiles;
 use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::types::TileCounts;
 
@@ -40,18 +40,32 @@ impl GameState {
         if self.remaining_tiles() < 4 {
             return false; // 剩余牌不足
         }
-        // 检查是否存在一张牌打出后能听牌
+        !self.get_riichi_discard_options(player).is_empty()
+    }
+
+    /// 获取所有实际打出后仍能听牌的立直弃牌。
+    ///
+    /// 返回实体牌而不是牌型，能够正确区分赤五与普通五（以及网络动作
+    /// 校验所需的具体牌副本）。
+    pub fn get_riichi_discard_options(&self, player: PlayerId) -> Vec<Tile> {
+        let p = &self.players[player.0];
+        if p.is_riichi || !p.is_menzen() || p.points < 1000 || self.remaining_tiles() < 4 {
+            return vec![];
+        }
         let calc = ShantenCalculator::new();
         let mut tiles: Vec<Tile> = self.players[player.0].hand.tiles().to_vec();
         if let Some(t) = self.drawn_tile {
             tiles.push(t);
         }
         let counts = TileCounts::from_tiles(&tiles);
-        tiles.iter().any(|tile| {
-            let mut after = counts;
-            after.dec(tile.tile_type());
-            calc.lookup(&after) == 0
-        })
+        tiles
+            .into_iter()
+            .filter(|tile| {
+                let mut after = counts;
+                after.dec(tile.tile_type());
+                calc.lookup(&after) == 0
+            })
+            .collect()
     }
 
     /// 宣告立直（仅宣告，不打牌）
@@ -81,21 +95,7 @@ impl GameState {
         if !p.is_riichi {
             return vec![];
         }
-        let drawn = match self.drawn_tile {
-            Some(t) => t,
-            None => return vec![],
-        };
-        let drawn_tt = drawn.tile_type();
-
         let hand = &p.hand;
-        let hand_count = hand.count_type(drawn_tt.0);
-
-        // 必须手牌 3 张 + drawn_tile 1 张 = 4 张
-        if hand_count != 3 {
-            return vec![];
-        }
-
-        // waits_before：13 张手牌的听牌
         let waits_before: std::collections::HashSet<TileType> = analyze_wait_tiles(hand.tiles())
             .iter()
             .map(|w| w.tile_type)
@@ -105,38 +105,46 @@ impl GameState {
             return vec![];
         }
 
-        // 模拟暗杠后的 10 张手牌
-        let mut hand_after = hand.clone();
-        let tiles_to_remove: Vec<Tile> = hand
-            .tiles()
-            .iter()
-            .filter(|t| t.tile_type() == drawn_tt)
-            .take(3)
-            .copied()
-            .collect();
-        for t in &tiles_to_remove {
-            hand_after.remove(*t).ok();
-        }
+        let mut options = Vec::new();
+        for tt in (0..34u8).map(TileType) {
+            let hand_count = hand.count_type(tt.0);
+            let drawn_count = self.drawn_tile.is_some_and(|tile| tile.tile_type() == tt) as usize;
+            if hand_count + drawn_count < 4 {
+                continue;
+            }
 
-        // waits_after：逐一尝试添加每种牌型，检查是否构成和了形
-        let base_counts = TileCounts::from_tiles(hand_after.tiles());
-        let waits_after: std::collections::HashSet<TileType> = (0..34u8)
-            .map(TileType)
-            .filter(|&tt| {
-                if base_counts.get(tt) >= 4 {
-                    return false;
+            let mut hand_after = hand.clone();
+            let mut removed = 0;
+            for tile in hand.tiles().iter().copied() {
+                if tile.tile_type() == tt && removed < 4 {
+                    hand_after.remove(tile).ok();
+                    removed += 1;
                 }
-                let mut counts = base_counts;
-                counts.inc(tt);
-                is_standard_win(&mut counts)
-            })
-            .collect();
+            }
+            if removed < 4 {
+                if let Some(drawn) = self.drawn_tile.filter(|tile| tile.tile_type() == tt) {
+                    hand_after.add(drawn);
+                    hand_after.remove(drawn).ok();
+                    removed += 1;
+                }
+            }
+            if removed != 4 {
+                continue;
+            }
 
-        // 听牌种类不变才允许暗杠
-        if waits_before == waits_after {
-            vec![drawn]
-        } else {
-            vec![]
+            let waits_after: std::collections::HashSet<TileType> =
+                analyze_wait_tiles(hand_after.tiles())
+                    .iter()
+                    .map(|w| w.tile_type)
+                    .collect();
+            if waits_before == waits_after {
+                if let Some(tile) = hand.tiles().iter().find(|tile| tile.tile_type() == tt) {
+                    options.push(*tile);
+                } else if let Some(drawn) = self.drawn_tile.filter(|tile| tile.tile_type() == tt) {
+                    options.push(drawn);
+                }
+            }
         }
+        options
     }
 }
