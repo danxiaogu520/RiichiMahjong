@@ -2,8 +2,8 @@ use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::tile::{Suit, Tile, TileType};
 
 use crate::analysis::{
-    decompose_all_standard_with_mentsu, decompose_kokushi,
-    decompose_seven_pairs, is_standard_win_with_mentsu, is_winning,
+    decompose_all_standard_with_mentsu, decompose_kokushi, decompose_seven_pairs,
+    is_standard_win_with_mentsu, is_winning,
 };
 use crate::dora::calculate_dora;
 use crate::fu::calculate_fu_with_winning_tile;
@@ -61,9 +61,7 @@ pub fn check_win(
             && yaku_results.iter().all(|result| {
                 matches!(
                     result.yaku,
-                    YakuName::YakuhaiJikaze
-                        | YakuName::YakuhaiBakaze
-                        | YakuName::YakuhaiSangen
+                    YakuName::YakuhaiJikaze | YakuName::YakuhaiBakaze | YakuName::YakuhaiSangen
                 )
             })
             && winning_tile.tile_type().is_honor()

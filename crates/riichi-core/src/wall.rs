@@ -131,8 +131,8 @@ impl Wall {
 #[cfg(test)]
 mod tests {
     use super::Wall;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn kan_reduces_live_wall_by_one() {

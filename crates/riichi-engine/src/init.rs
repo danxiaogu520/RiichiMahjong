@@ -116,8 +116,8 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::GameState;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use riichi_core::tile::TileType;
 
     #[test]
@@ -132,9 +132,11 @@ mod tests {
         let mut state = GameState::new();
         let mut rng = StdRng::seed_from_u64(19);
         state.start_round(&mut rng);
-        state.events.push(riichi_core::game::GameEvent::GameStarted {
-            dealer: state.get_dealer(),
-        });
+        state
+            .events
+            .push(riichi_core::game::GameEvent::GameStarted {
+                dealer: state.get_dealer(),
+            });
         state.start_round(&mut rng);
 
         assert_eq!(state.events.len(), 1);

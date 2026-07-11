@@ -22,10 +22,7 @@ pub fn is_standard_win(counts: &mut TileCounts) -> bool {
 ///
 /// 开门手的副露不在 `counts` 中，因此不能根据牌数推断面子数量；
 /// 调用方必须传入 `4 - open_meld_count`。
-pub fn is_standard_win_with_mentsu(
-    counts: &mut TileCounts,
-    num_mentsu: usize,
-) -> bool {
+pub fn is_standard_win_with_mentsu(counts: &mut TileCounts, num_mentsu: usize) -> bool {
     for i in 0..34u8 {
         let tt = TileType(i);
         if counts.get(tt) >= 2 {

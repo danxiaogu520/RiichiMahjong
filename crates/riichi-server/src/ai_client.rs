@@ -35,12 +35,12 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 state.current_player = current_player;
                 state.hand_tiles = hand_tiles;
             }
-                ServerEvent::ActionRequired {
-                    can_tsumo,
-                    can_riichi,
-                    riichi_options,
-                    ..
-                } => {
+            ServerEvent::ActionRequired {
+                can_tsumo,
+                can_riichi,
+                riichi_options,
+                ..
+            } => {
                 state.can_tsumo = can_tsumo;
                 state.can_riichi = can_riichi;
 
@@ -63,7 +63,10 @@ fn decide_turn(player: &PlayerId, state: &AiState, riichi_options: &[Tile]) -> A
     }
     if state.can_riichi {
         if let Some(&tile) = riichi_options.first() {
-            return (*player, PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)));
+            return (
+                *player,
+                PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)),
+            );
         }
     }
     let tile = state

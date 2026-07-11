@@ -1,6 +1,6 @@
+use crate::game::{GamePhase, GameState};
 use riichi_core::game::{GameEvent, RoundEndReason};
 use riichi_core::tile::TileType;
-use crate::game::{GamePhase, GameState};
 
 impl GameState {
     /// 返回终局排名，按点数从高到低排列；同分时按座位编号稳定排序。
@@ -19,10 +19,18 @@ impl GameState {
     /// - 3 人听牌：1 人不听付 3000，听牌者各收 1000
     pub fn resolve_exhaustive_draw(&mut self) {
         let tenpai: [bool; 4] = [
-            !self.get_waiting_tiles(riichi_core::player::PlayerId(0)).is_empty(),
-            !self.get_waiting_tiles(riichi_core::player::PlayerId(1)).is_empty(),
-            !self.get_waiting_tiles(riichi_core::player::PlayerId(2)).is_empty(),
-            !self.get_waiting_tiles(riichi_core::player::PlayerId(3)).is_empty(),
+            !self
+                .get_waiting_tiles(riichi_core::player::PlayerId(0))
+                .is_empty(),
+            !self
+                .get_waiting_tiles(riichi_core::player::PlayerId(1))
+                .is_empty(),
+            !self
+                .get_waiting_tiles(riichi_core::player::PlayerId(2))
+                .is_empty(),
+            !self
+                .get_waiting_tiles(riichi_core::player::PlayerId(3))
+                .is_empty(),
         ];
         let tenpai_count = tenpai.iter().filter(|&&t| t).count();
 
@@ -87,11 +95,7 @@ impl GameState {
         let dealer_continues = match reason {
             RoundEndReason::Win { winner, .. } => *winner == self.get_dealer(),
             RoundEndReason::MultiWin { winners } => winners.contains(&self.get_dealer()),
-            RoundEndReason::ExhaustiveDraw => {
-                !self
-                    .get_waiting_tiles(self.get_dealer())
-                    .is_empty()
-            }
+            RoundEndReason::ExhaustiveDraw => !self.get_waiting_tiles(self.get_dealer()).is_empty(),
             // 途中流局一律连庄
             RoundEndReason::KyuushuKyuuhai
             | RoundEndReason::SuufonRenda

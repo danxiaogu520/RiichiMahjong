@@ -173,9 +173,10 @@ impl App {
         let Some(tile) = self.riichi_options.first().copied() else {
             return;
         };
-        let _ = self
-            .action_tx
-            .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile))));
+        let _ = self.action_tx.try_send((
+            PlayerId(0),
+            PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)),
+        ));
     }
 
     pub fn send_ankan(&self, tile: Tile) {

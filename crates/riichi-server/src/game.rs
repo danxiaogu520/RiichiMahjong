@@ -1,11 +1,11 @@
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::collections::HashSet;
 use riichi_core::game::{CallType, ResponseAction, TurnAction};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
 use riichi_logic::shanten::ShantenCalculator;
+use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration, Instant};
 
@@ -128,16 +128,12 @@ impl GameLoop {
     async fn send_current_action_prompt(&self, player: PlayerId) {
         match self.game.phase {
             GamePhase::ActionPhase if self.game.current_player == player => {
-                let _ = self
-                    .event_txs[player.0]
+                let _ = self.event_txs[player.0]
                     .send(ServerEvent::ActionRequired {
                         can_tsumo: self.game.check_tsumo(player).is_some(),
                         can_riichi: self.game.can_declare_riichi(player),
                         riichi_options: self.riichi_options(player),
-                        discard_options: self.game.players[player.0]
-                            .hand
-                            .tiles()
-                            .to_vec(),
+                        discard_options: self.game.players[player.0].hand.tiles().to_vec(),
                         ankan_options: self.game.get_ankan_options(player),
                         kakan_options: self.game.get_kakan_options(player),
                         can_kyuushu: self.game.can_declare_kyuushu(player),
@@ -165,7 +161,8 @@ impl GameLoop {
         match action {
             TurnActionMsg::Discard(tile) => {
                 if let Err(error) = self.game.execute_action(TurnAction::Discard(tile)) {
-                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(player, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
                 self.broadcast_state().await;
@@ -173,7 +170,8 @@ impl GameLoop {
             }
             TurnActionMsg::Tsumo => {
                 if let Err(error) = self.game.execute_action(TurnAction::Tsumo) {
-                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(player, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
                 self.broadcast_state().await;
@@ -181,7 +179,8 @@ impl GameLoop {
             }
             TurnActionMsg::RiichiDiscard(tile) => {
                 if let Err(error) = self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
-                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(player, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
                 self.broadcast_state().await;
@@ -190,25 +189,29 @@ impl GameLoop {
             TurnActionMsg::Riichi => {
                 if let Some(tile) = self.riichi_options(player).first().copied() {
                     if let Err(error) = self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
-                        self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                        self.send_to(player, ServerEvent::Error(error.to_string()))
+                            .await;
                         return;
                     }
                     self.broadcast_state().await;
                     self.handle_after_turn().await;
                 } else {
-                    self.send_to(player, ServerEvent::Error("当前没有合法的立直弃牌".into())).await;
+                    self.send_to(player, ServerEvent::Error("当前没有合法的立直弃牌".into()))
+                        .await;
                 }
             }
             TurnActionMsg::Ankan(tile) => {
                 if let Err(error) = self.game.execute_action(TurnAction::Ankan(tile)) {
-                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(player, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
                 self.broadcast_state().await;
             }
             TurnActionMsg::Kakan(index, tile) => {
                 if let Err(error) = self.game.execute_action(TurnAction::Kakan(index, tile)) {
-                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(player, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
                 self.broadcast_state().await;
@@ -216,7 +219,8 @@ impl GameLoop {
             }
             TurnActionMsg::KyuushuKyuuhai => {
                 if let Err(error) = self.game.execute_action(TurnAction::KyuushuKyuuhai) {
-                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(player, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
                 self.broadcast_state().await;
@@ -330,7 +334,6 @@ impl GameLoop {
                     let _ = self.game.record_response_pass(pid);
                 }
             }
-
         }
 
         if !ron_players.is_empty() {
@@ -352,13 +355,15 @@ impl GameLoop {
             if ordered_winners.len() > 1 {
                 if let Err(error) = self.game.execute_multiple_ron(&ordered_winners) {
                     for winner in &ordered_winners {
-                        self.send_to(*winner, ServerEvent::Error(error.to_string())).await;
+                        self.send_to(*winner, ServerEvent::Error(error.to_string()))
+                            .await;
                     }
                     return;
                 }
             } else if let Some(&pid) = ordered_winners.first() {
                 if let Err(error) = self.game.execute_call(pid, ResponseAction::Ron) {
-                    self.send_to(pid, ServerEvent::Error(error.to_string())).await;
+                    self.send_to(pid, ServerEvent::Error(error.to_string()))
+                        .await;
                     return;
                 }
             }
@@ -371,7 +376,8 @@ impl GameLoop {
 
         if let Some((pid, action)) = accepted_call {
             if let Err(error) = self.game.execute_call(pid, action) {
-                self.send_to(pid, ServerEvent::Error(error.to_string())).await;
+                self.send_to(pid, ServerEvent::Error(error.to_string()))
+                    .await;
                 return;
             }
             self.broadcast_state().await;
