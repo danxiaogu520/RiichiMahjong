@@ -57,6 +57,7 @@ impl GameLoop {
                     let player = self.game.current_player;
                     let can_tsumo = self.game.check_tsumo(player).is_some();
                     let can_riichi = self.game.can_declare_riichi(player);
+                    let riichi_options = self.riichi_options(player);
                     let discard_options = self.game.players[player.0].hand.tiles().to_vec();
                     let ankan_options = self.game.get_ankan_options(player);
                     let kakan_options = self.game.get_kakan_options(player);
@@ -67,6 +68,7 @@ impl GameLoop {
                         ServerEvent::ActionRequired {
                             can_tsumo,
                             can_riichi,
+                            riichi_options,
                             discard_options,
                             ankan_options,
                             kakan_options,
@@ -115,6 +117,7 @@ impl GameLoop {
                     .send(ServerEvent::ActionRequired {
                         can_tsumo: self.game.check_tsumo(player).is_some(),
                         can_riichi: self.game.can_declare_riichi(player),
+                        riichi_options: self.riichi_options(player),
                         discard_options: self.game.players[player.0]
                             .hand
                             .tiles()
@@ -160,26 +163,24 @@ impl GameLoop {
                 self.broadcast_state().await;
                 self.handle_round_end().await;
             }
-            TurnActionMsg::Riichi => {
-                let calc = ShantenCalculator::new();
-                let mut tiles: Vec<Tile> = self.game.players[player.0].hand.tiles().to_vec();
-                if let Some(drawn) = self.game.drawn_tile {
-                    tiles.push(drawn);
+            TurnActionMsg::RiichiDiscard(tile) => {
+                if let Err(error) = self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
+                    self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                    return;
                 }
-                let counts = riichi_logic::types::TileCounts::from_tiles(&tiles);
-                let options: Vec<Tile> = tiles
-                    .iter()
-                    .filter(|&&tile| {
-                        let mut after = counts;
-                        after.dec(tile.tile_type());
-                        calc.lookup(&after) == 0
-                    })
-                    .copied()
-                    .collect();
-                if let Some(tile) = options.first() {
-                    let _ = self.game.execute_action(TurnAction::RiichiDiscard(*tile));
+                self.broadcast_state().await;
+                self.handle_after_turn().await;
+            }
+            TurnActionMsg::Riichi => {
+                if let Some(tile) = self.riichi_options(player).first().copied() {
+                    if let Err(error) = self.game.execute_action(TurnAction::RiichiDiscard(tile)) {
+                        self.send_to(player, ServerEvent::Error(error.to_string())).await;
+                        return;
+                    }
                     self.broadcast_state().await;
                     self.handle_after_turn().await;
+                } else {
+                    self.send_to(player, ServerEvent::Error("当前没有合法的立直弃牌".into())).await;
                 }
             }
             TurnActionMsg::Ankan(tile) => {
@@ -324,9 +325,17 @@ impl GameLoop {
             };
             ordered_winners.truncate(max_winners);
             if ordered_winners.len() > 1 {
-                let _ = self.game.execute_multiple_ron(&ordered_winners);
+                if let Err(error) = self.game.execute_multiple_ron(&ordered_winners) {
+                    for winner in &ordered_winners {
+                        self.send_to(*winner, ServerEvent::Error(error.to_string())).await;
+                    }
+                    return;
+                }
             } else if let Some(&pid) = ordered_winners.first() {
-                let _ = self.game.execute_call(pid, ResponseAction::Ron);
+                if let Err(error) = self.game.execute_call(pid, ResponseAction::Ron) {
+                    self.send_to(pid, ServerEvent::Error(error.to_string())).await;
+                    return;
+                }
             }
             self.broadcast_state().await;
             if matches!(self.game.phase, GamePhase::RoundOver) {
@@ -336,7 +345,10 @@ impl GameLoop {
         }
 
         if let Some((pid, action)) = accepted_call {
-            let _ = self.game.execute_call(pid, action);
+            if let Err(error) = self.game.execute_call(pid, action) {
+                self.send_to(pid, ServerEvent::Error(error.to_string())).await;
+                return;
+            }
             self.broadcast_state().await;
             if matches!(self.game.phase, GamePhase::RoundOver) {
                 self.handle_round_end().await;
@@ -413,6 +425,23 @@ impl GameLoop {
                 Ok(None) | Err(_) => return Some(CallResponseMsg::Pass),
             }
         }
+    }
+
+    fn riichi_options(&self, player: PlayerId) -> Vec<Tile> {
+        let calc = ShantenCalculator::new();
+        let mut tiles = self.game.players[player.0].hand.tiles().to_vec();
+        if let Some(drawn) = self.game.drawn_tile {
+            tiles.push(drawn);
+        }
+        let counts = riichi_logic::types::TileCounts::from_tiles(&tiles);
+        tiles
+            .into_iter()
+            .filter(|tile| {
+                let mut after = counts;
+                after.dec(tile.tile_type());
+                calc.lookup(&after) == 0
+            })
+            .collect()
     }
 
     async fn broadcast_state(&self) {

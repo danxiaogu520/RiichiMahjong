@@ -27,6 +27,7 @@ pub struct App {
 
     pub can_tsumo: bool,
     pub can_riichi: bool,
+    pub riichi_options: Vec<Tile>,
     pub ankan_options: Vec<Tile>,
     pub kakan_options: Vec<(usize, Tile)>,
     pub can_kyuushu: bool,
@@ -60,6 +61,7 @@ impl App {
             riichi_sticks: 0,
             can_tsumo: false,
             can_riichi: false,
+            riichi_options: Vec::new(),
             ankan_options: Vec::new(),
             kakan_options: Vec::new(),
             can_kyuushu: false,
@@ -111,6 +113,7 @@ impl App {
                 ServerEvent::ActionRequired {
                     can_tsumo,
                     can_riichi,
+                    riichi_options,
                     ankan_options,
                     kakan_options,
                     can_kyuushu,
@@ -118,6 +121,7 @@ impl App {
                 } => {
                     self.can_tsumo = can_tsumo;
                     self.can_riichi = can_riichi;
+                    self.riichi_options = riichi_options;
                     self.ankan_options = ankan_options;
                     self.kakan_options = kakan_options;
                     self.can_kyuushu = can_kyuushu;
@@ -163,9 +167,12 @@ impl App {
     }
 
     pub fn send_riichi(&self) {
+        let Some(tile) = self.riichi_options.first().copied() else {
+            return;
+        };
         let _ = self
             .action_tx
-            .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Riichi)));
+            .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile))));
     }
 
     pub fn send_ankan(&self, tile: Tile) {
