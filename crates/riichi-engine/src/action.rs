@@ -492,6 +492,8 @@ impl GameState {
             // 过：杠成立，摸岭上牌，进入行动阶段
             ResponseAction::Pass => {
                 self.current_player = kakan_player;
+                // 加杠只有在抢杠窗口结束后才正式成立；此时才翻开杠宝牌。
+                self.reveal_dora_indicator();
                 self.draw_rinshan()?;
 
                 if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
@@ -725,9 +727,8 @@ impl GameState {
         }];
 
         self.current_player = player;
-        self.reveal_dora_indicator();
-
-        // 进入抢杠荣和响应阶段（不立即摸岭上牌）
+        // 进入抢杠荣和响应阶段。抢杠成立时，杠宝牌才会翻开，
+        // 因此这里不能提前调用 reveal_dora_indicator。
         self.phase = GamePhase::ChankanResponse {
             kakan_tile: tile,
             kakan_player: player,
@@ -735,5 +736,50 @@ impl GameState {
         };
 
         Ok(new_events)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use riichi_core::meld::Meld;
+
+    #[test]
+    fn kakan_does_not_reveal_dora_before_chankan_passes() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        state.start_round(&mut rng);
+
+        let tile = Tile::from_raw(0);
+        for existing in state.players[0].hand.tiles().to_vec().into_iter().take(4) {
+            state.players[0].hand.remove(existing).unwrap();
+        }
+        for _ in 0..4 {
+            state.players[0].hand.add(tile);
+        }
+        state.players[0].melds.push(Meld::pon(
+            vec![tile; 3],
+            tile,
+            PlayerId(1),
+        ));
+        state.current_player = PlayerId(0);
+
+        let initial_dora_count = state.dora.len();
+        state.execute_kakan(PlayerId(0), 0, tile).unwrap();
+        assert_eq!(state.dora.len(), initial_dora_count);
+
+        let mut events = Vec::new();
+        state
+            .execute_chankan_call(
+                PlayerId(1),
+                ResponseAction::Pass,
+                tile,
+                PlayerId(0),
+                0,
+                &mut events,
+            )
+            .unwrap();
+        assert_eq!(state.dora.len(), initial_dora_count + 1);
     }
 }
