@@ -26,8 +26,11 @@ pub fn detect_calls(
 
         let hand = &player.hand;
 
-        // 荣和检测：手牌 + 打出的牌是否构成和了形
+        // 荣和检测：门清手牌、已有副露和打出的牌是否构成和了形。
         let mut test_tiles: Vec<Tile> = hand.tiles().to_vec();
+        for meld in &player.melds {
+            test_tiles.extend_from_slice(&meld.tiles);
+        }
         test_tiles.push(discarded_tile);
         let mut counts = riichi_logic::types::TileCounts::from_tiles(&test_tiles);
         if riichi_logic::analysis::is_winning(&mut counts) {
@@ -37,7 +40,6 @@ pub fn detect_calls(
                     call_type: CallType::Ron,
                 });
             }
-            continue; // 能荣和就不检测其他副露
         }
 
         // 大明杠检测：手中有 3 张相同牌
@@ -158,4 +160,45 @@ fn find_tiles_of_type_3(hand: &riichi_core::hand::Hand, tt: TileType) -> [Tile; 
         .copied()
         .collect();
     [tiles[0], tiles[1], tiles[2]]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detect_calls;
+    use riichi_core::game::CallType;
+    use riichi_core::player::{Player, PlayerId};
+    use riichi_core::tile::Tile;
+
+    #[test]
+    fn winning_shape_does_not_hide_optional_pon() {
+        let mut players = [
+            Player::new(PlayerId(0), riichi_core::tile::TileType::EAST),
+            Player::new(PlayerId(1), riichi_core::tile::TileType::SOUTH),
+            Player::new(PlayerId(2), riichi_core::tile::TileType::WEST),
+            Player::new(PlayerId(3), riichi_core::tile::TileType::NORTH),
+        ];
+        players[1].hand = riichi_core::hand::Hand::from_tiles(&[
+            Tile::from_raw(32),
+            Tile::from_raw(33),
+            Tile::from_raw(36),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+            Tile::from_raw(48),
+            Tile::from_raw(52),
+            Tile::from_raw(56),
+            Tile::from_raw(60),
+            Tile::from_raw(64),
+            Tile::from_raw(68),
+            Tile::from_raw(72),
+            Tile::from_raw(73),
+        ]);
+
+        let options = detect_calls(&players, Tile::from_raw(34), PlayerId(0));
+        assert!(options
+            .iter()
+            .any(|option| matches!(option.call_type, CallType::Ron)));
+        assert!(options
+            .iter()
+            .any(|option| matches!(option.call_type, CallType::Pon { .. })));
+    }
 }
