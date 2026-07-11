@@ -355,7 +355,14 @@ fn detect_yaku(
     let mut best_han = 0u8;
 
     for hand in decompositions {
-        let all_tiles = collect_all_tiles(hand, &ctx.melds);
+        let all_tiles = if hand.hand_type == HandType::Kokushi {
+            // 国士分解不使用普通面子列表，必须显式还原 13 种幺九字牌和雀头。
+            let mut tiles = TileType::YAOCHUUHAI.to_vec();
+            tiles.push(hand.jantai);
+            tiles
+        } else {
+            collect_all_tiles(hand, &ctx.melds)
+        };
         let mut yaku = Vec::new();
 
         let num_koutsu = hand
@@ -391,20 +398,19 @@ fn detect_yaku(
         }
 
         if hand.hand_type == HandType::Kokushi {
-            let mut thirteen_wait = false;
-            for &tt in &TileType::YAOCHUUHAI {
-                if ctx
-                    .melds
-                    .iter()
-                    .all(|m| !m.tiles.iter().any(|t| t.tile_type() == tt))
-                    && decompositions
-                        .iter()
-                        .any(|d| d.all_tiles().iter().filter(|&&t| t == tt).count() == 1)
-                {
-                    thirteen_wait = true;
-                    break;
-                }
-            }
+            // 十三面只能在“和了牌正好把唯一缺少的重复牌补成雀头”时成立。
+            // 不能因为牌型中存在若干张单张幺九牌就直接判成十三面。
+            let winning_type = winning_tile.tile_type();
+            let thirteen_wait = ctx.melds.is_empty()
+                && winning_type.is_yaochuuhai()
+                && TileType::YAOCHUUHAI.iter().all(|&tt| {
+                    let count = all_tiles.iter().filter(|&&tile| tile == tt).count();
+                    if tt == winning_type {
+                        count == 2
+                    } else {
+                        count == 1
+                    }
+                });
             if thirteen_wait {
                 yaku.push(YakuResult::new(YakuName::Kokushi13, 26));
             } else {
@@ -418,29 +424,38 @@ fn detect_yaku(
             continue;
         }
 
-        if is_menzen && hand.hand_type != HandType::SevenPairs {
+        if is_menzen && ctx.melds.is_empty() && hand.hand_type != HandType::SevenPairs {
             let suit = hand.all_tiles().first().map(|t| t.suit());
             if let Some(s) = suit {
-                let required = [3, 1, 1, 1, 1, 1, 1, 1, 3];
-                let mut ok = true;
-                for (i, &need) in required.iter().enumerate() {
-                    let tt = TileType(suit_base(s) + i as u8);
-                    if all_tiles.iter().filter(|&&t| t == tt).count() != need {
-                        ok = false;
-                        break;
-                    }
-                }
-                if ok {
-                    let mut nine_wait = false;
-                    for i in 0..9u8 {
+                let required = [3usize, 1, 1, 1, 1, 1, 1, 1, 3];
+                let counts: Vec<usize> = (0..9u8)
+                    .map(|i| {
                         let tt = TileType(suit_base(s) + i);
-                        if winning_tile.tile_type() == tt
-                            && all_tiles.iter().filter(|&&t| t == tt).count() == 1
-                        {
-                            nine_wait = true;
-                            break;
-                        }
-                    }
+                        all_tiles.iter().filter(|&&tile| tile == tt).count()
+                    })
+                    .collect();
+                let extra_count: usize = counts
+                    .iter()
+                    .zip(required.iter())
+                    .map(|(count, need)| count.saturating_sub(*need))
+                    .sum();
+                let ok = all_tiles.len() == 14
+                    && counts
+                        .iter()
+                        .zip(required.iter())
+                        .all(|(count, need)| *count >= *need)
+                    && extra_count == 1;
+                if ok {
+                    let winning_index = winning_tile.tile_type().0.saturating_sub(suit_base(s));
+                    let nine_wait = winning_tile.tile_type().suit() == s
+                        && winning_index < 9
+                        && counts[winning_index as usize].saturating_sub(1)
+                            == required[winning_index as usize]
+                        && counts.iter().enumerate().all(|(index, count)| {
+                            let expected =
+                                required[index] + usize::from(index == winning_index as usize);
+                            *count == expected
+                        });
                     if nine_wait {
                         yaku.push(YakuResult::new(YakuName::ChuurenPoutou9, 26));
                     } else {
@@ -1306,5 +1321,61 @@ mod tests {
         let yaku = detect_yaku(&[hand], &ctx, TileType(1).with_copy(0));
         assert_eq!(yaku_han(&yaku, YakuName::DoubleRiichi), Some(2));
         assert_eq!(yaku_han(&yaku, YakuName::Riichi), None);
+    }
+
+    #[test]
+    fn thirteen_sided_kokushi_and_pure_chuuren_are_distinguished() {
+        let kokushi_types: Vec<TileType> = TileType::YAOCHUUHAI
+            .into_iter()
+            .chain(std::iter::once(TileType::MAN1))
+            .collect();
+        let kokushi_tiles: Vec<_> = kokushi_types
+            .iter()
+            .enumerate()
+            .map(|(index, &tile_type)| tile_type.with_copy((index % 4) as u8))
+            .collect();
+        let kokushi = check_win(
+            &kokushi_tiles,
+            &kokushi_types,
+            &context(true, Vec::new()),
+            false,
+            TileType::MAN1.with_copy(3),
+        )
+        .expect("国士十三面应当和牌");
+        assert!(yaku_han(&kokushi.yaku_results, YakuName::Kokushi13).is_some());
+
+        let mut chuuren_types = Vec::new();
+        for (rank, count) in [3, 1, 1, 1, 1, 1, 1, 1, 3].into_iter().enumerate() {
+            chuuren_types.extend(std::iter::repeat_n(TileType(rank as u8), count));
+        }
+        chuuren_types.push(TileType(4));
+        let chuuren_tiles: Vec<_> = chuuren_types
+            .iter()
+            .enumerate()
+            .map(|(index, &tile_type)| tile_type.with_copy((index % 4) as u8))
+            .collect();
+        let pure = check_win(
+            &chuuren_tiles,
+            &chuuren_types,
+            &context(true, Vec::new()),
+            false,
+            TileType(4).with_copy(3),
+        )
+        .expect("纯正九莲应当和牌");
+        assert!(yaku_han(&pure.yaku_results, YakuName::ChuurenPoutou9).is_some());
+
+        let regular = check_win(
+            &chuuren_tiles,
+            &chuuren_types,
+            &context(true, Vec::new()),
+            false,
+            TileType(0).with_copy(3),
+        )
+        .expect("九莲宝灯应当和牌");
+        assert!(yaku_han(&regular.yaku_results, YakuName::ChuurenPoutou).is_some());
+        assert_eq!(
+            yaku_han(&regular.yaku_results, YakuName::ChuurenPoutou9),
+            None
+        );
     }
 }
