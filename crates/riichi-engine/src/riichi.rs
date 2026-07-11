@@ -1,7 +1,7 @@
 use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::analysis::analyze_wait_tiles;
+use riichi_logic::analysis::{analyze_wait_tiles, analyze_wait_tiles_with_open_melds};
 use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::types::TileCounts;
 
@@ -12,7 +12,8 @@ impl GameState {
     ///
     /// 返回所有能和的牌类型
     pub fn get_waiting_tiles(&self, player: PlayerId) -> Vec<TileType> {
-        analyze_wait_tiles(self.players[player.0].hand.tiles())
+        let p = &self.players[player.0];
+        analyze_wait_tiles_with_open_melds(p.hand.tiles(), p.melds.len())
             .iter()
             .map(|w| w.tile_type)
             .collect()
