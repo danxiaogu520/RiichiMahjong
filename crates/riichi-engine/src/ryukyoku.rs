@@ -32,11 +32,15 @@ impl GameState {
             return false;
         }
         // 检查是否是首巡状态
-        if self
-            .events
-            .iter()
-            .any(|e| matches!(e, GameEvent::PlayerDiscarded { player:p, .. }if p.0 != player.0))
-        {
+        if self.events.iter().any(|e| {
+            matches!(
+                e,
+                GameEvent::PlayerDiscarded {
+                    player: discarded_player,
+                    ..
+                } if *discarded_player == player
+            )
+        }) {
             return false;
         }
         // 检查手牌中是否有九种不同的幺九牌
@@ -150,5 +154,69 @@ impl GameState {
             .collect::<HashSet<&PlayerId>>()
             .len()
             >= 2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GameState;
+    use riichi_core::game::GameEvent;
+    use riichi_core::player::PlayerId;
+    use riichi_core::tile::Tile;
+
+    #[test]
+    fn kyuushu_is_available_before_this_players_first_discard() {
+        let mut state = GameState::new();
+        state.current_player = PlayerId(1);
+        state.players[1].hand = riichi_core::hand::Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(68),
+            Tile::from_raw(72),
+            Tile::from_raw(104),
+            Tile::from_raw(108),
+            Tile::from_raw(112),
+            Tile::from_raw(116),
+            Tile::from_raw(120),
+            Tile::from_raw(124),
+            Tile::from_raw(128),
+            Tile::from_raw(132),
+        ]);
+        state.drawn_tile = Some(Tile::from_raw(4));
+        state.events.push(GameEvent::PlayerDiscarded {
+            player: PlayerId(0),
+            tile: Tile::from_raw(4),
+        });
+
+        assert!(state.can_declare_kyuushu(PlayerId(1)));
+    }
+
+    #[test]
+    fn kyuushu_is_unavailable_after_this_players_first_discard() {
+        let mut state = GameState::new();
+        state.current_player = PlayerId(1);
+        state.players[1].hand = riichi_core::hand::Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(68),
+            Tile::from_raw(72),
+            Tile::from_raw(104),
+            Tile::from_raw(108),
+            Tile::from_raw(112),
+            Tile::from_raw(116),
+            Tile::from_raw(120),
+            Tile::from_raw(124),
+            Tile::from_raw(128),
+            Tile::from_raw(132),
+        ]);
+        state.drawn_tile = Some(Tile::from_raw(4));
+        state.events.push(GameEvent::PlayerDiscarded {
+            player: PlayerId(1),
+            tile: Tile::from_raw(4),
+        });
+
+        assert!(!state.can_declare_kyuushu(PlayerId(1)));
     }
 }
