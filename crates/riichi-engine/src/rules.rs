@@ -12,6 +12,8 @@ pub struct RuleConfig {
     pub starting_points: i32,
     pub red_fives: [u8; 3],
     pub kuitan: bool,
+    /// 兼容旧配置字段。当前按每一张具体和了牌独立判役：有役的听牌可和，
+    /// 无役的听牌不可和，不再做“和了前是否已有役”的时间推断。
     pub atozuke: bool,
     pub allow_double_ron: bool,
     pub allow_triple_ron: bool,
