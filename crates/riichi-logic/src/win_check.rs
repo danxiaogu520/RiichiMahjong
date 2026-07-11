@@ -58,32 +58,9 @@ pub fn check_win(
         if yaku_results.is_empty() {
             continue;
         }
-        let only_yakuhai = yaku_results.iter().all(|result| {
-            matches!(
-                result.yaku,
-                YakuName::YakuhaiJikaze | YakuName::YakuhaiBakaze | YakuName::YakuhaiSangen
-            )
-        });
-        let has_preexisting_yakuhai = hand.mentsu.iter().any(|mentsu| {
-            mentsu.kind == MentsuKind::Koutsu
-                && is_yakuhai(mentsu.tile_type, ctx)
-                && (mentsu.tile_type != winning_tile.tile_type()
-                    || all_tiles
-                        .iter()
-                        .filter(|tile| tile.tile_type() == winning_tile.tile_type())
-                        .count()
-                        >= 4)
-        }) || ctx.melds.iter().any(|meld| {
-            matches!(
-                meld.kind,
-                MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan
-            ) && is_yakuhai(meld.tiles[0].tile_type(), ctx)
-        });
-        if !ctx.atozuke && only_yakuhai && !has_preexisting_yakuhai {
-            // 后付禁止仅靠和了牌补出唯一役牌；和了前已经存在的役牌副露/刻子
-            // 则允许和了牌组成雀头或其它非役牌面子。
-            continue;
-        }
+        // 后付/片和了按“具体和了牌”判定：当前分解只要已经产生至少一项
+        // 役，就允许这张牌和；无役的另一张听牌不会因为同一牌型可和而放行。
+        // 不再根据役牌是否在和了前已经存在进行启发式拦截。
         let mut all_yaku = yaku_results;
         if dora_result.dora > 0 {
             all_yaku.push(YakuResult::new(
@@ -1133,6 +1110,39 @@ mod tests {
             &context(false, vec![meld]),
             false,
             TileType(9).with_copy(2),
+        );
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn yaku_completed_by_this_wait_is_valid_under_partial_wait_rule() {
+        let hand_types = vec![
+            TileType(0),
+            TileType(1),
+            TileType(2),
+            TileType(3),
+            TileType(4),
+            TileType(5),
+            TileType(6),
+            TileType(7),
+            TileType(8),
+            TileType(9),
+            TileType(9),
+            TileType::HAKU,
+            TileType::HAKU,
+            TileType::HAKU,
+        ];
+        let all_tiles = hand_types
+            .iter()
+            .enumerate()
+            .map(|(i, &tile_type)| tile_type.with_copy((i % 4) as u8))
+            .collect::<Vec<_>>();
+        let result = check_win(
+            &all_tiles,
+            &hand_types,
+            &context(false, Vec::new()),
+            false,
+            TileType::HAKU.with_copy(3),
         );
         assert!(result.is_some());
     }
