@@ -95,10 +95,7 @@ impl GameState {
                         }
                     }
                     TurnAction::RiichiDiscard(tile) => {
-                        if !self.can_declare_riichi(player)
-                            || (self.drawn_tile != Some(*tile)
-                                && !self.players[player.0].hand.contains(*tile))
-                        {
+                        if !self.get_riichi_discard_options(player).contains(tile) {
                             return Err(riichi_core::game::GameError::InvalidAction(
                                 "不满足立直宣言条件".to_string(),
                             ));
