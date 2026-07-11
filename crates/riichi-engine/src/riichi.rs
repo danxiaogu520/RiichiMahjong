@@ -148,3 +148,41 @@ impl GameState {
         options
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::GameState;
+    use rand::SeedableRng;
+    use riichi_core::hand::Hand;
+    use riichi_core::player::PlayerId;
+    use riichi_core::tile::Tile;
+    use riichi_core::wall::Wall;
+
+    #[test]
+    fn riichi_options_only_contain_discards_that_keep_tenpai() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+        state.wall = Wall::new(&mut rng);
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(37),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+        ]);
+        state.current_player = PlayerId(0);
+        state.drawn_tile = Some(Tile::from_raw(104));
+
+        let options = state.get_riichi_discard_options(PlayerId(0));
+        assert!(options.contains(&Tile::from_raw(104)));
+        assert!(!options.contains(&Tile::from_raw(0)));
+    }
+}
