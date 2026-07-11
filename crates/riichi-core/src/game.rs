@@ -82,6 +82,7 @@ pub enum GameEvent {
 pub enum RoundEndReason {
     ExhaustiveDraw,
     Win { winner: PlayerId, is_tsumo: bool },
+    MultiWin { winners: Vec<PlayerId> },
     KyuushuKyuuhai,
     SuufonRenda,
     SuuchaRiichi,
