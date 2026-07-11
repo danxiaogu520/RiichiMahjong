@@ -57,6 +57,33 @@ impl GameState {
         std::mem::take(&mut self.events)
     }
 
+    /// 记录一个同时属于当前局和整场历史的事件。
+    pub(crate) fn record_event(&mut self, event: GameEvent) {
+        self.events.push(event.clone());
+        self.history.push(event);
+    }
+
+    /// 记录一批同时属于当前局和整场历史的事件。
+    pub(crate) fn record_events(&mut self, events: &[GameEvent]) {
+        self.events.extend(events.iter().cloned());
+        self.history.extend(events.iter().cloned());
+    }
+
+    /// 获取整场追加式事件历史。
+    pub fn event_history(&self) -> &[GameEvent] {
+        &self.history
+    }
+
+    /// 创建可交给重连客户端的权威状态快照。
+    pub fn snapshot(&self) -> Self {
+        self.clone()
+    }
+
+    /// 从权威快照恢复牌局状态。
+    pub fn from_snapshot(snapshot: Self) -> Self {
+        snapshot
+    }
+
     /// 构建指定玩家视角的 VisibleTiles（用于向听/进张分析）
     ///
     /// 包含：

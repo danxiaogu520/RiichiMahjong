@@ -76,8 +76,7 @@ impl GameState {
             self.players[i].points += payments[i];
         }
 
-        self.events
-            .push(GameEvent::ExhaustiveDrawResult { tenpai, payments });
+        self.record_event(GameEvent::ExhaustiveDrawResult { tenpai, payments });
     }
 
     /// 根据局结束原因处理连庄/过庄，更新 round、honba、场风
@@ -133,7 +132,7 @@ impl GameState {
 
         self.advance_round(&reason);
 
-        self.events.push(GameEvent::RoundEnded { reason });
+        self.record_event(GameEvent::RoundEnded { reason });
         self.phase = GamePhase::RoundOver;
     }
 }

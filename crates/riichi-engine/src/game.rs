@@ -51,6 +51,8 @@ pub struct GameState {
     pub ura_dora_indicators: Vec<TileType>,
     /// 本局发生的事件列表（用于回放和查询）
     pub events: Vec<GameEvent>,
+    /// 从整场开始累积的事件历史，用于回放和断线恢复；不会随新局清空。
+    pub history: Vec<GameEvent>,
     /// 当前游戏阶段（摸牌/行动/响应/局结束）
     pub phase: GamePhase,
 }

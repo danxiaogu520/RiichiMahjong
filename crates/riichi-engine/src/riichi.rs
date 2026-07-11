@@ -65,7 +65,7 @@ impl GameState {
         p.points -= 1000;
         p.is_riichi = true;
         self.riichi_sticks += 1;
-        self.events.push(GameEvent::PlayerDeclaredRiichi { player });
+        self.record_event(GameEvent::PlayerDeclaredRiichi { player });
         Ok(())
     }
 
