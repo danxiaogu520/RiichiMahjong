@@ -141,6 +141,21 @@ impl App {
                     self.call_options = options;
                     self.call_selected = 0;
                 }
+                ServerEvent::RoundResult {
+                    reason,
+                    point_changes,
+                    scores,
+                } => {
+                    self.messages.push(format!("本局结束：{}", reason));
+                    self.messages.push(format!(
+                        "点棒变化：东{:+} 南{:+} 西{:+} 北{:+}",
+                        point_changes[0], point_changes[1], point_changes[2], point_changes[3]
+                    ));
+                    self.messages.push(format!(
+                        "结算点数：东{} 南{} 西{} 北{}",
+                        scores[0], scores[1], scores[2], scores[3]
+                    ));
+                }
                 ServerEvent::GameOver { scores, ranking } => {
                     self.scores = scores;
                     self.ranking = ranking;

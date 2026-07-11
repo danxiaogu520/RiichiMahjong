@@ -19,6 +19,12 @@ impl GameState {
     /// 5. 庄家摸第 14 张牌进入自摸牌缓冲区
     /// 6. 进入行动阶段
     pub fn start_round(&mut self, rng: &mut impl Rng) {
+        self.round_start_points = [
+            self.players[0].points,
+            self.players[1].points,
+            self.players[2].points,
+            self.players[3].points,
+        ];
         // 事件历史属于单局上下文。跨局保留事件会污染一发、双立直、
         // 四家立直和首巡等状态判断；完整对局回放应由外部日志保存。
         self.events.clear();
@@ -78,6 +84,16 @@ impl GameState {
             round_number: self.round,
             dealer: self.get_dealer(),
         });
+    }
+
+    /// 获取本局结算后的四家点棒变化。
+    pub fn round_point_changes(&self) -> [i32; 4] {
+        [
+            self.players[0].points - self.round_start_points[0],
+            self.players[1].points - self.round_start_points[1],
+            self.players[2].points - self.round_start_points[2],
+            self.players[3].points - self.round_start_points[3],
+        ]
     }
 
     /// 从牌山摸一张牌

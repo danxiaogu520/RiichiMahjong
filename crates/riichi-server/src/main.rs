@@ -98,6 +98,14 @@ async fn main() {
                     ))
                     .await;
             }
+            ServerEvent::RoundResult {
+                reason,
+                point_changes,
+                scores,
+            } => {
+                println!("本局结束：{}", reason);
+                println!("点棒变化：{:?}，结算点数：{:?}", point_changes, scores);
+            }
             ServerEvent::GameOver { scores, ranking } => {
                 println!("游戏结束: {:?}，排名: {:?}", scores, ranking);
                 break;

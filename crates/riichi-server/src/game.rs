@@ -1,6 +1,6 @@
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use riichi_core::game::{CallType, ResponseAction, TurnAction};
+use riichi_core::game::{CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
@@ -409,6 +409,14 @@ impl GameLoop {
     async fn handle_round_end(&mut self) {
         self.broadcast_state().await;
 
+        self.broadcast(ServerEvent::RoundResult {
+            reason: self.round_end_reason(),
+            point_changes: self.game.round_point_changes(),
+            scores: self.scores(),
+        })
+        .await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
         if self.game.is_game_over() {
             self.broadcast(ServerEvent::GameOver {
                 scores: self.scores(),
@@ -419,6 +427,29 @@ impl GameLoop {
             self.game.start_round(&mut self.rng);
             self.broadcast_state().await;
         }
+    }
+
+    fn round_end_reason(&self) -> String {
+        self.game
+            .events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                GameEvent::RoundEnded { reason } => Some(match reason {
+                    RoundEndReason::Win { is_tsumo: true, .. } => "自摸".to_string(),
+                    RoundEndReason::Win {
+                        is_tsumo: false, ..
+                    }
+                    | RoundEndReason::MultiWin { .. } => "荣和".to_string(),
+                    RoundEndReason::ExhaustiveDraw => "流局".to_string(),
+                    RoundEndReason::KyuushuKyuuhai
+                    | RoundEndReason::SuufonRenda
+                    | RoundEndReason::SuuchaRiichi
+                    | RoundEndReason::SuuKantsu => "途中流局".to_string(),
+                }),
+                _ => None,
+            })
+            .unwrap_or_else(|| "局结束".to_string())
     }
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnActionMsg> {
