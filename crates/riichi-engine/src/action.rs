@@ -729,6 +729,10 @@ impl GameState {
             ));
         }
 
+        // 加杠使用摸到的第四张牌时，先把摸牌并入手牌；若使用手牌中的
+        // 第四张牌，原有摸牌也必须保留在手牌中。
+        self.insert_tile();
+
         // 执行加杠
         let original_pon;
         {
