@@ -91,6 +91,7 @@ impl GameState {
     pub fn advance_round(&mut self, reason: &RoundEndReason) {
         let dealer_continues = match reason {
             RoundEndReason::Win { winner, .. } => *winner == self.get_dealer(),
+            RoundEndReason::MultiWin { winners } => winners.contains(&self.get_dealer()),
             RoundEndReason::ExhaustiveDraw => {
                 let calc = ShantenCalculator::new();
                 calc.lookup(&riichi_logic::types::TileCounts::from_tiles(

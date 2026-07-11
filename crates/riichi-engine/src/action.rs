@@ -174,6 +174,63 @@ impl GameState {
         Ok(new_events)
     }
 
+    /// 一次结算多个荣和者。
+    ///
+    /// 所有赢家都由同一放铳者支付各自手牌点数，但场上立直棒只在本次
+    /// 和牌中支付一次，交给响应顺序中的第一位赢家。
+    pub fn execute_multiple_ron(
+        &mut self,
+        winners: &[PlayerId],
+    ) -> Result<Vec<GameEvent>, GameError> {
+        let (discarded_tile, discarder) = match self.phase {
+            GamePhase::ResponsePhase {
+                discarded_tile,
+                discarder,
+            } => (discarded_tile, discarder),
+            _ => {
+                return Err(GameError::InvalidAction("当前不在荣和响应阶段".to_string()));
+            }
+        };
+        if winners.is_empty() {
+            return Err(GameError::InvalidAction("没有荣和者".to_string()));
+        }
+
+        let mut results = Vec::with_capacity(winners.len());
+        for &winner in winners {
+            if winner == discarder {
+                return Err(GameError::InvalidAction("放铳者不能荣和".to_string()));
+            }
+            let result = self
+                .check_win(winner, false, discarded_tile, Some(discarder), false)
+                .ok_or_else(|| GameError::InvalidAction("存在无效的荣和".to_string()))?;
+            results.push((winner, result));
+        }
+
+        let riichi_bonus = self.riichi_sticks * 1000;
+        let mut events = Vec::new();
+        for (index, (winner, (mut changes, yaku_names))) in results.into_iter().enumerate() {
+            if index > 0 {
+                changes[winner.0] -= riichi_bonus as i32;
+            }
+            for (player_index, change) in changes.iter().enumerate() {
+                self.players[player_index].points += change;
+            }
+            self.players[winner.0].hand.add(discarded_tile);
+            events.push(GameEvent::PlayerWon {
+                player: winner,
+                is_tsumo: false,
+                points: changes[winner.0],
+                yaku_names,
+            });
+        }
+        self.riichi_sticks = 0;
+        self.events.extend(events.clone());
+        self.resolve_round_end(RoundEndReason::MultiWin {
+            winners: winners.to_vec(),
+        });
+        Ok(events)
+    }
+
     /// 获取当前玩家可执行的副露选项（响应阶段）
     ///
     /// 根据当前阶段返回可选的副露操作：

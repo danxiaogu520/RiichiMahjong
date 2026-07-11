@@ -198,6 +198,7 @@ impl GameLoop {
         let call_options = self.game.get_call_options();
 
         let mut accepted_call: Option<(PlayerId, ResponseAction)> = None;
+        let mut ron_players = Vec::new();
 
         for idx in 0..4u8 {
             let pid = PlayerId(idx as usize);
@@ -231,7 +232,7 @@ impl GameLoop {
 
             match response {
                 Some(CallResponseMsg::Ron) if has_ron => {
-                    accepted_call = Some((pid, ResponseAction::Ron));
+                    ron_players.push(pid);
                 }
                 Some(CallResponseMsg::Pon { hand_tiles }) => {
                     if accepted_call.is_none() {
@@ -253,6 +254,34 @@ impl GameLoop {
                 }
             }
 
+        }
+
+        if !ron_players.is_empty() {
+            let mut ordered_winners = Vec::new();
+            for offset in 1..4 {
+                let candidate = PlayerId((discarder.0 + offset) % 4);
+                if ron_players.contains(&candidate) {
+                    ordered_winners.push(candidate);
+                }
+            }
+            let max_winners = if self.game.rules.allow_triple_ron {
+                3
+            } else if self.game.rules.allow_double_ron {
+                2
+            } else {
+                1
+            };
+            ordered_winners.truncate(max_winners);
+            if ordered_winners.len() > 1 {
+                let _ = self.game.execute_multiple_ron(&ordered_winners);
+            } else if let Some(&pid) = ordered_winners.first() {
+                let _ = self.game.execute_call(pid, ResponseAction::Ron);
+            }
+            self.broadcast_state().await;
+            if matches!(self.game.phase, GamePhase::RoundOver) {
+                self.handle_round_end().await;
+            }
+            return;
         }
 
         if let Some((pid, action)) = accepted_call {
