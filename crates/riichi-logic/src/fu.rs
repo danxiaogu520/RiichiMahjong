@@ -93,8 +93,8 @@ pub fn calculate_fu_with_winning_tile(
     if jantai == seat_wind {
         fu += 2; // 自风雀头
     }
-    if jantai == field_wind && jantai != seat_wind {
-        fu += 2; // 场风雀头（与自风不同时才加）
+    if jantai == field_wind {
+        fu += 2; // 场风雀头；连风牌雀头与自风分别计符，共 4 符
     }
 
     // 面子符（手牌中的面子）
@@ -102,7 +102,12 @@ pub fn calculate_fu_with_winning_tile(
         let is_yao = m.tile_type.is_yaochuuhai();
         match m.kind {
             MentsuKind::Koutsu => {
-                if m.is_open {
+                // 荣和牌正好补成门清刻子时，该分解中的刻子按明刻计符。
+                // 如果同一张牌也能组成顺子，分解器会分别产生候选，取高点法
+                // 时由上层选择得点更高的分解。
+                let winning_tile_makes_minkou =
+                    !is_tsumo && winning_tile == Some(m.tile_type) && !m.is_open;
+                if m.is_open || winning_tile_makes_minkou {
                     fu += if is_yao { 4 } else { 2 };
                 } else {
                     fu += if is_yao { 8 } else { 4 };
@@ -164,4 +169,52 @@ pub fn calculate_fu_with_winning_tile(
     }
 
     fu
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calculate_fu_with_winning_tile;
+    use crate::types::{HandType, Mentsu, MentsuKind, WinningHand};
+    use riichi_core::tile::TileType;
+
+    fn sequence(tile_type: TileType) -> Mentsu {
+        Mentsu {
+            kind: MentsuKind::Shuntsu,
+            tile_type,
+            is_open: false,
+        }
+    }
+
+    fn triplet(tile_type: TileType) -> Mentsu {
+        Mentsu {
+            kind: MentsuKind::Koutsu,
+            tile_type,
+            is_open: false,
+        }
+    }
+
+    #[test]
+    fn ron_completed_triplet_uses_minkou_fu() {
+        let hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType::EAST,
+            mentsu: vec![
+                triplet(TileType(4)),
+                triplet(TileType(14)),
+                sequence(TileType(18)),
+                sequence(TileType(21)),
+            ],
+        };
+        let fu = calculate_fu_with_winning_tile(
+            &hand,
+            &[],
+            &[],
+            false,
+            TileType::EAST,
+            TileType::EAST,
+            Some(TileType(4)),
+        );
+        // 底符20 + 门清荣和10 + 连风雀头4 + 明刻2 + 暗刻4 = 40符。
+        assert_eq!(fu, 40);
+    }
 }
