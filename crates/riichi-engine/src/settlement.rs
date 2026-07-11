@@ -1,5 +1,6 @@
 use crate::game::{GamePhase, GameState};
 use riichi_core::game::{GameEvent, RoundEndReason};
+use riichi_core::player::PlayerId;
 use riichi_core::tile::TileType;
 
 impl GameState {
@@ -18,6 +19,12 @@ impl GameState {
     /// - 2 人听牌：2 人不听各付 3000，听牌者各收 1500
     /// - 3 人听牌：1 人不听付 3000，听牌者各收 1000
     pub fn resolve_exhaustive_draw(&mut self) {
+        let nagashi_winner = if self.rules.nagashi_mangan {
+            let candidates = self.get_nagashi_mangan_candidates();
+            (candidates.len() == 1).then(|| candidates[0])
+        } else {
+            None
+        };
         let tenpai: [bool; 4] = [
             !self
                 .get_waiting_tiles(riichi_core::player::PlayerId(0))
@@ -35,43 +42,59 @@ impl GameState {
         let tenpai_count = tenpai.iter().filter(|&&t| t).count();
 
         let mut payments = [0i32; 4];
-        match tenpai_count {
-            0 | 4 => {}
-            1 => {
-                let winner = tenpai.iter().position(|&t| t).unwrap();
-                for i in 0..4 {
-                    if !tenpai[i] {
-                        payments[i] -= 1000;
-                        payments[winner] += 1000;
-                    }
+        if let Some(winner) = nagashi_winner {
+            let winner_is_dealer = winner == self.get_dealer();
+            for player in 0..4 {
+                if player == winner.0 {
+                    continue;
                 }
+                let payment = if winner_is_dealer || player == self.get_dealer().0 {
+                    4000
+                } else {
+                    2000
+                };
+                payments[player] -= payment;
+                payments[winner.0] += payment;
             }
-            2 => {
-                let winners: Vec<usize> = tenpai
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, &t)| t)
-                    .map(|(i, _)| i)
-                    .collect();
-                for i in 0..4 {
-                    if !tenpai[i] {
-                        payments[i] -= 1500 * winners.len() as i32;
-                        for &w in &winners {
-                            payments[w] += 1500;
+        } else {
+            match tenpai_count {
+                0 | 4 => {}
+                1 => {
+                    let winner = tenpai.iter().position(|&t| t).unwrap();
+                    for i in 0..4 {
+                        if !tenpai[i] {
+                            payments[i] -= 1000;
+                            payments[winner] += 1000;
                         }
                     }
                 }
-            }
-            3 => {
-                let loser = tenpai.iter().position(|&t| !t).unwrap();
-                for i in 0..4 {
-                    if tenpai[i] {
-                        payments[loser] -= 1000;
-                        payments[i] += 1000;
+                2 => {
+                    let winners: Vec<usize> = tenpai
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, &t)| t)
+                        .map(|(i, _)| i)
+                        .collect();
+                    for i in 0..4 {
+                        if !tenpai[i] {
+                            payments[i] -= 1500 * winners.len() as i32;
+                            for &w in &winners {
+                                payments[w] += 1500;
+                            }
+                        }
                     }
                 }
+                3 => {
+                    let loser = tenpai.iter().position(|&t| !t).unwrap();
+                    for i in 0..4 {
+                        if tenpai[i] {
+                            payments[loser] -= 1000;
+                            payments[i] += 1000;
+                        }
+                    }
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         }
 
         // 应用点数变化
@@ -81,6 +104,29 @@ impl GameState {
         }
 
         self.record_event(GameEvent::ExhaustiveDrawResult { tenpai, payments });
+    }
+
+    /// 获取满足流局满贯条件的玩家。
+    ///
+    /// 只检查规则层确定性条件：河牌全部为幺九字牌，且没有任何玩家
+    /// 鸣走该玩家的河牌。多名候选者由结算层回退普通流局处理。
+    pub fn get_nagashi_mangan_candidates(&self) -> Vec<PlayerId> {
+        (0..4)
+            .map(PlayerId)
+            .filter(|&player| {
+                let discards = &self.players[player.0].discards;
+                !discards.is_empty()
+                    && discards.iter().all(|tile| tile.is_yaochuuhai())
+                    && !self.events.iter().any(|event| match event {
+                        GameEvent::PlayerCalledPon { from_player, .. }
+                        | GameEvent::PlayerCalledChi { from_player, .. }
+                        | GameEvent::PlayerCalledMinkan { from_player, .. } => {
+                            *from_player == player
+                        }
+                        _ => false,
+                    })
+            })
+            .collect()
     }
 
     /// 根据局结束原因处理连庄/过庄，更新 round、honba、场风
@@ -139,6 +185,8 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::GameState;
+    use riichi_core::player::PlayerId;
+    use riichi_core::tile::Tile;
 
     #[test]
     fn final_ranking_orders_points_stably() {
@@ -156,5 +204,15 @@ mod tests {
         state.rules.tobi = true;
         state.players[2].points = -100;
         assert!(state.is_game_over());
+    }
+
+    #[test]
+    fn nagashi_mangan_requires_only_terminal_honor_discards() {
+        let mut state = GameState::new();
+        state.players[0].discards = vec![Tile::from_raw(0), Tile::from_raw(108)];
+        assert_eq!(state.get_nagashi_mangan_candidates(), vec![PlayerId(0)]);
+
+        state.players[0].discards.push(Tile::from_raw(4));
+        assert!(state.get_nagashi_mangan_candidates().is_empty());
     }
 }
