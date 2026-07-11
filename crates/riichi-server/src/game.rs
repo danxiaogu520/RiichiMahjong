@@ -1,5 +1,6 @@
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::collections::HashSet;
 use riichi_core::game::{CallType, ResponseAction, TurnAction};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
@@ -267,6 +268,7 @@ impl GameLoop {
         let mut accepted_call: Option<(PlayerId, ResponseAction)> = None;
         let mut ron_players = Vec::new();
 
+        let mut eligible = Vec::new();
         for idx in 0..4u8 {
             let pid = PlayerId(idx as usize);
             if pid == discarder {
@@ -283,10 +285,7 @@ impl GameLoop {
                 continue;
             }
 
-            let has_ron = player_options
-                .iter()
-                .any(|o| matches!(o.call_type, CallType::Ron));
-
+            eligible.push(pid);
             self.send_to(
                 pid,
                 ServerEvent::CallRequired {
@@ -294,24 +293,35 @@ impl GameLoop {
                 },
             )
             .await;
+        }
 
-            let response = self.wait_for_call_response(pid).await;
+        let responses = self.wait_for_call_responses(&eligible).await;
+        for (pid, response) in responses {
+            let player_options: Vec<_> = call_options
+                .iter()
+                .filter(|o| o.player == pid)
+                .cloned()
+                .collect();
+
+            let has_ron = player_options
+                .iter()
+                .any(|o| matches!(o.call_type, CallType::Ron));
 
             match response {
-                Some(CallResponseMsg::Ron) if has_ron => {
+                CallResponseMsg::Ron if has_ron => {
                     ron_players.push(pid);
                 }
-                Some(CallResponseMsg::Pon { hand_tiles }) => {
+                CallResponseMsg::Pon { hand_tiles } => {
                     if accepted_call.is_none() {
                         accepted_call = Some((pid, ResponseAction::Pon { hand_tiles }));
                     }
                 }
-                Some(CallResponseMsg::Chi { hand_tiles }) => {
+                CallResponseMsg::Chi { hand_tiles } => {
                     if accepted_call.is_none() {
                         accepted_call = Some((pid, ResponseAction::Chi { hand_tiles }));
                     }
                 }
-                Some(CallResponseMsg::Minkan { hand_tiles }) => {
+                CallResponseMsg::Minkan { hand_tiles } => {
                     if accepted_call.is_none() {
                         accepted_call = Some((pid, ResponseAction::Minkan { hand_tiles }));
                     }
@@ -428,19 +438,41 @@ impl GameLoop {
             })
     }
 
-    async fn wait_for_call_response(&mut self, expected: PlayerId) -> Option<CallResponseMsg> {
+    async fn wait_for_call_responses(
+        &mut self,
+        eligible: &[PlayerId],
+    ) -> Vec<(PlayerId, CallResponseMsg)> {
+        if eligible.is_empty() {
+            return Vec::new();
+        }
+
         let deadline = Instant::now() + Duration::from_millis(self.game.rules.response_timeout_ms);
+        let eligible_set: HashSet<PlayerId> = eligible.iter().copied().collect();
+        let mut received_players = HashSet::new();
+        let mut responses = Vec::with_capacity(eligible.len());
         loop {
+            if received_players.len() == eligible_set.len() {
+                break;
+            }
             let remaining = deadline.saturating_duration_since(Instant::now());
             let received = timeout(remaining, self.action_rx.recv()).await;
             match received {
-                Ok(Some((pid, PlayerAction::CallResponse(response)))) if pid == expected => {
-                    return Some(response);
+                Ok(Some((pid, PlayerAction::CallResponse(response))))
+                    if eligible_set.contains(&pid) && received_players.insert(pid) =>
+                {
+                    responses.push((pid, response));
                 }
                 Ok(Some(_)) => continue,
-                Ok(None) | Err(_) => return Some(CallResponseMsg::Pass),
+                Ok(None) | Err(_) => break,
             }
         }
+
+        for &player in eligible {
+            if received_players.insert(player) {
+                responses.push((player, CallResponseMsg::Pass));
+            }
+        }
+        responses
     }
 
     fn riichi_options(&self, player: PlayerId) -> Vec<Tile> {
