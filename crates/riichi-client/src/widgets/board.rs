@@ -162,7 +162,7 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
 fn render_action_line(app: &App) -> Line<'static> {
     if !app.call_options.is_empty() {
         let spans = vec![Span::styled(
-            "副露: [Enter]荣和 [P]跳过",
+            "响应: [←→]选择 [Enter]确认 [P]跳过",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
@@ -181,6 +181,15 @@ fn render_action_line(app: &App) -> Line<'static> {
     }
     if app.can_riichi {
         spans.push(Span::styled("[r]立直 ", Style::default().fg(Color::Yellow)));
+    }
+    if !app.ankan_options.is_empty() {
+        spans.push(Span::styled("[a]暗杠 ", Style::default().fg(Color::Yellow)));
+    }
+    if !app.kakan_options.is_empty() {
+        spans.push(Span::styled("[k]加杠 ", Style::default().fg(Color::Yellow)));
+    }
+    if app.can_kyuushu {
+        spans.push(Span::styled("[9]九种九牌 ", Style::default().fg(Color::Yellow)));
     }
     spans.push(Span::styled(
         "[←→]选择 [Enter]打牌",
