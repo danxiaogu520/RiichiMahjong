@@ -58,23 +58,30 @@ pub fn check_win(
         if yaku_results.is_empty() {
             continue;
         }
-        if !ctx.atozuke
-            && yaku_results.iter().all(|result| {
-                matches!(
-                    result.yaku,
-                    YakuName::YakuhaiJikaze | YakuName::YakuhaiBakaze | YakuName::YakuhaiSangen
-                )
-            })
-            && winning_tile.tile_type().is_honor()
-            && all_tiles
-                .iter()
-                .filter(|tile| tile.tile_type() == winning_tile.tile_type())
-                .count()
-                .saturating_sub(1)
-                < 3
-        {
-            // 后付禁止仅靠和了牌补出役牌刻子；若役牌刻子在和牌前已存在，
-            // 则 pre-win 计数已经达到 3，不会被这里拦截。
+        let only_yakuhai = yaku_results.iter().all(|result| {
+            matches!(
+                result.yaku,
+                YakuName::YakuhaiJikaze | YakuName::YakuhaiBakaze | YakuName::YakuhaiSangen
+            )
+        });
+        let has_preexisting_yakuhai = hand.mentsu.iter().any(|mentsu| {
+            mentsu.kind == MentsuKind::Koutsu
+                && is_yakuhai(mentsu.tile_type, ctx)
+                && (mentsu.tile_type != winning_tile.tile_type()
+                    || all_tiles
+                        .iter()
+                        .filter(|tile| tile.tile_type() == winning_tile.tile_type())
+                        .count()
+                        >= 4)
+        }) || ctx.melds.iter().any(|meld| {
+            matches!(
+                meld.kind,
+                MeldKind::Pon | MeldKind::Minkan | MeldKind::Kakan | MeldKind::Ankan
+            ) && is_yakuhai(meld.tiles[0].tile_type(), ctx)
+        });
+        if !ctx.atozuke && only_yakuhai && !has_preexisting_yakuhai {
+            // 后付禁止仅靠和了牌补出唯一役牌；和了前已经存在的役牌副露/刻子
+            // 则允许和了牌组成雀头或其它非役牌面子。
             continue;
         }
         let mut all_yaku = yaku_results;
@@ -919,4 +926,83 @@ fn detect_yaku(
     }
 
     best.unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_win;
+    use crate::types::WinContext;
+    use riichi_core::meld::Meld;
+    use riichi_core::player::PlayerId;
+    use riichi_core::tile::TileType;
+
+    fn context(atozuke: bool, melds: Vec<Meld>) -> WinContext {
+        WinContext {
+            is_tsumo: false,
+            is_riichi: false,
+            is_double_riichi: false,
+            is_ippatsu: false,
+            is_rinshan: false,
+            is_chankan: false,
+            is_haitei: false,
+            is_houtei: false,
+            is_tenhou: false,
+            is_chiihou: false,
+            red_fives: [0; 3],
+            kuitan: true,
+            atozuke,
+            seat_wind: TileType::EAST,
+            field_wind: TileType::EAST,
+            dora_indicators: Vec::new(),
+            ura_dora_indicators: Vec::new(),
+            melds,
+            dealer: 0,
+            winner: 1,
+            loser: Some(0),
+            honba: 0,
+            riichi_sticks: 0,
+        }
+    }
+
+    #[test]
+    fn no_atozuke_allows_preexisting_open_yakuhai() {
+        let haku = TileType::HAKU.with_copy(0);
+        let meld = Meld::pon(
+            vec![
+                haku,
+                TileType::HAKU.with_copy(1),
+                TileType::HAKU.with_copy(2),
+            ],
+            haku,
+            PlayerId(0),
+        );
+        let hand_types = vec![
+            TileType(0),
+            TileType(1),
+            TileType(2),
+            TileType(3),
+            TileType(4),
+            TileType(5),
+            TileType(6),
+            TileType(7),
+            TileType(8),
+            TileType(9),
+            TileType(9),
+        ];
+        let all_tiles = hand_types
+            .iter()
+            .enumerate()
+            .map(|(i, &tile_type)| tile_type.with_copy((i % 4) as u8))
+            .chain(meld.tiles.iter().copied())
+            .collect::<Vec<_>>();
+
+        let result = check_win(
+            &all_tiles,
+            &hand_types,
+            &context(false, vec![meld]),
+            false,
+            TileType(9).with_copy(2),
+        );
+        assert!(result.is_some());
+    }
 }
