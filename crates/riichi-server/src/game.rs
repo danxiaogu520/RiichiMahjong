@@ -117,6 +117,35 @@ impl GameLoop {
                     self.handle_after_turn().await;
                 }
             }
+            TurnActionMsg::Ankan(tile) => {
+                if self
+                    .game
+                    .execute_action(TurnAction::Ankan(tile))
+                    .is_ok()
+                {
+                    self.broadcast_state().await;
+                }
+            }
+            TurnActionMsg::Kakan(index, tile) => {
+                if self
+                    .game
+                    .execute_action(TurnAction::Kakan(index, tile))
+                    .is_ok()
+                {
+                    self.broadcast_state().await;
+                    self.handle_after_turn().await;
+                }
+            }
+            TurnActionMsg::KyuushuKyuuhai => {
+                if self
+                    .game
+                    .execute_action(TurnAction::KyuushuKyuuhai)
+                    .is_ok()
+                {
+                    self.broadcast_state().await;
+                    self.handle_round_end().await;
+                }
+            }
         }
     }
 
