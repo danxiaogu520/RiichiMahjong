@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+/// 临时本地测试默认思考时长：365 天，避免测试过程中被超时动作打断。
+pub const DEFAULT_THINK_TIMEOUT_MS: u64 = 365 * 24 * 60 * 60 * 1000;
+
 /// 一局游戏使用的规则配置。
 ///
 /// 第一版先提供常见四人立直麻将的显式配置入口；旧逻辑仍使用默认值，
@@ -35,8 +38,8 @@ impl Default for RuleConfig {
             suukan_sanra_abort: true,
             nagashi_mangan: false,
             tobi: false,
-            turn_timeout_ms: 30_000,
-            response_timeout_ms: 10_000,
+            turn_timeout_ms: DEFAULT_THINK_TIMEOUT_MS,
+            response_timeout_ms: DEFAULT_THINK_TIMEOUT_MS,
         }
     }
 }
