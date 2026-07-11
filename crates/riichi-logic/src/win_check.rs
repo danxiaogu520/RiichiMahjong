@@ -555,7 +555,9 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::MenzenTsumo, 1));
         }
 
-        if ctx.is_riichi && is_menzen {
+        if ctx.is_double_riichi && is_menzen {
+            yaku.push(YakuResult::new(YakuName::DoubleRiichi, 2));
+        } else if ctx.is_riichi && is_menzen {
             yaku.push(YakuResult::new(YakuName::Riichi, 1));
         }
 
@@ -642,10 +644,6 @@ fn detect_yaku(
         }
         if ctx.is_houtei {
             yaku.push(YakuResult::new(YakuName::Houtei, 1));
-        }
-
-        if ctx.is_double_riichi {
-            yaku.push(YakuResult::new(YakuName::DoubleRiichi, 2));
         }
 
         if hand.hand_type == HandType::SevenPairs {
@@ -1278,5 +1276,25 @@ mod tests {
             TileType(13).with_copy(0),
         );
         assert_eq!(yaku_han(&yaku, YakuName::SanshokuDoukou), Some(2));
+    }
+
+    #[test]
+    fn double_riichi_does_not_also_count_riichi() {
+        let hand = WinningHand {
+            hand_type: HandType::Standard,
+            jantai: TileType(8),
+            mentsu: vec![
+                sequence(TileType(0)),
+                sequence(TileType(3)),
+                sequence(TileType(6)),
+                sequence(TileType(1)),
+            ],
+        };
+        let mut ctx = context(true, Vec::new());
+        ctx.is_riichi = true;
+        ctx.is_double_riichi = true;
+        let yaku = detect_yaku(&[hand], &ctx, TileType(1).with_copy(0));
+        assert_eq!(yaku_han(&yaku, YakuName::DoubleRiichi), Some(2));
+        assert_eq!(yaku_han(&yaku, YakuName::Riichi), None);
     }
 }
