@@ -279,6 +279,16 @@ fn meld_sequence_start(meld: &Meld) -> Option<TileType> {
         .min_by_key(|tile| tile.0)
 }
 
+fn has_sequence_start(hand: &WinningHand, melds: &[Meld], start: TileType) -> bool {
+    hand.mentsu
+        .iter()
+        .any(|m| m.kind == MentsuKind::Shuntsu && m.tile_type == start)
+        || melds
+            .iter()
+            .filter_map(meld_sequence_start)
+            .any(|meld_start| meld_start == start)
+}
+
 fn is_pinfu_wait(hand: &WinningHand, winning_tile: Tile) -> bool {
     let winning_type = winning_tile.tile_type();
     hand.mentsu.iter().any(|m| {
@@ -783,6 +793,32 @@ fn detect_yaku(
                 }
                 if found {
                     break;
+                }
+            }
+            if !found {
+                for start in ctx.melds.iter().filter_map(meld_sequence_start) {
+                    let rank = start.rank().0;
+                    let suit = start.suit();
+                    for other_suit in [Suit::Man, Suit::Pin, Suit::Sou] {
+                        if other_suit == suit {
+                            continue;
+                        }
+                        let other = TileType(suit_base(other_suit) + rank - 1);
+                        let third_suit = [Suit::Man, Suit::Pin, Suit::Sou]
+                            .iter()
+                            .find(|&&candidate| candidate != suit && candidate != other_suit)
+                            .unwrap();
+                        let third = TileType(suit_base(*third_suit) + rank - 1);
+                        if has_sequence_start(hand, &ctx.melds, other)
+                            && has_sequence_start(hand, &ctx.melds, third)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if found {
+                        break;
+                    }
                 }
             }
             if found {
