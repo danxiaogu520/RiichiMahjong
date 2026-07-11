@@ -127,3 +127,34 @@ impl Wall {
         (RINSHAN_START - 3..=RINSHAN_START).any(|i| self.tiles[i] == tile)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Wall;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    #[test]
+    fn kan_reduces_live_wall_by_one() {
+        let mut rng = StdRng::seed_from_u64(7);
+        let mut wall = Wall::new(&mut rng);
+        for _ in 0..10 {
+            assert!(wall.draw().is_some());
+        }
+        let before = wall.remaining();
+        assert!(wall.draw_rinshan().is_some());
+        assert_eq!(wall.remaining(), before - 1);
+        assert_eq!(wall.live_end(), 121);
+    }
+
+    #[test]
+    fn only_four_rinshan_tiles_can_be_drawn() {
+        let mut rng = StdRng::seed_from_u64(11);
+        let mut wall = Wall::new(&mut rng);
+        for _ in 0..4 {
+            assert!(wall.draw_rinshan().is_some());
+        }
+        assert!(wall.draw_rinshan().is_none());
+        assert_eq!(wall.kan_count(), 4);
+    }
+}

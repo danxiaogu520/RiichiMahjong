@@ -111,3 +111,48 @@ impl GameState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::GameState;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use riichi_core::tile::TileType;
+
+    #[test]
+    fn new_game_starts_at_east_one() {
+        let state = GameState::new();
+        assert_eq!(state.round, 1);
+        assert_eq!(state.get_dealer().0, 0);
+    }
+
+    #[test]
+    fn start_round_resets_events_and_assigns_current_seat_winds() {
+        let mut state = GameState::new();
+        let mut rng = StdRng::seed_from_u64(19);
+        state.start_round(&mut rng);
+        state.events.push(riichi_core::game::GameEvent::GameStarted {
+            dealer: state.get_dealer(),
+        });
+        state.start_round(&mut rng);
+
+        assert_eq!(state.events.len(), 1);
+        assert_eq!(state.players[0].wind, TileType::EAST);
+        assert_eq!(state.players[1].wind, TileType::SOUTH);
+        assert_eq!(state.players[2].wind, TileType::WEST);
+        assert_eq!(state.players[3].wind, TileType::NORTH);
+    }
+
+    #[test]
+    fn rotated_dealer_gets_east_wind() {
+        let mut state = GameState::new();
+        state.round = 2;
+        let mut rng = StdRng::seed_from_u64(23);
+        state.start_round(&mut rng);
+
+        assert_eq!(state.get_dealer().0, 1);
+        assert_eq!(state.players[1].wind, TileType::EAST);
+        assert_eq!(state.players[2].wind, TileType::SOUTH);
+        assert_eq!(state.players[0].wind, TileType::NORTH);
+    }
+}
