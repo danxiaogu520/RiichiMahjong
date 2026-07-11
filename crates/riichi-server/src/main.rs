@@ -25,7 +25,7 @@ async fn main() {
     let tx0 = merged_tx.clone();
     let tx1 = merged_tx.clone();
     let tx2 = merged_tx.clone();
-    let tx3 = merged_tx;
+    let tx3 = merged_tx.clone();
 
     let mut r0 = p0_handle.action_rx;
     let mut r1 = p1_handle.action_rx;
@@ -57,7 +57,7 @@ async fn main() {
     tokio::spawn(run_ai_client(p2_client));
     tokio::spawn(run_ai_client(p3_client));
 
-    let mut game_loop = GameLoop::new(event_txs, merged_rx);
+    let mut game_loop = GameLoop::new(event_txs, merged_tx, merged_rx);
     tokio::spawn(async move {
         game_loop.run().await;
     });

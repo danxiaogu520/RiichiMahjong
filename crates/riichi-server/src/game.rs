@@ -15,12 +15,14 @@ pub struct GameLoop {
     pub calc: ShantenCalculator,
     pub rng: StdRng,
     pub event_txs: [mpsc::Sender<ServerEvent>; 4],
+    pub action_tx: mpsc::Sender<ActionMsg>,
     pub action_rx: mpsc::Receiver<ActionMsg>,
 }
 
 impl GameLoop {
     pub fn new(
         event_txs: [mpsc::Sender<ServerEvent>; 4],
+        action_tx: mpsc::Sender<ActionMsg>,
         action_rx: mpsc::Receiver<ActionMsg>,
     ) -> Self {
         Self {
@@ -28,6 +30,7 @@ impl GameLoop {
             calc: ShantenCalculator::new(),
             rng: StdRng::from_entropy(),
             event_txs,
+            action_tx,
             action_rx,
         }
     }
@@ -102,8 +105,19 @@ impl GameLoop {
         &mut self,
         player: PlayerId,
         event_tx: mpsc::Sender<ServerEvent>,
+        mut action_rx: mpsc::Receiver<ActionMsg>,
     ) {
         self.event_txs[player.0] = event_tx;
+        let action_tx = self.action_tx.clone();
+        tokio::spawn(async move {
+            while let Some(message) = action_rx.recv().await {
+                if message.0 == player {
+                    if action_tx.send(message).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
         self.broadcast_state().await;
         self.send_current_action_prompt(player).await;
     }
