@@ -108,6 +108,13 @@ impl App {
                     self.round = round;
                     self.honba = honba;
                     self.riichi_sticks = riichi_sticks;
+                    if !matches!(
+                        self.phase,
+                        GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. }
+                    ) {
+                        self.call_options.clear();
+                        self.call_selected = 0;
+                    }
                     if self.selected >= self.hand_tiles.len() {
                         self.selected = 0;
                     }
