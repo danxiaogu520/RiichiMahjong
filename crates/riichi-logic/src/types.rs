@@ -100,6 +100,10 @@ pub struct WinContext {
     pub is_chankan: bool,
     pub is_haitei: bool,
     pub is_houtei: bool,
+    /// 是否允许副露断幺九（食断）。
+    pub kuitan: bool,
+    /// 是否允许和牌役由和了牌临门补足（后付）。
+    pub atozuke: bool,
     // 风位
     pub seat_wind: TileType,
     pub field_wind: TileType,

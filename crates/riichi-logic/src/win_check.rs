@@ -57,6 +57,27 @@ pub fn check_win(
         if yaku_results.is_empty() {
             continue;
         }
+        if !ctx.atozuke
+            && yaku_results.iter().all(|result| {
+                matches!(
+                    result.yaku,
+                    YakuName::YakuhaiJikaze
+                        | YakuName::YakuhaiBakaze
+                        | YakuName::YakuhaiSangen
+                )
+            })
+            && winning_tile.tile_type().is_honor()
+            && all_tiles
+                .iter()
+                .filter(|tile| tile.tile_type() == winning_tile.tile_type())
+                .count()
+                .saturating_sub(1)
+                < 3
+        {
+            // 后付禁止仅靠和了牌补出役牌刻子；若役牌刻子在和牌前已存在，
+            // 则 pre-win 计数已经达到 3，不会被这里拦截。
+            continue;
+        }
         let mut all_yaku = yaku_results;
         if dora_result.dora > 0 {
             all_yaku.push(YakuResult::new(
@@ -456,7 +477,7 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::Ippatsu, 1));
         }
 
-        if all_tiles.iter().all(|&t| all_simple(t)) {
+        if all_tiles.iter().all(|&t| all_simple(t)) && (is_menzen || ctx.kuitan) {
             yaku.push(YakuResult::new(YakuName::Tanyao, 1));
         }
 
