@@ -92,6 +92,19 @@ impl GameLoop {
         }
     }
 
+    /// 替换指定座位的事件连接，并立即发送该玩家视角的完整状态快照。
+    ///
+    /// 玩家身份由座位保持，重连客户端不会获得其他玩家的手牌；状态广播
+    /// 仍然按照现有的逐玩家视角逻辑生成。
+    pub async fn reconnect_player(
+        &mut self,
+        player: PlayerId,
+        event_tx: mpsc::Sender<ServerEvent>,
+    ) {
+        self.event_txs[player.0] = event_tx;
+        self.broadcast_state().await;
+    }
+
     async fn apply_turn_action(&mut self, player: PlayerId, action: TurnActionMsg) {
         match action {
             TurnActionMsg::Discard(tile) => {
