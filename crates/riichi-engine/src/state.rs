@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::analysis::analyze_wait_tiles;
+use riichi_logic::analysis::analyze_wait_tiles_with_open_melds;
 
 use crate::game::{GamePhase, GameState};
 
@@ -20,7 +20,8 @@ impl GameState {
 
     /// 获取玩家的听牌类型集合（内部使用）
     pub(crate) fn get_waiting_tile_types(&self, player: PlayerId) -> HashSet<TileType> {
-        analyze_wait_tiles(self.players[player.0].hand.tiles())
+        let p = &self.players[player.0];
+        analyze_wait_tiles_with_open_melds(p.hand.tiles(), p.melds.len())
             .iter()
             .map(|w| w.tile_type)
             .collect()
