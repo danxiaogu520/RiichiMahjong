@@ -38,12 +38,13 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 ServerEvent::ActionRequired {
                     can_tsumo,
                     can_riichi,
+                    riichi_options,
                     ..
                 } => {
                 state.can_tsumo = can_tsumo;
                 state.can_riichi = can_riichi;
 
-                let action = decide_turn(&handle.id, &state);
+                let action = decide_turn(&handle.id, &state, &riichi_options);
                 let _ = handle.action_tx.send(action).await;
             }
             ServerEvent::CallRequired { .. } => {
@@ -56,12 +57,14 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
     }
 }
 
-fn decide_turn(player: &PlayerId, state: &AiState) -> ActionMsg {
+fn decide_turn(player: &PlayerId, state: &AiState, riichi_options: &[Tile]) -> ActionMsg {
     if state.can_tsumo {
         return (*player, PlayerAction::TurnAction(TurnActionMsg::Tsumo));
     }
     if state.can_riichi {
-        return (*player, PlayerAction::TurnAction(TurnActionMsg::Riichi));
+        if let Some(&tile) = riichi_options.first() {
+            return (*player, PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)));
+        }
     }
     let tile = state
         .hand_tiles

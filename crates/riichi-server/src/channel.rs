@@ -29,6 +29,7 @@ pub enum ServerEvent {
     ActionRequired {
         can_tsumo: bool,
         can_riichi: bool,
+        riichi_options: Vec<Tile>,
         discard_options: Vec<Tile>,
         ankan_options: Vec<Tile>,
         kakan_options: Vec<(usize, Tile)>,
@@ -57,6 +58,9 @@ pub enum PlayerAction {
 pub enum TurnActionMsg {
     Discard(Tile),
     Tsumo,
+    /// 明确指定立直宣言时打出的牌。
+    RiichiDiscard(Tile),
+    /// 兼容旧版 AI 客户端，由服务端选择第一个合法弃牌。
     Riichi,
     Ankan(Tile),
     Kakan(usize, Tile),
