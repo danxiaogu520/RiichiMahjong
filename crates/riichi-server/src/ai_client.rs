@@ -51,6 +51,7 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 let msg: ActionMsg = (handle.id, PlayerAction::CallResponse(CallResponseMsg::Pass));
                 let _ = handle.action_tx.send(msg).await;
             }
+            ServerEvent::RoundResult { .. } => {}
             ServerEvent::GameOver { .. } => break,
             ServerEvent::Error(_) => {}
         }

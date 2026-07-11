@@ -53,6 +53,8 @@ pub struct GameState {
     pub events: Vec<GameEvent>,
     /// 从整场开始累积的事件历史，用于回放和断线恢复；不会随新局清空。
     pub history: Vec<GameEvent>,
+    /// 本局开始时四家的点数，用于生成局末点棒变化。
+    pub round_start_points: [i32; 4],
     /// 副露后当前玩家下一次出牌的食替禁牌。
     pub kuikae_forbidden: [Vec<TileType>; 4],
     /// 当前游戏阶段（摸牌/行动/响应/局结束）

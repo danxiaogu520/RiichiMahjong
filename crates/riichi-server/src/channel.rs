@@ -39,6 +39,11 @@ pub enum ServerEvent {
     CallRequired {
         options: Vec<CallOption>,
     },
+    RoundResult {
+        reason: String,
+        point_changes: [i32; 4],
+        scores: [i32; 4],
+    },
     GameOver {
         scores: [i32; 4],
         ranking: [usize; 4],
