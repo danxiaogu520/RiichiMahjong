@@ -327,8 +327,21 @@ fn merge_wait_info(wait_map: &mut Vec<(TileType, Vec<WaitType>)>, new_info: Wait
 /// 枚举所有可能的和了牌，对每种拆解分析听牌类型，返回每张听牌的所有可能听牌类型。
 /// 同时检测标准形、七对子、国士无双三种和了形态的听牌。
 pub fn analyze_wait_tiles(hand_tiles: &[riichi_core::tile::Tile]) -> WaitInfo {
+    analyze_wait_tiles_with_open_melds(hand_tiles, 0)
+}
+
+/// 分析含副露的听牌。
+///
+/// `hand_tiles` 只包含门清部分；每个副露已经完整占用一个面子，
+/// 因此标准形分解必须减少相应的门清面子数量。七对子和国士无双
+/// 不能与副露并存，开放手只检查标准形。
+pub fn analyze_wait_tiles_with_open_melds(
+    hand_tiles: &[riichi_core::tile::Tile],
+    open_meld_count: usize,
+) -> WaitInfo {
     let base = TileCounts::from_tiles(hand_tiles);
     let mut wait_map: Vec<(TileType, Vec<WaitType>)> = Vec::new();
+    let concealed_mentsu = 4usize.saturating_sub(open_meld_count);
 
     // 标准形听牌：枚举 34 种牌，逐个检查是否能和
     for i in 0..34u8 {
@@ -338,7 +351,7 @@ pub fn analyze_wait_tiles(hand_tiles: &[riichi_core::tile::Tile]) -> WaitInfo {
         if counts.get(tt) > 4 {
             continue;
         }
-        let decompositions = decompose_all_standard(&mut counts);
+        let decompositions = decompose_all_standard_with_mentsu(&mut counts, concealed_mentsu);
         if decompositions.is_empty() {
             continue;
         }
@@ -363,13 +376,16 @@ pub fn analyze_wait_tiles(hand_tiles: &[riichi_core::tile::Tile]) -> WaitInfo {
     }
 
     // 七对子听牌
-    if let Some(sp_wait) = analyze_seven_pairs_tenpai(&base) {
-        merge_wait_info(&mut wait_map, sp_wait);
-    }
+    if open_meld_count == 0 {
+        // 七对子听牌
+        if let Some(sp_wait) = analyze_seven_pairs_tenpai(&base) {
+            merge_wait_info(&mut wait_map, sp_wait);
+        }
 
-    // 国士无双听牌
-    if let Some(k_wait) = analyze_kokushi_tenpai(&base) {
-        merge_wait_info(&mut wait_map, k_wait);
+        // 国士无双听牌
+        if let Some(k_wait) = analyze_kokushi_tenpai(&base) {
+            merge_wait_info(&mut wait_map, k_wait);
+        }
     }
 
     wait_map
@@ -495,6 +511,31 @@ fn analyze_kokushi_tenpai(base: &TileCounts) -> Option<WaitInfo> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::analyze_wait_tiles_with_open_melds;
+    use riichi_core::tile::Tile;
+
+    #[test]
+    fn open_hand_wait_uses_remaining_concealed_mentsu() {
+        // 一组已副露面子之外，门清部分为 123/456/789 + 1p，听 1p。
+        let hand = [
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+        ];
+        let waits = analyze_wait_tiles_with_open_melds(&hand, 1);
+        assert!(waits.iter().any(|wait| wait.tile_type.0 == 9));
+    }
 }
 
 /// 根据已拆解的手牌，判断和了牌在该拆解中的听牌类型
