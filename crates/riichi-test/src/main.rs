@@ -208,7 +208,7 @@ fn cmd_dora(args: &str) -> Result<String, String> {
     }
     let tiles = parse::parse_tiles(parts[0].trim())?;
     let indicators = parse::parse_tile_types(parts[1].trim())?;
-    let result = calculate_dora(&tiles, &indicators, &[], false);
+    let result = calculate_dora(&tiles, &indicators, &[], false, [1, 1, 1]);
     Ok(format!(
         "宝牌: {}  赤宝牌: {}  里宝牌: {}  合计: {}",
         result.dora,
