@@ -123,7 +123,7 @@ impl App {
                     self.riichi_sticks = riichi_sticks;
                     self.analysis_options = if self.current_player == PlayerId(0)
                         && matches!(self.phase, GamePhase::ActionPhase)
-                        && self.hand_tiles.len() == 14
+                        && self.hand_tiles.len() >= 2
                     {
                         analyze_discards(
                             &self.hand_tiles,
