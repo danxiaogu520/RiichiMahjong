@@ -46,11 +46,11 @@ fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
             .take(8)
             .map(|analysis| {
                 format!(
-                    "{}: {}向听 进张{}张/{}种",
+                    "{}: {}向听 进张{}张 改良{}张",
                     format_tile_type(analysis.tile.tile_type()),
                     analysis.shanten,
-                    analysis.effective_tiles,
-                    analysis.effective_types
+                    analysis.acceptance_copies,
+                    analysis.improvement_copies
                 )
             })
             .collect::<Vec<_>>();
