@@ -138,6 +138,7 @@ impl GameState {
             red_fives: self.rules.red_fives,
             kuitan: self.rules.kuitan,
             atozuke: self.rules.atozuke,
+            allow_double_yakuman: self.rules.allow_double_yakuman,
             seat_wind: p.wind,
             field_wind: self.wind,
             dora_indicators: self.dora_indicators.clone(),
