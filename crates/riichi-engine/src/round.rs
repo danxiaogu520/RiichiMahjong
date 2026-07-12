@@ -29,6 +29,7 @@ impl GameState {
         // 四家立直和首巡等状态判断；完整对局回放应由外部日志保存。
         self.events.clear();
         self.kuikae_forbidden = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+        self.pao_targets = [None; 4];
 
         // 创建新牌山
         self.wall = Wall::new(rng);

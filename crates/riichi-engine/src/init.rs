@@ -33,6 +33,7 @@ impl GameState {
             history: Vec::new(),
             round_start_points: [starting_points; 4],
             kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+            pao_targets: [None; 4],
             phase: GamePhase::ActionPhase,
             drawn_tile: None,
             round: 1,

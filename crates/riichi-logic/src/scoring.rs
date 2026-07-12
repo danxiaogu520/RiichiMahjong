@@ -55,6 +55,38 @@ pub fn calculate_points_with_loser(
     honba: u32,
     is_tsumo: bool,
 ) -> [i32; 4] {
+    calculate_points_with_loser_and_pao(
+        total_han,
+        total_fu,
+        yakuman_count,
+        winner,
+        loser,
+        dealer,
+        riichi_sticks,
+        honba,
+        is_tsumo,
+        None,
+    )
+}
+
+/// 计算和了后的点数变化，并处理役满责任支付（包牌）。
+///
+/// 包牌时，荣和由放铳者与责任支付者各承担一半役满点数；自摸由责任
+/// 支付者承担完整的荣和点数。立直棒仍由和了者取得，本场棒由责任支付者
+/// 承担，符合 Mortal 使用的 Tenhou 规则口径。
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+pub fn calculate_points_with_loser_and_pao(
+    total_han: u8,
+    total_fu: u32,
+    yakuman_count: u8,
+    winner: usize,
+    loser: Option<usize>,
+    dealer: usize,
+    riichi_sticks: u32,
+    honba: u32,
+    is_tsumo: bool,
+    pao_target: Option<usize>,
+) -> [i32; 4] {
     // 一本场总计增加 300 点：荣和由放铳者支付，自摸由三家各支付 100 点。
     let honba_val = (honba * 100) as i32;
     let riichi_bonus = (riichi_sticks * 1000) as i32;
@@ -67,6 +99,27 @@ pub fn calculate_points_with_loser(
     };
 
     let mut changes = [0i32; 4];
+
+    if yakuman_count > 0 {
+        if let Some(pao_target) = pao_target.filter(|&target| target != winner) {
+            let ron_points = if is_dealer {
+                round_up_100(bp * 6)
+            } else {
+                round_up_100(bp * 4)
+            };
+            if is_tsumo {
+                changes[winner] = ron_points + (riichi_sticks * 1000) as i32 + (honba * 300) as i32;
+                changes[pao_target] = -ron_points - (honba * 300) as i32;
+            } else {
+                changes[winner] = ron_points + (riichi_sticks * 1000) as i32 + (honba * 300) as i32;
+                changes[pao_target] -= ron_points / 2 + (honba * 300) as i32;
+                if let Some(loser) = loser.filter(|&loser| loser != winner) {
+                    changes[loser] -= ron_points / 2;
+                }
+            }
+            return changes;
+        }
+    }
 
     if is_tsumo {
         if is_dealer {
@@ -136,7 +189,7 @@ fn round_up_100(n: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::calculate_points_with_loser;
+    use super::{calculate_points_with_loser, calculate_points_with_loser_and_pao};
 
     #[test]
     fn ron_transfers_points_from_loser() {
@@ -162,6 +215,40 @@ mod tests {
     fn double_yakuman_uses_two_yakuman_sticks() {
         let changes = calculate_points_with_loser(26, 0, 2, 0, Some(2), 1, 0, 0, false);
         assert_eq!(changes, [64_000, 0, -64_000, 0]);
+    }
+
+    #[test]
+    fn yakuman_ron_is_split_between_discarder_and_pao_target() {
+        let changes = calculate_points_with_loser_and_pao(
+            13,
+            0,
+            1,
+            0,
+            Some(2),
+            1,
+            0,
+            0,
+            false,
+            Some(3),
+        );
+        assert_eq!(changes, [32_000, 0, -16_000, -16_000]);
+    }
+
+    #[test]
+    fn yakuman_tsumo_is_paid_fully_by_pao_target() {
+        let changes = calculate_points_with_loser_and_pao(
+            13,
+            0,
+            1,
+            0,
+            None,
+            1,
+            0,
+            1,
+            true,
+            Some(3),
+        );
+        assert_eq!(changes, [32_300, 0, 0, -32_300]);
     }
 
     #[test]

@@ -146,6 +146,7 @@ impl GameState {
             dealer: self.get_dealer().0,
             winner: player.0,
             loser: None,
+            pao_target: self.pao_targets[player.0],
             honba: self.honba,
             riichi_sticks: self.riichi_sticks,
         }
