@@ -207,10 +207,15 @@ impl GameState {
         }
 
         let riichi_bonus = self.riichi_sticks * 1000;
+        let honba_bonus = self.honba * 300;
         let mut events = Vec::new();
         for (index, (winner, (mut changes, yaku_names))) in results.into_iter().enumerate() {
+            // Mortal 的多家荣和规则：本场棒和立直棒只在第一位赢家
+            // 的这次荣和中结算，后续赢家只取得本身的和牌点数。
             if index > 0 {
                 changes[winner.0] -= riichi_bonus as i32;
+                changes[winner.0] -= honba_bonus as i32;
+                changes[discarder.0] += honba_bonus as i32;
             }
             for (player_index, change) in changes.iter().enumerate() {
                 self.players[player_index].points += change;
