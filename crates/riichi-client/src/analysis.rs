@@ -12,7 +12,7 @@ pub fn analyze_discards(
     dora: &[TileType],
     pending_discard: Option<(riichi_core::player::PlayerId, Tile)>,
 ) -> Vec<DiscardAnalysis> {
-    if hand_tiles.len() != 14 {
+    if hand_tiles.len() < 2 {
         return Vec::new();
     }
 
@@ -36,6 +36,8 @@ pub fn analyze_discards(
 #[cfg(test)]
 mod tests {
     use super::analyze_discards;
+    use riichi_core::meld::Meld;
+    use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
 
     #[test]
@@ -55,5 +57,27 @@ mod tests {
             (pair[0].acceptance_copies, pair[0].improvement_copies)
                 >= (pair[1].acceptance_copies, pair[1].improvement_copies)
         }));
+    }
+
+    #[test]
+    fn analyzes_concealed_tiles_after_an_open_meld() {
+        let hand = [0, 4, 8, 12, 16, 20, 36, 40, 44, 72, 76]
+            .into_iter()
+            .map(Tile::from_raw)
+            .collect::<Vec<_>>();
+        let empty_discards = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+        let meld = Meld::pon(
+            vec![
+                Tile::from_raw(108),
+                Tile::from_raw(109),
+                Tile::from_raw(110),
+            ],
+            Tile::from_raw(108),
+            PlayerId(1),
+        );
+        let melds = [vec![meld], Vec::new(), Vec::new(), Vec::new()];
+
+        let result = analyze_discards(&hand, &empty_discards, &melds, &[], None);
+        assert!(!result.is_empty());
     }
 }
