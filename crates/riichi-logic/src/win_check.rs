@@ -410,6 +410,17 @@ fn detect_yaku(
             yaku.push(YakuResult::new(YakuName::Chiihou, 13));
         }
 
+        // Mortal 将天和/地和作为独立的特殊役满直接返回，不再叠加
+        // 牌型役满或普通役。
+        if ctx.is_tenhou || ctx.is_chiihou {
+            let total_han: u8 = yaku.iter().map(|y| y.han).sum();
+            if total_han > best_han {
+                best_han = total_han;
+                best = Some(yaku.clone());
+            }
+            continue;
+        }
+
         if hand.hand_type == HandType::Kokushi {
             // 十三面只能在“和了牌正好把唯一缺少的重复牌补成雀头”时成立。
             // 不能因为牌型中存在若干张单张幺九牌就直接判成十三面。
