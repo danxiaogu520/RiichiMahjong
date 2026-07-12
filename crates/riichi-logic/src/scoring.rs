@@ -119,7 +119,8 @@ pub fn calculate_points_with_loser(
 fn base_points(han: u8, fu: u32) -> i32 {
     match han {
         0 => 0,
-        1..=4 => fu as i32 * (1 << (han as u32 + 2)),
+        // 1～4翻仍须按满贯基础点 2000 封顶。
+        1..=4 => (fu as i32 * (1 << (han as u32 + 2))).min(2000),
         5 => 2000,       // 满贯
         6..=7 => 3000,   // 跳满
         8..=10 => 4000,  // 倍满
@@ -167,5 +168,13 @@ mod tests {
     fn ron_riichi_sticks_are_not_paid_by_the_loser() {
         let changes = calculate_points_with_loser(1, 30, 0, 0, Some(2), 1, 2, 0, false);
         assert_eq!(changes, [3_000, 0, -1_000, 0]);
+    }
+
+    #[test]
+    fn high_fu_is_capped_at_mangan() {
+        let four_han = calculate_points_with_loser(4, 40, 0, 0, Some(2), 1, 0, 0, false);
+        let three_han = calculate_points_with_loser(3, 70, 0, 0, Some(2), 1, 0, 0, false);
+        assert_eq!(four_han, [8_000, 0, -8_000, 0]);
+        assert_eq!(three_han, [8_000, 0, -8_000, 0]);
     }
 }
