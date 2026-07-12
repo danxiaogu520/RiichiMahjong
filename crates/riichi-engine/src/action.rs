@@ -567,6 +567,9 @@ impl GameState {
     /// 考虑手牌（3n+1）与自摸牌缓冲区中的牌
     /// 手牌中有 4 张相同牌，或手牌 3 张 + 自摸牌 1 张
     pub fn get_ankan_options(&self, player: PlayerId) -> Vec<Tile> {
+        if self.remaining_tiles() == 0 {
+            return vec![];
+        }
         if self.players[player.0].is_riichi {
             return self.get_riichi_ankan_options(player);
         }
@@ -606,6 +609,9 @@ impl GameState {
         player: PlayerId,
         tile: Tile,
     ) -> Result<Vec<GameEvent>, GameError> {
+        if self.remaining_tiles() == 0 {
+            return Err(GameError::InvalidAction("海底牌不能暗杠".to_string()));
+        }
         let tt = tile.tile_type();
         let available = self.players[player.0].hand.count_type(tt.0)
             + usize::from(self.drawn_tile.is_some_and(|drawn| drawn.tile_type() == tt));
@@ -675,6 +681,9 @@ impl GameState {
     /// 考虑手牌（3n+1）与自摸牌缓冲区中的牌
     /// 手牌或自摸牌中有与碰副露相同类型的牌
     pub fn get_kakan_options(&self, player: PlayerId) -> Vec<(usize, Tile)> {
+        if self.remaining_tiles() == 0 {
+            return vec![];
+        }
         let p = &self.players[player.0];
         let mut options = Vec::new();
         for (i, meld) in p.melds.iter().enumerate() {
@@ -710,6 +719,9 @@ impl GameState {
         meld_index: usize,
         tile: Tile,
     ) -> Result<Vec<GameEvent>, GameError> {
+        if self.remaining_tiles() == 0 {
+            return Err(GameError::InvalidAction("海底牌不能加杠".to_string()));
+        }
         // 验证副露是否为碰
         {
             let meld = &self.players[player.0].melds[meld_index];

@@ -7,6 +7,60 @@ use riichi_logic::win_check;
 
 use crate::game::GameState;
 
+fn is_call_event(event: &GameEvent) -> bool {
+    matches!(
+        event,
+        GameEvent::PlayerCalledPon { .. }
+            | GameEvent::PlayerCalledChi { .. }
+            | GameEvent::PlayerCalledMinkan { .. }
+            | GameEvent::PlayerCalledAnkan { .. }
+            | GameEvent::PlayerCalledKakan { .. }
+    )
+}
+
+fn is_ippatsu_active(events: &[GameEvent], player: PlayerId) -> bool {
+    let Some(index) = events.iter().rposition(
+        |event| matches!(event, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
+    ) else {
+        return false;
+    };
+    let declaration_discard_before = index > 0
+        && matches!(
+            &events[index - 1],
+            GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player
+        );
+    let after = &events[index + 1..];
+    let own_discards_after = after
+        .iter()
+        .filter(|event| {
+            matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
+        })
+        .count();
+    !after.iter().any(is_call_event)
+        && if declaration_discard_before {
+            own_discards_after == 0
+        } else {
+            own_discards_after == 1
+        }
+}
+
+fn is_double_riichi_active(events: &[GameEvent], player: PlayerId) -> bool {
+    let has_riichi = events.iter().any(
+        |event| matches!(event, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
+    );
+    let discard_count = events
+        .iter()
+        .filter(|event| matches!(event, GameEvent::PlayerDiscarded { .. }))
+        .count();
+    let own_discard_count = events
+        .iter()
+        .filter(|event| {
+            matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
+        })
+        .count();
+    has_riichi && discard_count <= 4 && own_discard_count == 1 && !events.iter().any(is_call_event)
+}
+
 impl GameState {
     /// 检查自摸和（只读检查，不消耗自摸牌）
     ///
@@ -39,60 +93,13 @@ impl GameState {
         let p = &self.players[player.0];
         let no_tiles_left = self.remaining_tiles() == 0;
 
-        let riichi_index = self.events.iter().rposition(
-            |e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
-        );
-
         // 一发从立直宣言牌之后开始计算：立直宣言牌本身不打断一发，
         // 任何玩家的吃、碰、明杠、暗杠、加杠都会打断一发。
-        let is_ippatsu = riichi_index.is_some_and(|index| {
-            let after = &self.events[index + 1..];
-            let own_discards = after
-                .iter()
-                .filter(|event| {
-                    matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
-                })
-                .count();
-            own_discards == 1
-                && !after.iter().any(|event| {
-                    matches!(
-                        event,
-                        GameEvent::PlayerCalledPon { .. }
-                            | GameEvent::PlayerCalledChi { .. }
-                            | GameEvent::PlayerCalledMinkan { .. }
-                            | GameEvent::PlayerCalledAnkan { .. }
-                            | GameEvent::PlayerCalledKakan { .. }
-                    )
-                })
-        });
+        let is_ippatsu = is_ippatsu_active(&self.events, player);
 
         // 双立直必须发生在当前局第一巡：立直者在本局只打出宣言牌，
         // 且宣言前没有鸣牌、全桌弃牌数仍不超过一轮四张。
-        let is_double_riichi = riichi_index.is_some_and(|index| {
-            let before_or_at = &self.events[..=index];
-            let discard_count = before_or_at
-                .iter()
-                .filter(|event| matches!(event, GameEvent::PlayerDiscarded { .. }))
-                .count();
-            let own_discard_count = before_or_at
-                .iter()
-                .filter(|event| {
-                    matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
-                })
-                .count();
-            discard_count <= 4
-                && own_discard_count == 1
-                && !before_or_at.iter().any(|event| {
-                    matches!(
-                        event,
-                        GameEvent::PlayerCalledPon { .. }
-                            | GameEvent::PlayerCalledChi { .. }
-                            | GameEvent::PlayerCalledMinkan { .. }
-                            | GameEvent::PlayerCalledAnkan { .. }
-                            | GameEvent::PlayerCalledKakan { .. }
-                    )
-                })
-        });
+        let is_double_riichi = is_double_riichi_active(&self.events, player);
 
         let has_call = self.events.iter().any(|event| {
             matches!(
@@ -115,6 +122,8 @@ impl GameState {
             )
         });
 
+        let is_rinshan = is_tsumo && self.is_rinshan_tile(_winning_tile);
+
         WinContext {
             is_tsumo,
             is_riichi: p.is_riichi,
@@ -122,7 +131,7 @@ impl GameState {
             is_ippatsu,
             is_rinshan: false, // 由调用方设置
             is_chankan,
-            is_haitei: no_tiles_left && is_tsumo,
+            is_haitei: no_tiles_left && is_tsumo && !is_rinshan,
             is_houtei: no_tiles_left && !is_tsumo,
             is_tenhou: is_tsumo && player == self.get_dealer() && !has_any_discard && !has_call,
             is_chiihou: is_tsumo && player != self.get_dealer() && !has_player_discard && !has_call,
@@ -187,7 +196,7 @@ impl GameState {
         // 构建上下文
         let mut ctx = self.make_win_context(player, is_tsumo, winning_tile, is_chankan);
         ctx.loser = loser.map(|id| id.0);
-        ctx.is_rinshan = self.is_rinshan_tile(winning_tile);
+        ctx.is_rinshan = is_tsumo && self.is_rinshan_tile(winning_tile);
 
         // 检查和了
         let is_furiten = self.players[player.0].furiten.is_furiten();
@@ -200,5 +209,65 @@ impl GameState {
             .collect();
         yaku_names.push(format!("合计：{}翻 {}符", result.total_han, result.fu));
         Some((result.points, yaku_names))
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::{is_double_riichi_active, is_ippatsu_active};
+    use riichi_core::game::GameEvent;
+    use riichi_core::player::PlayerId;
+    use riichi_core::tile::Tile;
+
+    fn discard(player: PlayerId) -> GameEvent {
+        GameEvent::PlayerDiscarded {
+            player,
+            tile: Tile::from_raw(0),
+        }
+    }
+
+    #[test]
+    fn ippatsu_expires_on_the_next_own_discard() {
+        let player = PlayerId(0);
+        let riichi = GameEvent::PlayerDeclaredRiichi { player };
+        assert!(is_ippatsu_active(
+            &[discard(player), riichi.clone()],
+            player
+        ));
+        assert!(!is_ippatsu_active(
+            &[discard(player), riichi, discard(player)],
+            player
+        ));
+    }
+
+    #[test]
+    fn ippatsu_is_cancelled_by_any_call() {
+        let player = PlayerId(0);
+        let riichi = GameEvent::PlayerDeclaredRiichi { player };
+        let call = GameEvent::PlayerCalledPon {
+            player: PlayerId(1),
+            tiles: vec![Tile::from_raw(0); 3],
+            from_player: player,
+        };
+        assert!(!is_ippatsu_active(&[discard(player), riichi, call], player));
+    }
+
+    #[test]
+    fn double_riichi_requires_the_first_discard_cycle() {
+        let player = PlayerId(0);
+        let riichi = GameEvent::PlayerDeclaredRiichi { player };
+        assert!(is_double_riichi_active(
+            &[discard(player), riichi.clone()],
+            player
+        ));
+        assert!(!is_double_riichi_active(
+            &[
+                discard(player),
+                discard(PlayerId(1)),
+                discard(player),
+                riichi
+            ],
+            player
+        ));
     }
 }
