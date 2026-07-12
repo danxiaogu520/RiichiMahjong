@@ -167,7 +167,39 @@ impl GameState {
 
     /// 游戏是否结束（南四局过庄后）
     pub fn is_game_over(&self) -> bool {
-        self.round > 8 || (self.rules.tobi && self.players.iter().any(|p| p.points < 0))
+        self.round > 8
+            || (self.rules.tobi && self.players.iter().any(|p| p.points < 0))
+            || self.is_agari_yame()
+    }
+
+    /// Mortal 的南四局终局条件：庄家在南四局连庄后，
+    /// 点数至少 30000 且已经是第一名时立即结束半庄。
+    fn is_agari_yame(&self) -> bool {
+        if self.round != 8 || !self.phase_is_round_over() {
+            return false;
+        }
+        let dealer = self.get_dealer();
+        let dealer_continues = self
+            .events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                GameEvent::RoundEnded { reason } => Some(match reason {
+                    RoundEndReason::Win { winner, .. } => *winner == dealer,
+                    RoundEndReason::MultiWin { winners } => winners.contains(&dealer),
+                    RoundEndReason::ExhaustiveDraw => !self.get_waiting_tiles(dealer).is_empty(),
+                    _ => false,
+                }),
+                _ => None,
+            })
+            .unwrap_or(false);
+        dealer_continues
+            && self.players[dealer.0].points >= 30_000
+            && self.final_ranking()[0] == dealer.0
+    }
+
+    fn phase_is_round_over(&self) -> bool {
+        matches!(self.phase, GamePhase::RoundOver)
     }
 
     /// 统一处理局结束：荒牌罚符 + 连庄/过庄 + 设置 RoundOver
@@ -181,6 +213,12 @@ impl GameState {
 
         self.record_event(GameEvent::RoundEnded { reason });
         self.phase = GamePhase::RoundOver;
+
+        if self.is_game_over() && self.riichi_sticks > 0 {
+            let winner = self.final_ranking()[0];
+            self.players[winner].points += (self.riichi_sticks * 1000) as i32;
+            self.riichi_sticks = 0;
+        }
     }
 }
 
@@ -216,5 +254,43 @@ mod tests {
 
         state.players[0].discards.push(Tile::from_raw(4));
         assert!(state.get_nagashi_mangan_candidates().is_empty());
+    }
+
+    #[test]
+    fn south_four_dealer_leading_over_thirty_thousand_ends_game() {
+        let mut state = GameState::new();
+        state.round = 8;
+        state.phase = riichi_core::game::GamePhase::RoundOver;
+        state.players[3].points = 32_000;
+        state.players[0].points = 25_000;
+        state.players[1].points = 20_000;
+        state.players[2].points = 23_000;
+        state.events.push(riichi_core::game::GameEvent::RoundEnded {
+            reason: riichi_core::game::RoundEndReason::Win {
+                winner: PlayerId(3),
+                is_tsumo: true,
+            },
+        });
+
+        assert!(state.is_game_over());
+    }
+
+    #[test]
+    fn final_riichi_sticks_go_to_the_top_player() {
+        let mut state = GameState::new();
+        state.round = 8;
+        state.riichi_sticks = 2;
+        state.players[0].points = 30_000;
+        state.players[1].points = 25_000;
+        state.players[2].points = 20_000;
+        state.players[3].points = 20_000;
+
+        state.resolve_round_end(riichi_core::game::RoundEndReason::Win {
+            winner: PlayerId(0),
+            is_tsumo: false,
+        });
+
+        assert_eq!(state.riichi_sticks, 0);
+        assert_eq!(state.players[0].points, 32_000);
     }
 }
