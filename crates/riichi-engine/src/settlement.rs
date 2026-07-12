@@ -19,11 +19,10 @@ impl GameState {
     /// - 2 人听牌：2 人不听各付 3000，听牌者各收 1500
     /// - 3 人听牌：1 人不听付 3000，听牌者各收 1000
     pub fn resolve_exhaustive_draw(&mut self) {
-        let nagashi_winner = if self.rules.nagashi_mangan {
-            let candidates = self.get_nagashi_mangan_candidates();
-            (candidates.len() == 1).then(|| candidates[0])
+        let nagashi_winners = if self.rules.nagashi_mangan {
+            self.get_nagashi_mangan_candidates()
         } else {
-            None
+            Vec::new()
         };
         let tenpai: [bool; 4] = [
             !self
@@ -42,19 +41,23 @@ impl GameState {
         let tenpai_count = tenpai.iter().filter(|&&t| t).count();
 
         let mut payments = [0i32; 4];
-        if let Some(winner) = nagashi_winner {
-            let winner_is_dealer = winner == self.get_dealer();
-            for player in 0..4 {
-                if player == winner.0 {
-                    continue;
+        if !nagashi_winners.is_empty() {
+            // 流局满贯可以同时由多家成立；各家的满贯支付分别叠加，
+            // 与 Mortal 的逐家结算方式一致。
+            for winner in nagashi_winners {
+                let winner_is_dealer = winner == self.get_dealer();
+                for player in 0..4 {
+                    if player == winner.0 {
+                        continue;
+                    }
+                    let payment = if winner_is_dealer || player == self.get_dealer().0 {
+                        4000
+                    } else {
+                        2000
+                    };
+                    payments[player] -= payment;
+                    payments[winner.0] += payment;
                 }
-                let payment = if winner_is_dealer || player == self.get_dealer().0 {
-                    4000
-                } else {
-                    2000
-                };
-                payments[player] -= payment;
-                payments[winner.0] += payment;
             }
         } else {
             match tenpai_count {
@@ -111,7 +114,7 @@ impl GameState {
     /// 获取满足流局满贯条件的玩家。
     ///
     /// 只检查规则层确定性条件：河牌全部为幺九字牌，且没有任何玩家
-    /// 鸣走该玩家的河牌。多名候选者由结算层回退普通流局处理。
+    /// 鸣走该玩家的河牌。多名候选者由结算层分别结算。
     pub fn get_nagashi_mangan_candidates(&self) -> Vec<PlayerId> {
         (0..4)
             .map(PlayerId)
@@ -254,6 +257,22 @@ mod tests {
 
         state.players[0].discards.push(Tile::from_raw(4));
         assert!(state.get_nagashi_mangan_candidates().is_empty());
+    }
+
+    #[test]
+    fn multiple_nagashi_mangan_winners_are_settled_independently() {
+        let mut state = GameState::new();
+        state.rules.nagashi_mangan = true;
+        state.players[0].discards = vec![Tile::from_raw(0), Tile::from_raw(108)];
+        state.players[1].discards = vec![Tile::from_raw(1), Tile::from_raw(109)];
+
+        state.resolve_exhaustive_draw();
+
+        // 庄家和非庄家同时流局满贯，各自按满贯支付叠加。
+        assert_eq!(state.players[0].points, 33_000);
+        assert_eq!(state.players[1].points, 29_000);
+        assert_eq!(state.players[2].points, 19_000);
+        assert_eq!(state.players[3].points, 19_000);
     }
 
     #[test]
