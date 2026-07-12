@@ -9,6 +9,8 @@ use riichi_server::channel::{
     ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
 };
 
+use crate::analysis::{analyze_discards, DiscardAnalysis};
+
 pub struct App {
     pub event_rx: mpsc::Receiver<ServerEvent>,
     pub action_tx: mpsc::Sender<ActionMsg>,
@@ -35,6 +37,7 @@ pub struct App {
     pub kakan_options: Vec<(usize, Tile)>,
     pub can_kyuushu: bool,
     pub call_options: Vec<CallOption>,
+    pub analysis_options: Vec<DiscardAnalysis>,
 
     pub messages: Vec<String>,
     pub selected: usize,
@@ -72,6 +75,7 @@ impl App {
             kakan_options: Vec::new(),
             can_kyuushu: false,
             call_options: Vec::new(),
+            analysis_options: Vec::new(),
             messages: Vec::new(),
             selected: 0,
             call_selected: 0,
@@ -117,6 +121,20 @@ impl App {
                     self.round = round;
                     self.honba = honba;
                     self.riichi_sticks = riichi_sticks;
+                    self.analysis_options = if self.current_player == PlayerId(0)
+                        && matches!(self.phase, GamePhase::ActionPhase)
+                        && self.hand_tiles.len() == 14
+                    {
+                        analyze_discards(
+                            &self.hand_tiles,
+                            &self.discards,
+                            &self.melds,
+                            &self.dora,
+                            self.pending_discard,
+                        )
+                    } else {
+                        Vec::new()
+                    };
                     // 每个状态快照都代表新的权威牌局状态；响应选项只对
                     // 生成它的那一张弃牌有效，不能跨响应窗口保留。
                     self.call_options.clear();
