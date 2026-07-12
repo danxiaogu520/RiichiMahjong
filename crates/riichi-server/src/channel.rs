@@ -43,6 +43,7 @@ pub enum ServerEvent {
     },
     RoundResult {
         reason: String,
+        win_details: Vec<String>,
         point_changes: [i32; 4],
         scores: [i32; 4],
     },

@@ -193,11 +193,12 @@ impl GameState {
         let is_furiten = self.players[player.0].furiten.is_furiten();
         let result =
             win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten, winning_tile)?;
-        let yaku_names: Vec<String> = result
+        let mut yaku_names: Vec<String> = result
             .yaku_results
             .iter()
-            .map(|y| format!("{:?}", y.yaku))
+            .map(|y| format!("{:?}（{}翻）", y.yaku, y.han))
             .collect();
+        yaku_names.push(format!("合计：{}翻 {}符", result.total_han, result.fu));
         Some((result.points, yaku_names))
     }
 }

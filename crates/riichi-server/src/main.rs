@@ -100,10 +100,14 @@ async fn main() {
             }
             ServerEvent::RoundResult {
                 reason,
+                win_details,
                 point_changes,
                 scores,
             } => {
                 println!("本局结束：{}", reason);
+                for detail in win_details {
+                    println!("和牌明细：{}", detail);
+                }
                 println!("点棒变化：{:?}，结算点数：{:?}", point_changes, scores);
             }
             ServerEvent::GameOver { scores, ranking } => {
