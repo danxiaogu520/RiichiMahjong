@@ -57,6 +57,8 @@ pub struct GameState {
     pub round_start_points: [i32; 4],
     /// 副露后当前玩家下一次出牌的食替禁牌。
     pub kuikae_forbidden: [Vec<TileType>; 4],
+    /// 大三元/大四喜的责任支付者，按和了者座位记录。
+    pub pao_targets: [Option<usize>; 4],
     /// 当前游戏阶段（摸牌/行动/响应/局结束）
     pub phase: GamePhase,
 }

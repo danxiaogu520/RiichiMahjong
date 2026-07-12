@@ -9,6 +9,38 @@ use riichi_logic::analysis::analyze_wait_tiles;
 use crate::game::{GameError, GamePhase, GameState};
 
 impl GameState {
+    /// 更新大三元/大四喜的责任支付者。
+    ///
+    /// Mortal 在当前碰/大明杠处理完成后再检查副露集合；因此只有导致
+    /// 第三个三元牌刻子或第四个风牌刻子成立的那次鸣牌，才记录放出该牌
+    /// 的玩家。暗杠和加杠不触发新的包牌责任。
+    fn update_pao_after_open_call(
+        &mut self,
+        player: PlayerId,
+        from_player: PlayerId,
+        called_tile: Tile,
+    ) {
+        let melds = &self.players[player.0].melds;
+        let has_open_triplet = |tile_type: riichi_core::tile::TileType| {
+            melds.iter().any(|meld| {
+                matches!(meld.kind, MeldKind::Pon | MeldKind::Minkan)
+                    && meld.tiles.iter().any(|tile| tile.tile_type() == tile_type)
+            })
+        };
+        let dragons_complete = (31..34).all(|tile_type| {
+            has_open_triplet(riichi_core::tile::TileType(tile_type))
+        });
+        let winds_complete = (27..31).all(|tile_type| {
+            has_open_triplet(riichi_core::tile::TileType(tile_type))
+        });
+        let called_type = called_tile.tile_type();
+        if (dragons_complete && called_type.is_dragon())
+            || (winds_complete && called_type.is_wind())
+        {
+            self.pao_targets[player.0] = Some(from_player.0);
+        }
+    }
+
     /// 记录某位玩家在当前响应窗口选择 Pass，但不结束整个响应窗口。
     ///
     /// 服务端收集多人响应时使用；最终无人鸣牌时仍由普通 Pass 流程统一
@@ -441,6 +473,7 @@ impl GameState {
                     tiles: hand_tiles.to_vec(),
                     from_player: discarder,
                 });
+                self.update_pao_after_open_call(player, discarder, discarded_tile);
             }
             // 吃（仅下家可用）
             ResponseAction::Chi { hand_tiles } => {
@@ -494,6 +527,7 @@ impl GameState {
                     tiles: hand_tiles.to_vec(),
                     from_player: discarder,
                 });
+                self.update_pao_after_open_call(player, discarder, discarded_tile);
                 // 四杠散了检查
                 if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
                     self.resolve_round_end(RoundEndReason::SuuKantsu);
@@ -798,6 +832,7 @@ mod tests {
     use riichi_core::game::CallType;
     use riichi_core::hand::Hand;
     use riichi_core::meld::Meld;
+    use riichi_core::tile::TileType;
 
     #[test]
     fn kakan_does_not_reveal_dora_before_chankan_passes() {
@@ -833,6 +868,29 @@ mod tests {
             )
             .unwrap();
         assert_eq!(state.dora.len(), initial_dora_count + 1);
+    }
+
+    #[test]
+    fn completing_daisangen_records_the_discarder_as_pao_target() {
+        let mut state = GameState::new();
+        let make_pon = |tile_type: TileType, from_player: PlayerId| {
+            let tile = tile_type.with_copy(0);
+            Meld::pon(vec![tile; 3], tile, from_player)
+        };
+        state.players[0]
+            .melds
+            .push(make_pon(TileType::HATSU, PlayerId(1)));
+        state.players[0]
+            .melds
+            .push(make_pon(TileType::CHUN, PlayerId(1)));
+
+        let called = TileType::HAKU.with_copy(0);
+        state.players[0]
+            .melds
+            .push(Meld::pon(vec![called; 3], called, PlayerId(2)));
+        state.update_pao_after_open_call(PlayerId(0), PlayerId(2), called);
+
+        assert_eq!(state.pao_targets[0], Some(2));
     }
 
     #[test]

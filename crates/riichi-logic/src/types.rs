@@ -124,6 +124,8 @@ pub struct WinContext {
     pub dealer: usize,
     pub winner: usize,
     pub loser: Option<usize>,
+    /// 责任支付者（包牌者），仅对役满和了结算生效。
+    pub pao_target: Option<usize>,
     pub honba: u32,
     pub riichi_sticks: u32,
 }
