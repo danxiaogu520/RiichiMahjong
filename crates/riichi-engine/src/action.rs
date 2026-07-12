@@ -247,7 +247,10 @@ impl GameState {
             if index > 0 {
                 changes[winner.0] -= riichi_bonus as i32;
                 changes[winner.0] -= honba_bonus as i32;
-                changes[discarder.0] += honba_bonus as i32;
+                // 普通荣和的本场棒由放铳者支付；包牌荣和的本场棒
+                // 已包含在责任支付者的负分中，因此要退回对应的一方。
+                let honba_payer = self.pao_targets[winner.0].unwrap_or(discarder.0);
+                changes[honba_payer] += honba_bonus as i32;
             }
             for (player_index, change) in changes.iter().enumerate() {
                 self.players[player_index].points += change;
