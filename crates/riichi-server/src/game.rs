@@ -409,6 +409,7 @@ impl GameLoop {
 
         self.broadcast(ServerEvent::RoundResult {
             reason: self.round_end_reason(),
+            win_details: self.round_win_details(),
             point_changes: self.game.round_point_changes(),
             scores: self.scores(),
         })
@@ -448,6 +449,18 @@ impl GameLoop {
                 _ => None,
             })
             .unwrap_or_else(|| "局结束".to_string())
+    }
+
+    fn round_win_details(&self) -> Vec<String> {
+        self.game
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::PlayerWon { yaku_names, .. } => Some(yaku_names.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect()
     }
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnActionMsg> {

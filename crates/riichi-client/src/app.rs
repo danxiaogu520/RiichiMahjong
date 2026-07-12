@@ -148,10 +148,14 @@ impl App {
                 }
                 ServerEvent::RoundResult {
                     reason,
+                    win_details,
                     point_changes,
                     scores,
                 } => {
                     self.messages.push(format!("本局结束：{}", reason));
+                    for detail in win_details {
+                        self.messages.push(format!("和牌明细：{}", detail));
+                    }
                     self.messages.push(format!(
                         "点棒变化：东{:+} 南{:+} 西{:+} 北{:+}",
                         point_changes[0], point_changes[1], point_changes[2], point_changes[3]
