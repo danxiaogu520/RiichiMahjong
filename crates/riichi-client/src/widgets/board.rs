@@ -100,7 +100,13 @@ fn render_human(f: &mut Frame, app: &App, area: Rect) {
     for (i, &t) in tiles.iter().enumerate() {
         let tt = t.tile_type();
 
-        let is_selected = i == app.selected;
+        let is_selected = if app.riichi_selecting {
+            app.riichi_options
+                .get(app.riichi_selected)
+                .is_some_and(|selected| *selected == t)
+        } else {
+            i == app.selected
+        };
         let style = if is_selected {
             Style::default()
                 .fg(Color::Black)
@@ -237,6 +243,24 @@ fn render_action_line(app: &App) -> Line<'static> {
     }
 
     let mut spans = vec![Span::styled("操作: ", Style::default().fg(Color::White))];
+
+    if app.riichi_selecting {
+        let selected = app
+            .riichi_options
+            .get(app.riichi_selected)
+            .map(|tile| format_tile_type(tile.tile_type()))
+            .unwrap_or_else(|| "无".to_string());
+        spans.push(Span::styled(
+            format!(
+                "选择立直弃牌: {} ({}/{}) ←→切换 Enter确认 Esc取消",
+                selected,
+                app.riichi_selected + 1,
+                app.riichi_options.len()
+            ),
+            Style::default().fg(Color::Yellow),
+        ));
+        return Line::from(spans);
+    }
 
     if app.can_tsumo {
         spans.push(Span::styled("[t]自摸 ", Style::default().fg(Color::Yellow)));

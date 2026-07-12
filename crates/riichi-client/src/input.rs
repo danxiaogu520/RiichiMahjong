@@ -23,7 +23,8 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char('r') => {
             if app.can_riichi {
-                app.send_riichi();
+                app.riichi_selected = 0;
+                app.riichi_selecting = true;
             } else {
                 app.messages.push("无法立直".to_string());
             }
@@ -44,7 +45,9 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Left => {
-            if app.call_options.is_empty() {
+            if app.riichi_selecting {
+                app.riichi_selected = app.riichi_selected.saturating_sub(1);
+            } else if app.call_options.is_empty() {
                 if app.selected > 0 {
                     app.selected -= 1;
                 }
@@ -53,7 +56,11 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Right => {
-            if app.call_options.is_empty() {
+            if app.riichi_selecting {
+                if app.riichi_selected + 1 < app.riichi_options.len() {
+                    app.riichi_selected += 1;
+                }
+            } else if app.call_options.is_empty() {
                 if app.selected < tile_count.saturating_sub(1) {
                     app.selected += 1;
                 }
@@ -62,10 +69,17 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Enter => {
-            if app.selected < tile_count {
+            if app.riichi_selecting {
+                let tile = app.riichi_options.get(app.riichi_selected).copied();
+                app.riichi_selecting = false;
+                app.send_riichi_tile(tile);
+            } else if app.selected < tile_count {
                 let tile = app.hand_tiles[app.selected];
                 app.send_discard(tile);
             }
+        }
+        KeyCode::Esc | KeyCode::Char('p') if app.riichi_selecting => {
+            app.riichi_selecting = false;
         }
         KeyCode::Char(c) if c.is_ascii_digit() => {
             let n = c.to_digit(10).unwrap() as usize;

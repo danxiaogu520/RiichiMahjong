@@ -42,6 +42,9 @@ pub struct App {
     pub messages: Vec<String>,
     pub selected: usize,
     pub call_selected: usize,
+    /// 立直选择模式下的当前合法弃牌。
+    pub riichi_selected: usize,
+    pub riichi_selecting: bool,
     pub should_quit: bool,
     pub show_result: bool,
     pub game_over: bool,
@@ -79,6 +82,8 @@ impl App {
             messages: Vec::new(),
             selected: 0,
             call_selected: 0,
+            riichi_selected: 0,
+            riichi_selecting: false,
             should_quit: false,
             show_result: false,
             game_over: false,
@@ -158,6 +163,7 @@ impl App {
                     self.ankan_options = ankan_options;
                     self.kakan_options = kakan_options;
                     self.can_kyuushu = can_kyuushu;
+                    self.riichi_selecting = false;
                     self.call_options.clear();
                 }
                 ServerEvent::CallRequired { options } => {
@@ -219,8 +225,8 @@ impl App {
             .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Tsumo)));
     }
 
-    pub fn send_riichi(&self) {
-        let Some(tile) = self.riichi_options.first().copied() else {
+    pub fn send_riichi_tile(&self, tile: Option<Tile>) {
+        let Some(tile) = tile else {
             return;
         };
         let _ = self.action_tx.try_send((
