@@ -28,7 +28,44 @@ pub fn render(f: &mut Frame, app: &App) {
 }
 
 fn render_bottom(f: &mut Frame, app: &App, area: Rect) {
-    render_messages(f, app, area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Min(8)])
+        .split(area);
+    render_analysis(f, app, chunks[0]);
+    render_messages(f, app, chunks[1]);
+}
+
+fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
+    let text = if app.analysis_options.is_empty() {
+        "暂无可分析的弃牌".to_string()
+    } else {
+        let options = app
+            .analysis_options
+            .iter()
+            .take(8)
+            .map(|analysis| {
+                format!(
+                    "{}: {}向听 进张{}张/{}种",
+                    format_tile_type(analysis.tile.tile_type()),
+                    analysis.shanten,
+                    analysis.effective_tiles,
+                    analysis.effective_types
+                )
+            })
+            .collect::<Vec<_>>();
+        format!("最低向听弃牌：{}", options.join("  "))
+    };
+    let block = Block::default()
+        .title("牌效分析")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+    f.render_widget(
+        Paragraph::new(Line::from(Span::raw(text)))
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn render_messages(f: &mut Frame, app: &App, area: Rect) {
