@@ -112,6 +112,8 @@ pub struct WinContext {
     pub kuitan: bool,
     /// 兼容旧配置字段。当前按具体和了牌逐张判役，偏听由该判定自然产生。
     pub atozuke: bool,
+    /// 是否启用国士十三面、四暗刻单骑、纯正九莲、大四喜双倍役满。
+    pub allow_double_yakuman: bool,
     // 风位
     pub seat_wind: TileType,
     pub field_wind: TileType,

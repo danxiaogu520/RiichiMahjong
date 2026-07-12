@@ -15,6 +15,8 @@ pub struct RuleConfig {
     /// 兼容旧配置字段。当前按每一张具体和了牌独立判役：有役的听牌可和，
     /// 无役的听牌不可和，不再做“和了前是否已有役”的时间推断。
     pub atozuke: bool,
+    /// 是否启用部分规则中的双倍役满变体；默认关闭以对齐 Mortal。
+    pub allow_double_yakuman: bool,
     pub allow_double_ron: bool,
     pub allow_triple_ron: bool,
     pub suucha_riichi_abort: bool,
@@ -34,6 +36,7 @@ impl Default for RuleConfig {
             red_fives: [1, 1, 1],
             kuitan: true,
             atozuke: true,
+            allow_double_yakuman: false,
             allow_double_ron: true,
             allow_triple_ron: true,
             suucha_riichi_abort: true,

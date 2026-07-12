@@ -436,7 +436,7 @@ fn detect_yaku(
                         count == 1
                     }
                 });
-            if thirteen_wait {
+            if thirteen_wait && ctx.allow_double_yakuman {
                 yaku.push(YakuResult::new(YakuName::Kokushi13, 26));
             } else {
                 yaku.push(YakuResult::new(YakuName::Kokushi, 13));
@@ -481,7 +481,7 @@ fn detect_yaku(
                                 required[index] + usize::from(index == winning_index as usize);
                             *count == expected
                         });
-                    if nine_wait {
+                    if nine_wait && ctx.allow_double_yakuman {
                         yaku.push(YakuResult::new(YakuName::ChuurenPoutou9, 26));
                     } else {
                         yaku.push(YakuResult::new(YakuName::ChuurenPoutou, 13));
@@ -502,7 +502,7 @@ fn detect_yaku(
             && !ctx.is_tsumo
             && concealed_triplet_count >= 4
         {
-            if hand.jantai == winning_tile.tile_type() {
+            if hand.jantai == winning_tile.tile_type() && ctx.allow_double_yakuman {
                 yaku.push(YakuResult::new(YakuName::SuuankouTanki, 26));
             } else {
                 yaku.push(YakuResult::new(YakuName::Suuankou, 13));
@@ -554,7 +554,10 @@ fn detect_yaku(
             })
             .count();
         if wind_koutsu == 4 {
-            yaku.push(YakuResult::new(YakuName::Daisuushii, 26));
+            yaku.push(YakuResult::new(
+                YakuName::Daisuushii,
+                if ctx.allow_double_yakuman { 26 } else { 13 },
+            ));
         } else if wind_koutsu == 3 && hand.jantai.is_wind() {
             yaku.push(YakuResult::new(YakuName::Shousuushii, 13));
         }
@@ -1106,6 +1109,7 @@ mod tests {
             red_fives: [0; 3],
             kuitan: true,
             atozuke,
+            allow_double_yakuman: true,
             seat_wind: TileType::EAST,
             field_wind: TileType::EAST,
             dora_indicators: Vec::new(),
