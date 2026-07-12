@@ -8,6 +8,7 @@ pub const DEFAULT_THINK_TIMEOUT_MS: u64 = 365 * 24 * 60 * 60 * 1000;
 /// 第一版先提供常见四人立直麻将的显式配置入口；旧逻辑仍使用默认值，
 /// 后续迁移结算和途中流局时再逐项读取这些字段。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RuleConfig {
     pub starting_points: i32,
     pub red_fives: [u8; 3],
