@@ -14,6 +14,8 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
         KeyCode::Char('q') => {
             app.should_quit = true;
         }
+        KeyCode::Char('i') => app.show_analysis = !app.show_analysis,
+        KeyCode::Char('m') => app.show_messages = !app.show_messages,
         KeyCode::Char('t') => {
             if app.can_tsumo {
                 app.send_tsumo();
@@ -48,8 +50,13 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             if app.riichi_selecting {
                 app.riichi_selected = app.riichi_selected.saturating_sub(1);
             } else if app.call_options.is_empty() {
-                if app.selected > 0 {
-                    app.selected -= 1;
+                let indices = app.selectable_indices();
+                if let Some(pos) = indices.iter().position(|&i| i == app.selected) {
+                    if pos > 0 {
+                        app.selected = indices[pos - 1];
+                    }
+                } else if let Some(&index) = indices.first() {
+                    app.selected = index;
                 }
             } else if app.call_selected > 0 {
                 app.call_selected -= 1;
@@ -61,8 +68,13 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     app.riichi_selected += 1;
                 }
             } else if app.call_options.is_empty() {
-                if app.selected < tile_count.saturating_sub(1) {
-                    app.selected += 1;
+                let indices = app.selectable_indices();
+                if let Some(pos) = indices.iter().position(|&i| i == app.selected) {
+                    if pos + 1 < indices.len() {
+                        app.selected = indices[pos + 1];
+                    }
+                } else if let Some(&index) = indices.first() {
+                    app.selected = index;
                 }
             } else if app.call_selected + 1 < app.call_options.len() {
                 app.call_selected += 1;
@@ -73,7 +85,9 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 let tile = app.riichi_options.get(app.riichi_selected).copied();
                 app.riichi_selecting = false;
                 app.send_riichi_tile(tile);
-            } else if app.selected < tile_count {
+            } else if app.selected < tile_count
+                && app.tile_is_discardable(app.hand_tiles[app.selected])
+            {
                 let tile = app.hand_tiles[app.selected];
                 app.send_discard(tile);
             }
@@ -85,7 +99,9 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             let n = c.to_digit(10).unwrap() as usize;
             if n >= 1 && n <= tile_count {
                 let tile = app.hand_tiles[n - 1];
-                app.send_discard(tile);
+                if app.tile_is_discardable(tile) {
+                    app.send_discard(tile);
+                }
             }
         }
         _ => {}
@@ -101,6 +117,14 @@ pub fn handle_call_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Char('q') => {
             app.should_quit = true;
+        }
+        KeyCode::Left => {
+            app.call_selected = app.call_selected.saturating_sub(1);
+        }
+        KeyCode::Right => {
+            if app.call_selected + 1 < app.call_options.len() {
+                app.call_selected += 1;
+            }
         }
         KeyCode::Char('p') | KeyCode::Esc => {
             app.send_call_pass();

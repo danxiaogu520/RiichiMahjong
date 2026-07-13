@@ -1,13 +1,47 @@
 use std::collections::HashSet;
 
+use crate::game::{TenpaiInfo, WaitInfo};
 use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
+use riichi_logic::acceptance::remaining_copies_for;
 use riichi_logic::analysis::analyze_wait_tiles_with_open_melds;
+use riichi_logic::types::TileCounts;
 
 use crate::game::{GamePhase, GameState};
 
 impl GameState {
+    /// 构建指定玩家的听牌展示信息。规则判断全部委托给核心逻辑。
+    pub fn tenpai_info(&self, player: PlayerId) -> Option<TenpaiInfo> {
+        let p = &self.players[player.0];
+        let waits = analyze_wait_tiles_with_open_melds(p.hand.tiles(), p.melds.len());
+        if waits.is_empty() {
+            return None;
+        }
+
+        let mut visible = self.build_visible_tiles(player);
+        if self.current_player == player {
+            if let Some(drawn) = self.drawn_tile {
+                visible.all_discards.inc(drawn.tile_type());
+            }
+        }
+        let hand_counts = TileCounts::from_tiles(p.hand.tiles());
+        let is_furiten = p.furiten.is_furiten();
+        let waits = waits
+            .into_iter()
+            .map(|wait| {
+                let tile_type = wait.tile_type;
+                WaitInfo {
+                    tile_type,
+                    remaining: remaining_copies_for(tile_type, &hand_counts, &visible),
+                    is_no_yaku: !self.wait_has_yaku(player, tile_type),
+                }
+            })
+            .collect();
+
+        Some(TenpaiInfo { waits, is_furiten })
+    }
+
     /// 推进到下一个玩家
     pub fn advance_turn(&mut self) {
         self.current_player = self.current_player.next();

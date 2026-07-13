@@ -7,6 +7,7 @@ use riichi_engine::game::{GamePhase, GameState};
 use riichi_engine::rules::{
     ALLOW_DOUBLE_RON, ALLOW_TRIPLE_RON, RESPONSE_TIMEOUT_MS, TURN_TIMEOUT_MS,
 };
+use riichi_logic::acceptance::{analyze_discard, DiscardOption};
 use riichi_logic::shanten::ShantenCalculator;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -70,7 +71,15 @@ impl GameLoop {
                     let can_tsumo = self.game.check_tsumo(player).is_some();
                     let can_riichi = self.game.can_declare_riichi(player);
                     let riichi_options = self.riichi_options(player);
-                    let discard_options = self.game.players[player.0].hand.tiles().to_vec();
+                    let discard_options = if self.game.players[player.0].is_riichi {
+                        self.game.drawn_tile.into_iter().collect()
+                    } else {
+                        let mut options = self.game.players[player.0].hand.tiles().to_vec();
+                        if let Some(drawn) = self.game.drawn_tile {
+                            options.push(drawn);
+                        }
+                        options
+                    };
                     let ankan_options = self.game.get_ankan_options(player);
                     let kakan_options = self.game.get_kakan_options(player);
                     let can_kyuushu = self.game.can_declare_kyuushu(player);
@@ -138,7 +147,15 @@ impl GameLoop {
                         can_tsumo: self.game.check_tsumo(player).is_some(),
                         can_riichi: self.game.can_declare_riichi(player),
                         riichi_options: self.riichi_options(player),
-                        discard_options: self.game.players[player.0].hand.tiles().to_vec(),
+                        discard_options: if self.game.players[player.0].is_riichi {
+                            self.game.drawn_tile.into_iter().collect()
+                        } else {
+                            let mut options = self.game.players[player.0].hand.tiles().to_vec();
+                            if let Some(drawn) = self.game.drawn_tile {
+                                options.push(drawn);
+                            }
+                            options
+                        },
                         ankan_options: self.game.get_ankan_options(player),
                         kakan_options: self.game.get_kakan_options(player),
                         can_kyuushu: self.game.can_declare_kyuushu(player),
@@ -697,6 +714,22 @@ impl GameLoop {
                 round: self.game.round,
                 honba: self.game.honba,
                 riichi_sticks: self.game.riichi_sticks,
+                tenpai_info: self.game.tenpai_info(pid),
+                analysis_options: if pid == PlayerId(0) {
+                    let mut analysis_hand = players[idx].hand.tiles().to_vec();
+                    if self.game.current_player == pid {
+                        if let Some(drawn) = self.game.drawn_tile {
+                            analysis_hand.push(drawn);
+                        }
+                    }
+                    analyze_discard(
+                        &mut ShantenCalculator::new(),
+                        &analysis_hand,
+                        &self.game.build_visible_tiles(pid),
+                    )
+                } else {
+                    Vec::<DiscardOption>::new()
+                },
             };
             let _ = self.event_txs[idx].send(event).await;
         }

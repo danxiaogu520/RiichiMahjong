@@ -43,34 +43,37 @@ pub fn detect_calls(
             });
         }
 
-        // 大明杠检测：手中有 3 张相同牌
-        let count = hand.count_type(tt.0);
-        if count >= 3 {
-            let hand_tiles = find_tiles_of_type_3(hand, tt);
-            options.push(CallOption {
-                player: pid,
-                call_type: CallType::Minkan { hand_tiles },
-            });
-        }
-
-        // 碰检测：手中有 2 张相同牌
-        if count >= 2 {
-            let hand_tiles = find_tiles_of_type(hand, tt, 2);
-            options.push(CallOption {
-                player: pid,
-                call_type: CallType::Pon { hand_tiles },
-            });
-        }
-
-        // 吃检测：仅下家可用，且仅数牌
-        let next_player = discarder.next();
-        if pid == next_player && tt.is_number() {
-            let chi_options = detect_chi(hand, tt);
-            for hand_tiles in chi_options {
+        // 立直后仍可荣和，但不能再进行吃、碰、大明杠。
+        if !player.is_riichi {
+            // 大明杠检测：手中有 3 张相同牌
+            let count = hand.count_type(tt.0);
+            if count >= 3 {
+                let hand_tiles = find_tiles_of_type_3(hand, tt);
                 options.push(CallOption {
                     player: pid,
-                    call_type: CallType::Chi { hand_tiles },
+                    call_type: CallType::Minkan { hand_tiles },
                 });
+            }
+
+            // 碰检测：手中有 2 张相同牌
+            if count >= 2 {
+                let hand_tiles = find_tiles_of_type(hand, tt, 2);
+                options.push(CallOption {
+                    player: pid,
+                    call_type: CallType::Pon { hand_tiles },
+                });
+            }
+
+            // 吃检测：仅下家可用，且仅数牌
+            let next_player = discarder.next();
+            if pid == next_player && tt.is_number() {
+                let chi_options = detect_chi(hand, tt);
+                for hand_tiles in chi_options {
+                    options.push(CallOption {
+                        player: pid,
+                        call_type: CallType::Chi { hand_tiles },
+                    });
+                }
             }
         }
     }

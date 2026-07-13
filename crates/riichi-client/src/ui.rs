@@ -13,12 +13,19 @@ use crate::widgets::board::render_board;
 use crate::widgets::status::render_status;
 
 pub fn render(f: &mut Frame, app: &App) {
+    let bottom_height = if f.area().height >= 40 {
+        12
+    } else if f.area().height >= 32 {
+        8
+    } else {
+        0
+    };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(16),
-            Constraint::Length(18),
+            Constraint::Min(21),
+            Constraint::Length(bottom_height),
         ])
         .split(f.area());
 
@@ -28,15 +35,30 @@ pub fn render(f: &mut Frame, app: &App) {
 }
 
 fn render_bottom(f: &mut Frame, app: &App, area: Rect) {
+    if area.height < 3 {
+        return;
+    }
+    if area.height < 8 {
+        render_analysis(f, app, area);
+        return;
+    }
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(7), Constraint::Min(6)])
         .split(area);
-    render_analysis(f, app, chunks[0]);
-    render_messages(f, app, chunks[1]);
+    if app.show_analysis {
+        render_analysis(f, app, chunks[0]);
+    }
+    if app.show_messages {
+        render_messages(f, app, chunks[1]);
+    }
 }
 
 fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
+    if let Some(info) = &app.tenpai_info {
+        render_tenpai(f, app, info, area);
+        return;
+    }
     let lines =
         if app.analysis_options.is_empty() {
             vec![Line::from(Span::raw("暂无可分析的弃牌"))]
@@ -66,6 +88,34 @@ fn render_analysis(f: &mut Frame, app: &App, area: Rect) {
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn render_tenpai(f: &mut Frame, _app: &App, info: &riichi_engine::TenpaiInfo, area: Rect) {
+    let mut lines = vec![Line::from("等待牌   山中剩余   状态")];
+    for wait in &info.waits {
+        let mut status = Vec::new();
+        if info.is_furiten {
+            status.push("振听");
+        }
+        if wait.is_no_yaku {
+            status.push("无役");
+        }
+        lines.push(Line::from(format!(
+            "{:<7} {:>3}张      {}",
+            format_tile_type(wait.tile_type),
+            wait.remaining,
+            if status.is_empty() {
+                "正常".to_string()
+            } else {
+                status.join("/")
+            }
+        )));
+    }
+    let block = Block::default()
+        .title("听牌信息")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    f.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn render_messages(f: &mut Frame, app: &App, area: Rect) {

@@ -2,14 +2,13 @@ use riichi_core::game::CallOption;
 use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_engine::game::GamePhase;
+use riichi_engine::{game::GamePhase, TenpaiInfo};
+use riichi_logic::acceptance::DiscardOption;
 use tokio::sync::mpsc;
 
 use riichi_server::channel::{
     ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
 };
-
-use crate::analysis::{analyze_discards, DiscardAnalysis};
 
 pub struct App {
     pub event_rx: mpsc::Receiver<ServerEvent>,
@@ -19,7 +18,9 @@ pub struct App {
     pub current_player: PlayerId,
     pub pending_discard: Option<(PlayerId, Tile)>,
     pub hand_tiles: Vec<Tile>,
+    pub drawn_tile: Option<Tile>,
     pub hand_count: usize,
+    pub hand_counts: [usize; 4],
     pub points: [i32; 4],
     pub discards: [Vec<Tile>; 4],
     pub melds_count: [usize; 4],
@@ -37,7 +38,11 @@ pub struct App {
     pub kakan_options: Vec<(usize, Tile)>,
     pub can_kyuushu: bool,
     pub call_options: Vec<CallOption>,
-    pub analysis_options: Vec<DiscardAnalysis>,
+    pub analysis_options: Vec<DiscardOption>,
+    pub tenpai_info: Option<TenpaiInfo>,
+    pub discard_options: Vec<Tile>,
+    pub show_analysis: bool,
+    pub show_messages: bool,
 
     pub messages: Vec<String>,
     pub selected: usize,
@@ -61,7 +66,9 @@ impl App {
             current_player: PlayerId(0),
             pending_discard: None,
             hand_tiles: Vec::new(),
+            drawn_tile: None,
             hand_count: 0,
+            hand_counts: [0; 4],
             points: [25000; 4],
             discards: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             melds_count: [0; 4],
@@ -79,6 +86,10 @@ impl App {
             can_kyuushu: false,
             call_options: Vec::new(),
             analysis_options: Vec::new(),
+            tenpai_info: None,
+            discard_options: Vec::new(),
+            show_analysis: true,
+            show_messages: true,
             messages: Vec::new(),
             selected: 0,
             call_selected: 0,
@@ -99,8 +110,10 @@ impl App {
                     phase,
                     current_player,
                     pending_discard,
+                    drawn_tile,
                     hand_tiles,
                     hand_count,
+                    hand_counts,
                     points,
                     discards,
                     melds_count,
@@ -110,13 +123,17 @@ impl App {
                     round,
                     honba,
                     riichi_sticks,
+                    tenpai_info,
+                    analysis_options,
                     ..
                 } => {
                     self.phase = phase;
                     self.current_player = current_player;
                     self.pending_discard = pending_discard;
+                    self.drawn_tile = drawn_tile;
                     self.hand_tiles = hand_tiles;
                     self.hand_count = hand_count;
+                    self.hand_counts = hand_counts;
                     self.points = points;
                     self.discards = discards;
                     self.melds_count = melds_count;
@@ -126,26 +143,16 @@ impl App {
                     self.round = round;
                     self.honba = honba;
                     self.riichi_sticks = riichi_sticks;
-                    self.analysis_options = if self.current_player == PlayerId(0)
-                        && matches!(self.phase, GamePhase::ActionPhase)
-                        && self.hand_tiles.len() >= 2
-                    {
-                        analyze_discards(
-                            &self.hand_tiles,
-                            &self.discards,
-                            &self.melds,
-                            &self.dora,
-                            self.pending_discard,
-                        )
-                    } else {
-                        Vec::new()
-                    };
+                    self.tenpai_info = tenpai_info;
+                    self.analysis_options = analysis_options;
                     // 每个状态快照都代表新的权威牌局状态；响应选项只对
                     // 生成它的那一张弃牌有效，不能跨响应窗口保留。
                     self.call_options.clear();
                     self.call_selected = 0;
-                    if self.selected >= self.hand_tiles.len() {
-                        self.selected = 0;
+                    if self.selected >= self.hand_tiles.len()
+                        || !self.tile_is_discardable(self.hand_tiles[self.selected])
+                    {
+                        self.selected = self.selectable_indices().first().copied().unwrap_or(0);
                     }
                 }
                 ServerEvent::ActionRequired {
@@ -155,6 +162,7 @@ impl App {
                     ankan_options,
                     kakan_options,
                     can_kyuushu,
+                    discard_options,
                     ..
                 } => {
                     self.can_tsumo = can_tsumo;
@@ -163,6 +171,7 @@ impl App {
                     self.ankan_options = ankan_options;
                     self.kakan_options = kakan_options;
                     self.can_kyuushu = can_kyuushu;
+                    self.discard_options = discard_options;
                     self.riichi_selecting = false;
                     self.call_options.clear();
                 }
@@ -206,6 +215,18 @@ impl App {
         self.current_player == PlayerId(0)
             && matches!(self.phase, GamePhase::ActionPhase)
             && self.call_options.is_empty()
+    }
+
+    pub fn tile_is_discardable(&self, tile: Tile) -> bool {
+        self.discard_options.is_empty() || self.discard_options.contains(&tile)
+    }
+
+    pub fn selectable_indices(&self) -> Vec<usize> {
+        self.hand_tiles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, tile)| self.tile_is_discardable(*tile).then_some(index))
+            .collect()
     }
 
     pub fn needs_human_response(&self) -> bool {
@@ -298,6 +319,14 @@ impl App {
             2 => "AI-西",
             3 => "AI-北",
             _ => "?",
+        }
+    }
+
+    pub fn hand_count_for(&self, idx: usize) -> usize {
+        if idx == 0 {
+            self.hand_tiles.len()
+        } else {
+            self.hand_counts[idx]
         }
     }
 
