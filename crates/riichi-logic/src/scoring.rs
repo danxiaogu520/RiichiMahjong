@@ -219,35 +219,15 @@ mod tests {
 
     #[test]
     fn yakuman_ron_is_split_between_discarder_and_pao_target() {
-        let changes = calculate_points_with_loser_and_pao(
-            13,
-            0,
-            1,
-            0,
-            Some(2),
-            1,
-            0,
-            0,
-            false,
-            Some(3),
-        );
+        let changes =
+            calculate_points_with_loser_and_pao(13, 0, 1, 0, Some(2), 1, 0, 0, false, Some(3));
         assert_eq!(changes, [32_000, 0, -16_000, -16_000]);
     }
 
     #[test]
     fn yakuman_tsumo_is_paid_fully_by_pao_target() {
-        let changes = calculate_points_with_loser_and_pao(
-            13,
-            0,
-            1,
-            0,
-            None,
-            1,
-            0,
-            1,
-            true,
-            Some(3),
-        );
+        let changes =
+            calculate_points_with_loser_and_pao(13, 0, 1, 0, None, 1, 0, 1, true, Some(3));
         assert_eq!(changes, [32_300, 0, 0, -32_300]);
     }
 
