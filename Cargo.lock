@@ -445,6 +445,7 @@ dependencies = [
  "riichi-core",
  "riichi-engine",
  "riichi-logic",
+ "riichi-proto",
  "tokio",
 ]
 
