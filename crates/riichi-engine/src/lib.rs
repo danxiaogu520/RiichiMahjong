@@ -1,6 +1,7 @@
 pub mod action;
 pub mod call;
 pub mod game;
+pub use game::{TenpaiInfo, WaitInfo};
 mod init;
 pub mod legal;
 mod riichi;

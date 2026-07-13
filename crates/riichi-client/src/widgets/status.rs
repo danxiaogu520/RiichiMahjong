@@ -18,7 +18,7 @@ pub fn render_status(f: &mut Frame, app: &App, area: Rect) {
     let riichi_sticks = app.riichi_sticks;
 
     let status_text = format!(
-        "  {}  本场:{}  宝牌:{}  残:{}  供托:{}",
+        "  {}  本场:{}  宝牌指示牌:{}  残:{}  供托:{}",
         round,
         honba,
         dora_str.join(" "),

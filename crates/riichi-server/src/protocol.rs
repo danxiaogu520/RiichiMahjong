@@ -7,7 +7,8 @@ use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
     ActionRequest, CallResponsePayload, CallTypeView, ClientMessage, GamePhaseView, GameStateView,
-    MeldKindView, MeldView, PlayerView, ServerMessage, TurnActionPayload,
+    MeldKindView, MeldView, PlayerView, ServerMessage, TenpaiInfoView, TurnActionPayload,
+    WaitInfoView,
 };
 
 use crate::channel::{CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg};
@@ -56,6 +57,7 @@ pub fn state_update_to_wire(event: &ServerEvent, recipient: PlayerId) -> Option<
         round,
         honba,
         riichi_sticks,
+        tenpai_info,
         ..
     } = event
     else {
@@ -100,6 +102,18 @@ pub fn state_update_to_wire(event: &ServerEvent, recipient: PlayerId) -> Option<
         phase: phase_view(phase),
         recent_events: Vec::new(),
         analysis: None,
+        tenpai_info: tenpai_info.as_ref().map(|info| TenpaiInfoView {
+            is_furiten: info.is_furiten,
+            waits: info
+                .waits
+                .iter()
+                .map(|wait| WaitInfoView {
+                    tile_type: wait.tile_type,
+                    remaining: wait.remaining,
+                    is_no_yaku: wait.is_no_yaku,
+                })
+                .collect(),
+        }),
     })))
 }
 
@@ -194,6 +208,8 @@ mod tests {
             round: 1,
             honba: 0,
             riichi_sticks: 0,
+            tenpai_info: None,
+            analysis_options: Vec::new(),
         };
 
         let ServerMessage::StateUpdate(view) = state_update_to_wire(&event, PlayerId(0)).unwrap()

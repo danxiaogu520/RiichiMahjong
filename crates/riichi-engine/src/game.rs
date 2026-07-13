@@ -61,6 +61,19 @@ pub struct GameState {
     pub ranking_at_game_end: Option<[usize; 4]>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct WaitInfo {
+    pub tile_type: TileType,
+    pub remaining: usize,
+    pub is_no_yaku: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TenpaiInfo {
+    pub waits: Vec<WaitInfo>,
+    pub is_furiten: bool,
+}
+
 impl Default for GameState {
     fn default() -> Self {
         Self::new()

@@ -62,6 +62,20 @@ pub struct GameStateView {
     pub phase: GamePhaseView,
     pub recent_events: Vec<GameEventView>,
     pub analysis: Option<AnalysisInfo>,
+    pub tenpai_info: Option<TenpaiInfoView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TenpaiInfoView {
+    pub waits: Vec<WaitInfoView>,
+    pub is_furiten: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaitInfoView {
+    pub tile_type: TileType,
+    pub remaining: usize,
+    pub is_no_yaku: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

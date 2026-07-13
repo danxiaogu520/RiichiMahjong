@@ -3,6 +3,8 @@ use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
+use riichi_engine::TenpaiInfo;
+use riichi_logic::acceptance::DiscardOption;
 use tokio::sync::mpsc;
 
 // ═══════════════════════════════════════════════════════════════
@@ -31,6 +33,8 @@ pub enum ServerEvent {
         round: u32,
         honba: u32,
         riichi_sticks: u32,
+        tenpai_info: Option<TenpaiInfo>,
+        analysis_options: Vec<DiscardOption>,
     },
     ActionRequired {
         can_tsumo: bool,

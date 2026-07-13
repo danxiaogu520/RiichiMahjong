@@ -62,6 +62,31 @@ fn is_double_riichi_active(events: &[GameEvent], player: PlayerId) -> bool {
 }
 
 impl GameState {
+    /// 判断指定等待牌是否至少存在一种有役和牌方式。
+    pub fn wait_has_yaku(&self, player: PlayerId, tile_type: TileType) -> bool {
+        let p = &self.players[player.0];
+        let winning_tile = Tile::from_type_index(tile_type.0, 0);
+        let mut all_tiles = p.hand.tiles().to_vec();
+        for meld in &p.melds {
+            all_tiles.extend_from_slice(&meld.tiles);
+        }
+        all_tiles.push(winning_tile);
+        let mut hand_tile_types: Vec<TileType> =
+            p.hand.tiles().iter().map(|t| t.tile_type()).collect();
+        hand_tile_types.push(tile_type);
+
+        for is_tsumo in [true, false] {
+            let mut ctx = self.make_win_context(player, is_tsumo, winning_tile, false);
+            ctx.loser = (!is_tsumo).then_some((player.0 + 1) % 4);
+            if win_check::check_win(&all_tiles, &hand_tile_types, &ctx, false, winning_tile)
+                .is_some()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// 检查自摸和（只读检查，不消耗自摸牌）
     ///
     /// 模拟 hand + drawn_tile 合并后的 14 张手牌进行判定

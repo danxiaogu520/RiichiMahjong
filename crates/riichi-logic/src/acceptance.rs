@@ -259,7 +259,11 @@ fn find_acceptance(
     result
 }
 
-fn remaining_copies(tt: TileType, hand_counts: &TileCounts, visible: &VisibleTiles) -> usize {
+pub fn remaining_copies_for(
+    tt: TileType,
+    hand_counts: &TileCounts,
+    visible: &VisibleTiles,
+) -> usize {
     let total = 4usize;
     let used = hand_counts.get(tt) as usize
         + visible.hand_melds.get(tt) as usize
@@ -267,6 +271,10 @@ fn remaining_copies(tt: TileType, hand_counts: &TileCounts, visible: &VisibleTil
         + visible.all_melds.get(tt) as usize
         + visible.dora_indicators.get(tt) as usize;
     total.saturating_sub(used)
+}
+
+fn remaining_copies(tt: TileType, hand_counts: &TileCounts, visible: &VisibleTiles) -> usize {
+    remaining_copies_for(tt, hand_counts, visible)
 }
 
 pub struct VisibleTiles {
