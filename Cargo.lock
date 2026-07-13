@@ -462,14 +462,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "riichi-test"
-version = "0.1.0"
-dependencies = [
- "riichi-core",
- "riichi-logic",
-]
-
-[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
