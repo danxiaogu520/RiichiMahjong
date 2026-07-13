@@ -12,7 +12,6 @@
 cargo build                 # 构建默认客户端及其依赖
 cargo test --workspace      # 运行整个 workspace 的测试
 cargo run -p riichi-debug   # 启动终端调试客户端
-cargo run -p riichi-server  # 启动服务端/CLI 演示
 ```
 
 客户端默认启动一桌由 AI 控制的本地对局；终端交互需要可用的 TTY。纯算法和规则状态机也可以单独作为 crate 使用。
@@ -27,7 +26,7 @@ cargo run -p riichi-server  # 启动服务端/CLI 演示
 | `riichi-engine` | 局面状态、行动合法性、回合流程和结算 |
 | `riichi-proto` | 客户端与服务端之间的序列化消息 |
 | `riichi-session` | 游戏会话、玩家命令和事件通道 |
-| `riichi-server` | 未来的网络、房间和连接服务；当前保留 CLI 演示 |
+| `riichi-server` | 网络、房间和连接服务 |
 | `riichi-debug` | ratatui 终端调试界面 |
 
 依赖方向、主要数据流和牌编码见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

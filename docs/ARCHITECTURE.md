@@ -23,9 +23,9 @@ riichi-core
 - `riichi-engine`：维护 `GameState`，执行合法行动、响应窗口、流局、和了与结算。
 - `riichi-proto`：定义隐藏他人手牌后的 `GameStateView`，以及客户端行动和服务端事件。
 - `riichi-session`：把引擎包装为传输无关的异步游戏会话，并通过 channel 接收玩家行动。
-- `riichi-server`：未来负责网络、房间和连接；当前保留 CLI 演示入口和协议转换。
+- `riichi-server`：负责网络、房间和连接，以及 session 到线协议的转换。
 - `riichi-debug`：把状态视图和分析结果渲染为终端调试 UI，并提供本地 AI 填位模式。
-- `riichi-session`：运行与传输无关的单房间游戏会话，承载内部命令、事件和 GameLoop。
+- `riichi-session`：运行与传输无关的单房间游戏会话，承载内部命令、事件和 GameSession。
 
 规则变化应优先落在 engine 的规则/结算模块和 logic 的判定模块；UI 不应自行推导点数或改变合法性。
 

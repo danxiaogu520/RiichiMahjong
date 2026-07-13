@@ -11,26 +11,26 @@ use riichi_proto::messages::{
     WaitInfoView,
 };
 
-use crate::channel::{CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg};
+use riichi_session::{CallResponse, PlayerAction, SessionEvent, TurnAction};
 
 /// Converts an authenticated wire message into the internal action format.
 /// The player identity is supplied by the session, never by the wire message.
 pub fn client_message_to_action(message: ClientMessage) -> Option<PlayerAction> {
     match message {
         ClientMessage::TurnAction { action } => Some(PlayerAction::TurnAction(match action {
-            TurnActionPayload::Discard(tile) => TurnActionMsg::Discard(tile),
-            TurnActionPayload::RiichiDiscard(tile) => TurnActionMsg::RiichiDiscard(tile),
-            TurnActionPayload::Tsumo => TurnActionMsg::Tsumo,
-            TurnActionPayload::Ankan(tile) => TurnActionMsg::Ankan(tile),
-            TurnActionPayload::Kakan(index, tile) => TurnActionMsg::Kakan(index, tile),
-            TurnActionPayload::KyuushuKyuuhai => TurnActionMsg::KyuushuKyuuhai,
+            TurnActionPayload::Discard(tile) => TurnAction::Discard(tile),
+            TurnActionPayload::RiichiDiscard(tile) => TurnAction::RiichiDiscard(tile),
+            TurnActionPayload::Tsumo => TurnAction::Tsumo,
+            TurnActionPayload::Ankan(tile) => TurnAction::Ankan(tile),
+            TurnActionPayload::Kakan(index, tile) => TurnAction::Kakan(index, tile),
+            TurnActionPayload::KyuushuKyuuhai => TurnAction::KyuushuKyuuhai,
         })),
         ClientMessage::CallResponse { action } => Some(PlayerAction::CallResponse(match action {
-            CallResponsePayload::Pass => CallResponseMsg::Pass,
-            CallResponsePayload::Ron => CallResponseMsg::Ron,
-            CallResponsePayload::Pon { hand_tiles } => CallResponseMsg::Pon { hand_tiles },
-            CallResponsePayload::Chi { hand_tiles } => CallResponseMsg::Chi { hand_tiles },
-            CallResponsePayload::Minkan { hand_tiles } => CallResponseMsg::Minkan { hand_tiles },
+            CallResponsePayload::Pass => CallResponse::Pass,
+            CallResponsePayload::Ron => CallResponse::Ron,
+            CallResponsePayload::Pon { hand_tiles } => CallResponse::Pon { hand_tiles },
+            CallResponsePayload::Chi { hand_tiles } => CallResponse::Chi { hand_tiles },
+            CallResponsePayload::Minkan { hand_tiles } => CallResponse::Minkan { hand_tiles },
         })),
         ClientMessage::JoinRoom { .. } | ClientMessage::Ready | ClientMessage::LeaveRoom => None,
     }
@@ -39,8 +39,8 @@ pub fn client_message_to_action(message: ClientMessage) -> Option<PlayerAction> 
 /// Converts one player's internal state event into a player-scoped wire view.
 /// Opponent hands are always omitted, even though the internal event contains
 /// the hand snapshot for the recipient only.
-pub fn state_update_to_wire(event: &ServerEvent, recipient: PlayerId) -> Option<ServerMessage> {
-    let ServerEvent::StateUpdate {
+pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option<ServerMessage> {
+    let SessionEvent::StateUpdate {
         phase,
         current_player,
         drawn_tile,
@@ -169,12 +169,12 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 #[cfg(test)]
 mod tests {
     use super::{call_options_to_wire, client_message_to_action, state_update_to_wire};
-    use crate::channel::{PlayerAction, ServerEvent, TurnActionMsg};
     use riichi_core::game::{CallOption, CallType};
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
     use riichi_engine::game::GamePhase;
     use riichi_proto::messages::{ClientMessage, ServerMessage, TurnActionPayload};
+    use riichi_session::{PlayerAction, SessionEvent, TurnAction};
 
     #[test]
     fn wire_action_does_not_supply_player_identity() {
@@ -183,13 +183,13 @@ mod tests {
         });
         assert!(matches!(
             action,
-            Some(PlayerAction::TurnAction(TurnActionMsg::Discard(tile))) if tile == Tile::from_raw(7)
+            Some(PlayerAction::TurnAction(TurnAction::Discard(tile))) if tile == Tile::from_raw(7)
         ));
     }
 
     #[test]
     fn state_view_only_exposes_recipient_hand_and_drawn_tile() {
-        let event = ServerEvent::StateUpdate {
+        let event = SessionEvent::StateUpdate {
             phase: GamePhase::ActionPhase,
             current_player: PlayerId(0),
             pending_discard: None,
@@ -209,7 +209,6 @@ mod tests {
             honba: 0,
             riichi_sticks: 0,
             tenpai_info: None,
-            analysis_options: Vec::new(),
         };
 
         let ServerMessage::StateUpdate(view) = state_update_to_wire(&event, PlayerId(0)).unwrap()

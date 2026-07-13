@@ -440,14 +440,10 @@ dependencies = [
 name = "riichi-server"
 version = "0.1.0"
 dependencies = [
- "rand",
- "riichi-ai",
  "riichi-core",
  "riichi-engine",
- "riichi-logic",
  "riichi-proto",
  "riichi-session",
- "tokio",
 ]
 
 [[package]]
@@ -457,7 +453,6 @@ dependencies = [
  "rand",
  "riichi-core",
  "riichi-engine",
- "riichi-logic",
  "tokio",
 ]
 

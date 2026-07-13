@@ -33,6 +33,7 @@ impl Tile {
 
     /// 从底层 u8 值创建（0-135）
     pub fn from_raw(raw: u8) -> Self {
+        assert!(raw < 136, "tile raw value must be in 0..=135");
         Self(raw)
     }
 }
@@ -237,31 +238,12 @@ impl Tile {
 
     /// 获取花色
     pub fn suit(self) -> Suit {
-        match self.0 / 36 {
-            0 => Suit::Man,
-            1 => Suit::Pin,
-            2 => Suit::Sou,
-            _ => {
-                if self.0 < 124 {
-                    Suit::Wind
-                } else {
-                    Suit::Dragon
-                }
-            }
-        }
+        self.tile_type().suit()
     }
 
     /// 获取数字
     pub fn rank(self) -> Rank {
-        let suit = self.suit();
-        let base = match suit {
-            Suit::Man => 0,
-            Suit::Pin => 36,
-            Suit::Sou => 72,
-            Suit::Wind => 108,
-            Suit::Dragon => 124,
-        };
-        Rank((self.0 - base) / 4 + 1)
+        self.tile_type().rank()
     }
 
     /// 获取副本索引 (0-3)
@@ -269,49 +251,34 @@ impl Tile {
         self.0 % 4
     }
 
-    /// 获取 tile_type 索引 (0-33)，忽略副本。
-    /// 用于判断两张牌是否为同一种。
-    pub fn type_index(self) -> u8 {
-        self.0 / 4
-    }
-
-    /// 判断两张牌是否为同一种（忽略副本索引）
-    pub fn is_same_type(self, other: Tile) -> bool {
-        self.type_index() == other.type_index()
-    }
-
     /// 是否为数牌
     pub fn is_number(self) -> bool {
-        self.0 < 108
+        self.tile_type().is_number()
     }
 
     /// 是否为字牌（风牌 + 三元牌）
     pub fn is_honor(self) -> bool {
-        self.0 >= 108
+        self.tile_type().is_honor()
     }
 
     /// 是否为幺九牌（老头牌 + 字牌）
     pub fn is_yaochuuhai(self) -> bool {
-        if self.is_honor() {
-            return true;
-        }
-        let r = self.rank().0;
-        r == 1 || r == 9
+        self.tile_type().is_yaochuuhai()
     }
 
     /// 是否为老头牌（1 或 9 的数牌）
     pub fn is_terminal(self) -> bool {
-        self.is_number() && (self.rank().0 == 1 || self.rank().0 == 9)
+        self.tile_type().is_terminal()
     }
 
     /// 是否为风牌
     pub fn is_wind(self) -> bool {
-        self.0 >= 108 && self.0 < 124
+        self.tile_type().is_wind()
     }
 
     /// 是否为三元牌
     pub fn is_dragon(self) -> bool {
-        self.0 >= 124
+        self.tile_type().is_dragon()
     }
 
     /// 生成所有 136 张牌
@@ -322,11 +289,6 @@ impl Tile {
     /// 是否为赤宝牌
     pub fn is_aka_dora(self) -> bool {
         self.rank() == Rank(5) && self.copy_index() == 0
-    }
-
-    /// 生成所有 34 种牌类型（每种取 copy 0）
-    pub fn all_types() -> Vec<Tile> {
-        (0..34).map(|i| Tile(i * 4)).collect()
     }
 }
 

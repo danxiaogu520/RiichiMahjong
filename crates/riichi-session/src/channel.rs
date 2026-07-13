@@ -4,16 +4,15 @@ use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
 use riichi_engine::TenpaiInfo;
-use riichi_logic::acceptance::DiscardOption;
 use tokio::sync::mpsc;
 
 // ═══════════════════════════════════════════════════════════════
-//  Server → Client 事件
+//  Session → Player 事件
 // ═══════════════════════════════════════════════════════════════
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
-pub enum ServerEvent {
+pub enum SessionEvent {
     StateUpdate {
         phase: GamePhase,
         current_player: PlayerId,
@@ -34,7 +33,6 @@ pub enum ServerEvent {
         honba: u32,
         riichi_sticks: u32,
         tenpai_info: Option<TenpaiInfo>,
-        analysis_options: Vec<DiscardOption>,
     },
     ActionRequired {
         can_tsumo: bool,
@@ -67,12 +65,12 @@ pub enum ServerEvent {
 
 #[derive(Debug, Clone)]
 pub enum PlayerAction {
-    TurnAction(TurnActionMsg),
-    CallResponse(CallResponseMsg),
+    TurnAction(TurnAction),
+    CallResponse(CallResponse),
 }
 
 #[derive(Debug, Clone)]
-pub enum TurnActionMsg {
+pub enum TurnAction {
     Discard(Tile),
     Tsumo,
     /// 明确指定立直宣言时打出的牌。
@@ -85,7 +83,7 @@ pub enum TurnActionMsg {
 }
 
 #[derive(Debug, Clone)]
-pub enum CallResponseMsg {
+pub enum CallResponse {
     Pass,
     Ron,
     Pon { hand_tiles: [Tile; 2] },
@@ -97,18 +95,28 @@ pub enum CallResponseMsg {
 //  PlayerHandle / ClientHandle
 // ═══════════════════════════════════════════════════════════════
 
-pub type ActionMsg = (PlayerId, PlayerAction);
+#[derive(Debug, Clone)]
+pub struct PlayerCommand {
+    pub player: PlayerId,
+    pub action: PlayerAction,
+}
+
+impl PlayerCommand {
+    pub fn new(player: PlayerId, action: PlayerAction) -> Self {
+        Self { player, action }
+    }
+}
 
 pub struct PlayerHandle {
     pub id: PlayerId,
-    pub event_tx: mpsc::Sender<ServerEvent>,
-    pub action_rx: mpsc::Receiver<ActionMsg>,
+    pub event_tx: mpsc::Sender<SessionEvent>,
+    pub action_rx: mpsc::Receiver<PlayerCommand>,
 }
 
 pub struct ClientHandle {
     pub id: PlayerId,
-    pub event_rx: mpsc::Receiver<ServerEvent>,
-    pub action_tx: mpsc::Sender<ActionMsg>,
+    pub event_rx: mpsc::Receiver<SessionEvent>,
+    pub action_tx: mpsc::Sender<PlayerCommand>,
 }
 
 pub fn create_player_pair(id: PlayerId) -> (PlayerHandle, ClientHandle) {
