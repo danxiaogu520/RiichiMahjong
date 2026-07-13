@@ -29,7 +29,6 @@ cargo run -p riichi-server  # 启动服务端/CLI 演示
 | `riichi-session` | 游戏会话、玩家命令和事件通道 |
 | `riichi-server` | 未来的网络、房间和连接服务；当前保留 CLI 演示 |
 | `riichi-debug` | ratatui 终端调试界面 |
-| `riichi-test` | 手牌解析和算法 CLI 验证入口 |
 
 依赖方向、主要数据流和牌编码见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 

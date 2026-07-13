@@ -26,7 +26,6 @@ riichi-core
 - `riichi-server`：未来负责网络、房间和连接；当前保留 CLI 演示入口和协议转换。
 - `riichi-debug`：把状态视图和分析结果渲染为终端调试 UI，并提供本地 AI 填位模式。
 - `riichi-session`：运行与传输无关的单房间游戏会话，承载内部命令、事件和 GameLoop。
-- `riichi-test`：用于手牌解析和逻辑验证的轻量 CLI。
 
 规则变化应优先落在 engine 的规则/结算模块和 logic 的判定模块；UI 不应自行推导点数或改变合法性。
 

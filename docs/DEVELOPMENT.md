@@ -12,7 +12,6 @@ cargo check --workspace
 cargo test --workspace
 cargo run -p riichi-debug
 cargo run -p riichi-server
-cargo run -p riichi-test
 ```
 
 提交前至少运行格式检查、workspace 测试和与改动模块对应的测试。规则或结算改动应补充可复现的回归测试，优先放在对应 crate；跨模块流程放在 `crates/riichi-engine/tests/`。
