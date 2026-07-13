@@ -133,7 +133,11 @@ fn render_center(f: &mut Frame, app: &App, area: Rect) {
         .map(|t| format_tile_type(*t))
         .collect::<Vec<_>>()
         .join(" ");
-    let status = if app.needs_human_response() {
+    let status = if app.is_ai_thinking() {
+        "托管中：AI 思考中"
+    } else if app.auto_play {
+        "托管已开启"
+    } else if app.needs_human_response() {
         "等待你的响应"
     } else if app.is_human_turn() {
         "轮到你打牌"
@@ -351,6 +355,12 @@ fn render_action_line(app: &App) -> Line<'static> {
             Style::default().fg(Color::DarkGray),
         ));
         return Line::from(spans);
+    }
+    if app.auto_play {
+        return Line::from(Span::styled(
+            "托管中：按 H 取消托管",
+            Style::default().fg(Color::Yellow),
+        ));
     }
     if app.riichi_selecting {
         return Line::from(Span::styled(

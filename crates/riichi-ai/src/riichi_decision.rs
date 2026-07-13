@@ -1,8 +1,17 @@
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
+use riichi_logic::acceptance::VisibleTiles;
+use riichi_logic::shanten::ShantenCalculator;
 
-/// AI 决策：是否立直 + 选择宣言牌
-/// 当前简单实现：如果有可立直的打牌选项，选第一个
-pub fn decide_riichi(_player: PlayerId, tenpai_discards: &[Tile]) -> Option<Tile> {
-    tenpai_discards.first().copied()
+use crate::discard::choose_riichi_discard;
+
+/// AI 决策：在合法立直宣言牌中按牌效选择一张。
+pub fn decide_riichi(
+    _player: PlayerId,
+    calc: &mut ShantenCalculator,
+    hand: &[Tile],
+    visible: &VisibleTiles,
+    tenpai_discards: &[Tile],
+) -> Option<Tile> {
+    choose_riichi_discard(calc, hand, visible, tenpai_discards)
 }
