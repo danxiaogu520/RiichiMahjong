@@ -11,7 +11,7 @@
 ```bash
 cargo build                 # 构建默认客户端及其依赖
 cargo test --workspace      # 运行整个 workspace 的测试
-cargo run -p riichi-client  # 启动终端客户端
+cargo run -p riichi-debug   # 启动终端调试客户端
 cargo run -p riichi-server  # 启动服务端/CLI 演示
 ```
 
@@ -26,8 +26,9 @@ cargo run -p riichi-server  # 启动服务端/CLI 演示
 | `riichi-ai` | 打牌、鸣牌和立直决策 |
 | `riichi-engine` | 局面状态、行动合法性、回合流程和结算 |
 | `riichi-proto` | 客户端与服务端之间的序列化消息 |
-| `riichi-server` | 游戏回路、玩家通道和 AI 接入 |
-| `riichi-client` | ratatui 终端界面 |
+| `riichi-session` | 游戏会话、玩家命令和事件通道 |
+| `riichi-server` | 未来的网络、房间和连接服务；当前保留 CLI 演示 |
+| `riichi-debug` | ratatui 终端调试界面 |
 | `riichi-test` | 手牌解析和算法 CLI 验证入口 |
 
 依赖方向、主要数据流和牌编码见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

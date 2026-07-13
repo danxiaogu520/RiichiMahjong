@@ -387,7 +387,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "riichi-client"
+name = "riichi-core"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "serde",
+]
+
+[[package]]
+name = "riichi-debug"
 version = "0.1.0"
 dependencies = [
  "crossterm",
@@ -397,16 +405,8 @@ dependencies = [
  "riichi-core",
  "riichi-engine",
  "riichi-logic",
- "riichi-server",
+ "riichi-session",
  "tokio",
-]
-
-[[package]]
-name = "riichi-core"
-version = "0.1.0"
-dependencies = [
- "rand",
- "serde",
 ]
 
 [[package]]
@@ -446,6 +446,18 @@ dependencies = [
  "riichi-engine",
  "riichi-logic",
  "riichi-proto",
+ "riichi-session",
+ "tokio",
+]
+
+[[package]]
+name = "riichi-session"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "riichi-core",
+ "riichi-engine",
+ "riichi-logic",
  "tokio",
 ]
 

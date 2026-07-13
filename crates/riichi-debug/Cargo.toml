@@ -1,15 +1,15 @@
 [package]
-name = "riichi-client"
+name = "riichi-debug"
 version = "0.1.0"
 edition = "2021"
-default-run = "riichi-client"
+default-run = "riichi-debug"
 
 [dependencies]
 riichi-core = { path = "../riichi-core" }
 riichi-engine = { path = "../riichi-engine" }
 riichi-logic = { path = "../riichi-logic" }
 riichi-ai = { path = "../riichi-ai" }
-riichi-server = { path = "../riichi-server" }
+riichi-session = { path = "../riichi-session" }
 ratatui = "0.29"
 crossterm = "0.28"
 rand = "0.8"

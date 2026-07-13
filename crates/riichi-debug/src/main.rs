@@ -1,3 +1,4 @@
+mod ai_client;
 mod app;
 mod input;
 mod ui;
@@ -13,11 +14,10 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc;
 
+use crate::ai_client::run_ai_client;
 use crate::app::App;
 use riichi_core::player::PlayerId;
-use riichi_server::ai_client::run_ai_client;
-use riichi_server::channel::{create_player_pair, ActionMsg};
-use riichi_server::game::GameLoop;
+use riichi_session::{create_player_pair, ActionMsg, GameLoop};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
