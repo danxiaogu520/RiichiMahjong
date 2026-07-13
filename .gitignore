@@ -1,5 +1,12 @@
-/target
+# Rust build output
+/target/
 **/target/
+
+# Local environments and generated tooling state
+/.venv/
+/.mimocode/
+/.agents/
+/.codex/
 
 # IDE
 .idea/
@@ -7,6 +14,9 @@
 *.swp
 *.swo
 *~
+*.tmp
+*.bak
+*.log
 
 # OS
 .DS_Store
