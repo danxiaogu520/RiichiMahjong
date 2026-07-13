@@ -4,6 +4,7 @@ use riichi_core::game::{CallType, GameEvent, ResponseAction, RoundEndReason, Tur
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
+use riichi_engine::legal::LegalAction;
 use riichi_engine::rules::{
     ALLOW_DOUBLE_RON, ALLOW_TRIPLE_RON, RESPONSE_TIMEOUT_MS, TURN_TIMEOUT_MS,
 };
@@ -180,6 +181,35 @@ impl GameLoop {
     }
 
     async fn apply_turn_action(&mut self, player: PlayerId, action: TurnActionMsg) {
+        let action = match action {
+            TurnActionMsg::Riichi => match self.riichi_options(player).first().copied() {
+                Some(tile) => TurnActionMsg::RiichiDiscard(tile),
+                None => {
+                    self.recover_invalid_turn(player, "当前没有合法的立直弃牌".to_string())
+                        .await;
+                    return;
+                }
+            },
+            action => action,
+        };
+
+        let validation_action = match &action {
+            TurnActionMsg::Discard(tile) => TurnAction::Discard(*tile),
+            TurnActionMsg::Tsumo => TurnAction::Tsumo,
+            TurnActionMsg::RiichiDiscard(tile) => TurnAction::RiichiDiscard(*tile),
+            TurnActionMsg::Ankan(tile) => TurnAction::Ankan(*tile),
+            TurnActionMsg::Kakan(index, tile) => TurnAction::Kakan(*index, *tile),
+            TurnActionMsg::KyuushuKyuuhai => TurnAction::KyuushuKyuuhai,
+            TurnActionMsg::Riichi => unreachable!("Riichi 已在上方规范化"),
+        };
+        if let Err(error) = self
+            .game
+            .validate_action(player, &LegalAction::Turn(validation_action))
+        {
+            self.recover_invalid_turn(player, error.to_string()).await;
+            return;
+        }
+
         match action {
             TurnActionMsg::Discard(tile) => {
                 if let Err(error) = self.game.execute_action(TurnAction::Discard(tile)) {
@@ -249,6 +279,48 @@ impl GameLoop {
                 self.handle_round_end().await;
             }
         }
+    }
+
+    /// 非法行动的兜底：报告错误后，从引擎生成的合法行动中选择摸切。
+    /// 这样 AI 或客户端即使提交了过期/非法动作，也不会让行动阶段反复重试。
+    async fn recover_invalid_turn(&mut self, player: PlayerId, error: String) {
+        self.send_to(player, ServerEvent::Error(error)).await;
+
+        let fallback = self
+            .game
+            .legal_actions(player)
+            .into_iter()
+            .find_map(|action| {
+                let LegalAction::Turn(TurnAction::Discard(tile)) = action else {
+                    return None;
+                };
+                let action = LegalAction::Turn(TurnAction::Discard(tile));
+                self.game
+                    .validate_action(player, &action)
+                    .ok()
+                    .map(|_| tile)
+            });
+
+        let Some(tile) = fallback else {
+            self.broadcast(ServerEvent::Error(
+                "没有可执行的安全弃牌，安全结束本局".into(),
+            ))
+            .await;
+            self.game.resolve_round_end(RoundEndReason::ExhaustiveDraw);
+            self.handle_round_end().await;
+            return;
+        };
+
+        if let Err(fallback_error) = self.game.execute_action(TurnAction::Discard(tile)) {
+            self.broadcast(ServerEvent::Error(format!(
+                "安全弃牌执行失败: {}",
+                fallback_error
+            )))
+            .await;
+            return;
+        }
+        self.broadcast_state().await;
+        self.handle_after_turn().await;
     }
 
     async fn handle_after_turn(&mut self) {

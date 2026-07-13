@@ -138,6 +138,20 @@ async fn run_app(
             continue;
         }
 
+        if app.auto_play {
+            app.tick_ai();
+            if event::poll(std::time::Duration::from_millis(50))? {
+                if let event::Event::Key(key) = event::read()? {
+                    if key.code == crossterm::event::KeyCode::Char('h')
+                        || key.code == crossterm::event::KeyCode::Char('q')
+                    {
+                        input::handle_input(app, key);
+                    }
+                }
+            }
+            continue;
+        }
+
         if app.is_human_turn() || app.needs_human_response() {
             if event::poll(std::time::Duration::from_millis(100))? {
                 if let event::Event::Key(key) = event::read()? {

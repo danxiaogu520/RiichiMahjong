@@ -14,6 +14,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
         KeyCode::Char('q') => {
             app.should_quit = true;
         }
+        KeyCode::Char('h') => app.toggle_auto_play(),
         KeyCode::Char('i') => app.show_analysis = !app.show_analysis,
         KeyCode::Char('m') => app.show_messages = !app.show_messages,
         KeyCode::Char('t') => {
