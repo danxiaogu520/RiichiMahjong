@@ -27,12 +27,10 @@ impl GameState {
                     && meld.tiles.iter().any(|tile| tile.tile_type() == tile_type)
             })
         };
-        let dragons_complete = (31..34).all(|tile_type| {
-            has_open_triplet(riichi_core::tile::TileType(tile_type))
-        });
-        let winds_complete = (27..31).all(|tile_type| {
-            has_open_triplet(riichi_core::tile::TileType(tile_type))
-        });
+        let dragons_complete =
+            (31..34).all(|tile_type| has_open_triplet(riichi_core::tile::TileType(tile_type)));
+        let winds_complete =
+            (27..31).all(|tile_type| has_open_triplet(riichi_core::tile::TileType(tile_type)));
         let called_type = called_tile.tile_type();
         if (dragons_complete && called_type.is_dragon())
             || (winds_complete && called_type.is_wind())
@@ -144,7 +142,6 @@ impl GameState {
                 }
                 // 四家立直检查（第四家立直宣言后，且未被荣和取消）
                 else if matches!(self.phase, GamePhase::ResponsePhase { .. })
-                    && self.rules.suucha_riichi_abort
                     && self.check_suucha_riichi()
                 {
                     self.resolve_round_end(RoundEndReason::SuuchaRiichi);
@@ -532,7 +529,7 @@ impl GameState {
                 });
                 self.update_pao_after_open_call(player, discarder, discarded_tile);
                 // 四杠散了检查
-                if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
+                if self.check_four_kan_abort() {
                     self.resolve_round_end(RoundEndReason::SuuKantsu);
                 }
             }
@@ -559,7 +556,7 @@ impl GameState {
                 self.reveal_dora_indicator();
                 self.draw_rinshan()?;
 
-                if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
+                if self.check_four_kan_abort() {
                     self.resolve_round_end(RoundEndReason::SuuKantsu);
                 } else {
                     self.phase = GamePhase::ActionPhase;
@@ -711,7 +708,7 @@ impl GameState {
         self.draw_rinshan()?;
 
         // 四杠散了检查
-        if self.rules.suukan_sanra_abort && self.check_four_kan_abort() {
+        if self.check_four_kan_abort() {
             self.resolve_round_end(RoundEndReason::SuuKantsu);
         }
 

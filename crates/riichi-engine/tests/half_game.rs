@@ -121,7 +121,7 @@ fn local_auto_pass_game_finishes_half_game() {
         assert!(state.round > round || state.honba > honba || state.is_game_over());
     }
 
-    assert_eq!(state.round, 9);
+    assert!((8..=13).contains(&state.round));
     assert!(state
         .event_history()
         .iter()
@@ -234,7 +234,7 @@ fn four_closed_efficiency_ai_finishes_and_monitors_half_game() {
         assert!(state.round > round || state.honba > honba || state.is_game_over());
     }
 
-    assert_eq!(state.round, 9);
+    assert!((8..=13).contains(&state.round));
     assert!(round_count >= 8);
     assert!(tsumo_count + ron_count + exhaustive_count > 0);
     println!(

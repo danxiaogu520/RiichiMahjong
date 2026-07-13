@@ -11,16 +11,10 @@ impl GameState {
     ///
     /// 初始化为东一局、0 本场、无立直棒、空牌山。
     ///
-    /// `round` 使用 1-based 编号：1..=4 为东场，5..=8 为南场。
+    /// `round` 使用 1-based 编号：1..=4 为东场，5..=8 为南场，9..=12 为西场。
     pub fn new() -> Self {
-        Self::new_with_rules(crate::rules::RuleConfig::default())
-    }
-
-    /// 使用指定规则创建新的牌局状态。
-    pub fn new_with_rules(rules: crate::rules::RuleConfig) -> Self {
-        let starting_points = rules.starting_points;
+        let starting_points = crate::rules::STARTING_POINTS;
         let mut state = Self {
-            rules,
             players: [
                 Player::new(PlayerId(0), wind_from_index(0)),
                 Player::new(PlayerId(1), wind_from_index(1)),
@@ -35,6 +29,7 @@ impl GameState {
             kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             pao_targets: [None; 4],
             phase: GamePhase::ActionPhase,
+            ranking_at_game_end: None,
             drawn_tile: None,
             round: 1,
             honba: 0,
@@ -105,7 +100,7 @@ impl GameState {
     /// 每次杠后从王牌区取下一张指示牌
     pub(crate) fn reveal_dora_indicator(&mut self) {
         let kan_count = self.get_kan_count();
-        if kan_count > 0 && kan_count <= 5 && self.dora.len() < 5 {
+        if kan_count > 0 && kan_count <= 4 && self.dora.len() < 5 {
             let indicator = self.wall.dora_indicator(kan_count).tile_type();
             self.dora_indicators.push(indicator);
             self.dora.push(Self::dora_from_indicator(indicator));
