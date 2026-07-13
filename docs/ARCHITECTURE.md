@@ -1,115 +1,56 @@
-# 架构文档
+# 架构
 
-## Crate 职责
+## 设计目标
 
-### riichi-core（纯数据结构）
+项目把“牌和手牌数据”“纯算法”“对局状态”“外部交互”分层。规则计算尽量保持无副作用，状态变化集中在 `riichi-engine`，这样算法可以被客户端、AI 和测试工具复用。
 
-不包含任何游戏逻辑，只定义数据类型。
+## Crate 关系
 
-| 模块 | 内容 |
-|------|------|
-| `tile.rs` | `Tile(u8)`, `TileType(u8)`, `Suit`, `Rank` |
-| `hand.rs` | `Hand` — 手牌（排序的 `Vec<Tile>`） |
-| `meld.rs` | `Meld`, `MeldKind` — 副露（吃/碰/杠） |
-| `wall.rs` | `Wall` — 牌山（136 张牌的洗牌/摸牌/杠管理） |
-| `player.rs` | `PlayerId`, `wind_from_index`, `next_wind`, `wind_display` |
-| `player_state.rs` | `Player` — 玩家状态（手牌/分数/副露/立直/振听，一发/食替/双立直等通过事件查询） |
-| `game_types.rs` | `GamePhase`, `GameEvent`, `TurnAction`, `ResponseAction`, `CallOption`, `GameError` |
-
-### riichi-logic（纯算法）
-
-所有计算逻辑，不依赖 `rand`。
-
-| 模块 | 内容 |
-|------|------|
-| `shanten.rs` | `ShantenCalculator` — 向听数计算（查表法） |
-| `acceptance.rs` | `analyze_discard`, `analyze_acceptance` — 打牌分析/进张/改良 |
-| `win_check.rs` | `check_win` — 和了判定入口 |
-| `analysis.rs` | `is_winning`, `decompose_hand`, `analyze_wait_tiles` — 手牌分解/听牌分析 |
-| `fu.rs` | `calculate_fu` — 符数计算 |
-| `scoring.rs` | `calculate_points` — 点数计算 |
-| `dora.rs` | `calculate_dora` — 宝牌计算 |
-| `types.rs` | `YakuName`, `WinContext`, `TileCounts`, `WinResult` 等 |
-
-### riichi-ai（决策层）
-
-使用 riichi-logic 的算法做出决策。
-
-| 模块 | 内容 |
-|------|------|
-| `discard.rs` | `choose_discard` — AI 打牌选择 |
-| `call_decision.rs` | `decide_call` — AI 副露决策（当前：一律 Pass） |
-| `riichi_decision.rs` | `decide_riichi` — AI 立直决策 |
-
-### riichi-engine（状态机）
-
-游戏状态管理，回合流程控制。仅依赖 riichi-core + riichi-logic，不依赖 riichi-ai。
-
-| 模块 | 内容 |
-|------|------|
-| `game.rs` | `GameState` 结构体定义 |
-| `init.rs` | 初始化、庄家、杠数、宝牌 |
-| `round.rs` | 配牌、摸牌、打牌 |
-| `action.rs` | 行动执行（自摸/立直/暗杠/加杠/响应） |
-| `riichi.rs` | 立直相关（听牌检查、立直宣言、立直后暗杠） |
-| `win.rs` | 和了判定、计分 |
-| `state.rs` | 游戏状态辅助（回合推进、振听、可见牌） |
-| `query.rs` | 事件查询（副露/第一巡/立直数） |
-| `abort.rs` | 流局检测（九种九牌/四风连打/四家立直/四杠散了） |
-| `settlement.rs` | 结算（荒牌罚符、连庄/过庄） |
-| `call.rs` | 副露检测（吃/碰/杠/荣和） |
-
-### riichi-proto（通信协议）
-
-定义客户端-服务端消息格式，使用 serde 序列化。
-
-| 类型 | 说明 |
-|------|------|
-| `ClientMessage` | 客户端→服务端：行动/副露响应 |
-| `ServerMessage` | 服务端→客户端：状态更新/事件/请求 |
-| `GameStateView` | 玩家视角（隐藏他人手牌） |
-| `AnalysisInfo` | 服务端计算的分析信息 |
-
-### riichi-server（服务端）
-
-游戏实例管理、AI 控制、CLI 显示。
-
-### riichi-client（客户端）
-
-ratatui 终端 UI，纯展示层。
-
-## 牌编码
-
-```
-Tile(u8): 0-135
-  TileType = raw / 4  →  0-33（34 种牌）
-  copy     = raw % 4  →  0-3（每种 4 副）
-
-TileType 编码：
-  0-8:   万子 (1m-9m)
-  9-17:  筒子 (1p-9p)
-  18-26: 索子 (1s-9s)
-  27-30: 风牌 (东南西北)
-  31-33: 三元牌 (白发中)
+```text
+riichi-core
+├── riichi-logic
+│   └── riichi-ai
+├── riichi-engine
+│   └── riichi-server
+│       └── riichi-client
+└── riichi-proto ───────────────┘
 ```
 
-## 牌山布局
+- `riichi-core`：基础类型和牌山，不负责判定一局游戏是否结束。
+- `riichi-logic`：向听、分解、和牌、役种、符数、点数、宝牌和牌效分析。
+- `riichi-ai`：把逻辑层结果转成打牌、鸣牌或立直选择。
+- `riichi-engine`：维护 `GameState`，执行合法行动、响应窗口、流局、和了与结算。
+- `riichi-proto`：定义隐藏他人手牌后的 `GameStateView`，以及客户端行动和服务端事件。
+- `riichi-server`：把引擎包装为异步游戏回路，并通过 channel 接收玩家/AI 行动。
+- `riichi-client`：把状态视图和分析结果渲染为终端 UI。
+- `riichi-test`：用于手牌解析和逻辑验证的轻量 CLI。
 
-```
-索引:  0                    122  123  124  125  126  127  128  129  130  131  132  133  134  135
-       |←— 摸牌区 (122张) —→|←— 王牌区 (14张) ——————————————————————————————→|
+规则变化应优先落在 engine 的规则/结算模块和 logic 的判定模块；UI 不应自行推导点数或改变合法性。
 
-宝牌指示牌:   131(初始), 130, 129, 128, 127 (杠后追加)
-里宝牌指示牌: 126(初始), 125, 124, 123, 122 (杠后追加)
-岭上牌:       135, 134, 133, 132 (按杠顺序取用)
+## 核心数据
+
+`Tile(u8)` 使用 0–135 表示一张具体牌；`TileType` 使用 0–33 表示牌种，每种牌有四张具体牌。万、筒、索分别占 0–8、9–17、18–26，风牌占 27–30，三元牌占 31–33。
+
+`Wall` 管理 136 张牌。前 122 张是摸牌区，后 14 张是王牌；宝牌指示牌、里宝牌指示牌和岭上牌的位置由牌山接口统一管理。
+
+## 一局数据流
+
+```text
+初始化 → 配牌 → 摸牌 → 当前玩家行动
+                  ↓             ↓
+              引擎状态 ← 响应窗口 ← 其他玩家
+                  ↓
+       和了 / 流局 / 继续下一回合
+                  ↓
+                结算
 ```
 
-## 游戏流程
+外部输入先经过 `riichi-engine::legal` 判定，再由 action/round/call 模块修改状态。结束原因统一进入 settlement；多家荣和或多家流局满贯必须先完成全部点数变化，再执行一次终局判定。
 
-```
-配牌 → [摸牌 → 行动 → 响应] × N → 局结束 → 下一局 / 半庄结束
-         ↑                    ↑
-      DrawPhase          ResponsePhase
-         ↓                    ↓
-      ActionPhase         RoundOver
-```
+## 测试边界
+
+- core 测试牌山、牌型基础不变量。
+- logic 测试向听、役种、符数、点数与牌效。
+- engine 测试行动时序、流局和结算。
+- server/proto 测试消息转换、序列化和回路边界。
+- `tests/half_game.rs` 提供跨模块的半庄级回归场景。

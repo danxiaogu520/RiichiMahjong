@@ -1,67 +1,44 @@
 # RiichiMahjong
 
-日本麻将（立直麻将）引擎，Rust 实现。
+一个以 Rust 编写的四人立直麻将引擎，包含规则状态机、和牌/计分算法、AI 决策、服务端回路和 ratatui 终端客户端。
 
-## 项目结构
-
-```
-crates/
-  riichi-core/      纯数据结构：牌、手牌、副露、牌山、玩家状态
-  riichi-logic/     纯算法：向听数、判役、算点、宝牌、有效牌分析
-  riichi-ai/        决策层：打牌选择、副露决策、立直决策
-  riichi-engine/    状态机：游戏流程、回合管理、副露处理
-  riichi-server/    服务端：房间管理、AI 控制、CLI 显示
-  riichi-client/    客户端：ratatui 终端 UI
-  riichi-proto/     通信协议：客户端-服务端消息定义
-```
-
-## 依赖关系
-
-```
-riichi-proto
-     ↑
-riichi-core
-     ↑
-riichi-logic
-     ↑                  ↑
-riichi-ai            riichi-engine
-     ↑                  ↑
-     └── riichi-server ← riichi-proto
-             ↑
-        riichi-client ← riichi-proto
-```
+项目目前面向本地实验与规则验证。规则口径和已知实现缺口见 [`docs/RULES.md`](docs/RULES.md)，不要把尚未完成的行为当作线上稳定协议。
 
 ## 快速开始
 
+需要 Rust stable 和 Cargo。首次构建会生成本地 `target/`，该目录已被忽略。
+
 ```bash
-# 构建
-cargo build
-
-# 运行终端 UI（默认）
-cargo run -p riichi-client
-
-# 运行 CLI 模式
-cargo run -p riichi-server
+cargo build                 # 构建默认客户端及其依赖
+cargo test --workspace      # 运行整个 workspace 的测试
+cargo run -p riichi-client  # 启动终端客户端
+cargo run -p riichi-server  # 启动服务端/CLI 演示
 ```
 
-## 规则实现
+客户端默认启动一桌由 AI 控制的本地对局；终端交互需要可用的 TTY。纯算法和规则状态机也可以单独作为 crate 使用。
 
-- 半庄（东一局～南四局）
-- 立直、一发、双立直
-- 门前清自摸和、岭上开花、抢杠和
-- 食替限制
-- 振听判定（舍牌振听、同巡振听、立直振听）
-- 宝牌、里宝牌、赤宝牌
-- 七对子、国士无双
-- 四风连打、四家立直、四杠散了、九种九牌（途中流局）
+## Workspace
 
-## 技术细节
+| Crate | 职责 |
+| --- | --- |
+| `riichi-core` | 牌、手牌、副露、牌山和玩家基础数据 |
+| `riichi-logic` | 向听、牌型分解、役种、符数、点数和牌效分析 |
+| `riichi-ai` | 打牌、鸣牌和立直决策 |
+| `riichi-engine` | 局面状态、行动合法性、回合流程和结算 |
+| `riichi-proto` | 客户端与服务端之间的序列化消息 |
+| `riichi-server` | 游戏回路、玩家通道和 AI 接入 |
+| `riichi-client` | ratatui 终端界面 |
+| `riichi-test` | 手牌解析和算法 CLI 验证入口 |
 
-- **牌编码**：`Tile(u8)` 0-135，每种牌 4 副。`TileType(u8)` 0-33（34 种）
-- **牌山**：`Wall` struct 管理 136 张牌，索引 0-121 为摸牌区，122-135 为王牌区
-- **向听计算**：查表法（预计算的 base-5 编码查找表）
-- **役种判定**：枚举所有可能的手牌分解，高点法取最优
+依赖方向、主要数据流和牌编码见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
-## License
+## 文档
 
-MIT
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)：开发、测试、格式化和排错
+- [`docs/RULES.md`](docs/RULES.md)：固定规则口径、结算顺序和已知缺口
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md)：消息边界和状态视图
+- [`docs/ROADMAP.md`](docs/ROADMAP.md)：当前限制与后续工作
+
+## 许可
+
+MIT，详见 [`LICENSE`](LICENSE)。
