@@ -19,7 +19,7 @@ impl GameState {
     /// - 2 人听牌：2 人不听各付 3000，听牌者各收 1500
     /// - 3 人听牌：1 人不听付 3000，听牌者各收 1000
     pub fn resolve_exhaustive_draw(&mut self) {
-        let nagashi_winners = if self.rules.nagashi_mangan {
+        let nagashi_winners = if crate::rules::NAGASHI_MANGAN {
             self.get_nagashi_mangan_candidates()
         } else {
             Vec::new()
@@ -162,47 +162,41 @@ impl GameState {
             // 场风更新：round 1-4 = 东场, 5-8 = 南场
             self.wind = if self.round <= 4 {
                 TileType::EAST
-            } else {
+            } else if self.round <= 8 {
                 TileType::SOUTH
+            } else {
+                TileType::WEST
             };
         }
     }
 
     /// 游戏是否结束（南四局过庄后）
     pub fn is_game_over(&self) -> bool {
-        self.round > 8
-            || (self.rules.tobi && self.players.iter().any(|p| p.points < 0))
-            || self.is_agari_yame()
+        self.round > 12
+            || self.players.iter().any(|p| p.points < 0)
+            || self.is_all_last_target_met()
+            || (self.round == 12 && self.dealer_has_passed())
     }
 
-    /// Mortal 的南四局终局条件：庄家在南四局连庄后，
-    /// 点数至少 30000 且已经是第一名时立即结束半庄。
-    fn is_agari_yame(&self) -> bool {
-        if self.round != 8 || !self.phase_is_round_over() {
-            return false;
-        }
+    fn is_all_last_target_met(&self) -> bool {
+        self.round >= 8 && self.players.iter().any(|p| p.points >= 30_000)
+    }
+
+    fn dealer_has_passed(&self) -> bool {
         let dealer = self.get_dealer();
-        let dealer_continues = self
-            .events
+        self.events
             .iter()
             .rev()
             .find_map(|event| match event {
                 GameEvent::RoundEnded { reason } => Some(match reason {
-                    RoundEndReason::Win { winner, .. } => *winner == dealer,
-                    RoundEndReason::MultiWin { winners } => winners.contains(&dealer),
-                    RoundEndReason::ExhaustiveDraw => !self.get_waiting_tiles(dealer).is_empty(),
+                    RoundEndReason::Win { winner, .. } => *winner != dealer,
+                    RoundEndReason::MultiWin { winners } => !winners.contains(&dealer),
+                    RoundEndReason::ExhaustiveDraw => self.get_waiting_tiles(dealer).is_empty(),
                     _ => false,
                 }),
                 _ => None,
             })
-            .unwrap_or(false);
-        dealer_continues
-            && self.players[dealer.0].points >= 30_000
-            && self.final_ranking()[0] == dealer.0
-    }
-
-    fn phase_is_round_over(&self) -> bool {
-        matches!(self.phase, GamePhase::RoundOver)
+            .unwrap_or(false)
     }
 
     /// 统一处理局结束：荒牌罚符 + 连庄/过庄 + 设置 RoundOver
@@ -217,10 +211,14 @@ impl GameState {
         self.record_event(GameEvent::RoundEnded { reason });
         self.phase = GamePhase::RoundOver;
 
-        if self.is_game_over() && self.riichi_sticks > 0 {
-            let winner = self.final_ranking()[0];
-            self.players[winner].points += (self.riichi_sticks * 1000) as i32;
-            self.riichi_sticks = 0;
+        if self.is_game_over() {
+            let ranking = self.final_ranking();
+            self.ranking_at_game_end = Some(ranking);
+            if self.riichi_sticks > 0 {
+                let winner = ranking[0];
+                self.players[winner].points += (self.riichi_sticks * 1000) as i32;
+                self.riichi_sticks = 0;
+            }
         }
     }
 }
@@ -228,8 +226,9 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::GameState;
+    use riichi_core::game::RoundEndReason;
     use riichi_core::player::PlayerId;
-    use riichi_core::tile::Tile;
+    use riichi_core::tile::{Tile, TileType};
 
     #[test]
     fn final_ranking_orders_points_stably() {
@@ -244,7 +243,6 @@ mod tests {
     #[test]
     fn tobi_ends_game_when_enabled() {
         let mut state = GameState::new();
-        state.rules.tobi = true;
         state.players[2].points = -100;
         assert!(state.is_game_over());
     }
@@ -262,7 +260,6 @@ mod tests {
     #[test]
     fn multiple_nagashi_mangan_winners_are_settled_independently() {
         let mut state = GameState::new();
-        state.rules.nagashi_mangan = true;
         state.players[0].discards = vec![Tile::from_raw(0), Tile::from_raw(108)];
         state.players[1].discards = vec![Tile::from_raw(1), Tile::from_raw(109)];
 
@@ -291,6 +288,37 @@ mod tests {
             },
         });
 
+        assert!(state.is_game_over());
+    }
+
+    #[test]
+    fn south_four_without_target_enters_west_after_dealer_passes() {
+        let mut state = GameState::new();
+        state.round = 8;
+        state.phase = riichi_core::game::GamePhase::RoundOver;
+
+        state.resolve_round_end(RoundEndReason::ExhaustiveDraw);
+
+        assert_eq!(state.round, 9);
+        assert_eq!(state.wind, TileType::WEST);
+        assert!(!state.is_game_over());
+    }
+
+    #[test]
+    fn west_four_dealer_continues_but_pass_ends_game() {
+        let mut state = GameState::new();
+        state.round = 12;
+        state.phase = riichi_core::game::GamePhase::RoundOver;
+
+        state.resolve_round_end(RoundEndReason::Win {
+            winner: state.get_dealer(),
+            is_tsumo: true,
+        });
+        assert_eq!(state.round, 12);
+        assert!(!state.is_game_over());
+
+        state.phase = riichi_core::game::GamePhase::RoundOver;
+        state.resolve_round_end(RoundEndReason::ExhaustiveDraw);
         assert!(state.is_game_over());
     }
 

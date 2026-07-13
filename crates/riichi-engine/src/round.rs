@@ -28,6 +28,7 @@ impl GameState {
         // 事件历史属于单局上下文。跨局保留事件会污染一发、双立直、
         // 四家立直和首巡等状态判断；完整对局回放应由外部日志保存。
         self.events.clear();
+        self.ranking_at_game_end = None;
         self.kuikae_forbidden = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
         self.pao_targets = [None; 4];
 

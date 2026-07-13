@@ -1,4 +1,5 @@
 use crate::meld::Meld;
+use crate::meld::MeldKind;
 use crate::player::PlayerId;
 use crate::tile::{Tile, TileType};
 use serde::{Deserialize, Serialize};
@@ -148,9 +149,39 @@ pub fn extract_kuikae_tiles(meld: &Meld) -> Vec<TileType> {
     let Some(called) = meld.called_tile else {
         return vec![];
     };
-    meld.tiles
-        .iter()
-        .filter(|t| **t != called)
-        .map(|t| t.tile_type())
-        .collect()
+    let called_type = called.tile_type();
+    let mut forbidden = vec![called_type];
+
+    // 吃两面搭子时还禁止打出另一张筋牌：
+    // 23 吃 1 禁 1、4；34 吃 2 禁 2、5；……；78 吃 9 禁 9、6。
+    // 边张和坎张没有额外的筋食替，因此只禁止现物。
+    if meld.kind == MeldKind::Chi {
+        let mut hand_tiles: Vec<TileType> = meld
+            .tiles
+            .iter()
+            .filter(|tile| **tile != called)
+            .map(|tile| tile.tile_type())
+            .collect();
+        hand_tiles.sort_by_key(|tile| tile.0);
+
+        if hand_tiles.len() == 2
+            && hand_tiles[0].is_number()
+            && hand_tiles[1].is_number()
+            && hand_tiles[0].suit() == hand_tiles[1].suit()
+            && hand_tiles[1].0 == hand_tiles[0].0 + 1
+        {
+            let first = hand_tiles[0].rank().0;
+            let last = hand_tiles[1].rank().0;
+            let called_rank = called_type.rank().0;
+            if called_rank == first.saturating_sub(1) && first >= 2 {
+                forbidden.push(TileType(called_type.0.saturating_sub(1)));
+            } else if called_rank == last + 1 && last <= 8 {
+                forbidden.push(TileType(called_type.0 + 1));
+            }
+        }
+    }
+
+    forbidden.sort_by_key(|tile| tile.0);
+    forbidden.dedup();
+    forbidden
 }

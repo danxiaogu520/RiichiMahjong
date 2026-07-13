@@ -5,8 +5,6 @@ use riichi_core::tile::{Tile, TileType};
 use riichi_core::wall::Wall;
 use serde::{Deserialize, Serialize};
 
-use crate::rules::RuleConfig;
-
 pub use riichi_core::game::{extract_kuikae_tiles, GameError, GamePhase};
 
 /// 麻将游戏状态核心结构体
@@ -23,13 +21,11 @@ pub use riichi_core::game::{extract_kuikae_tiles, GameError, GamePhase};
 /// - 当前游戏阶段
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
-    /// 当前牌局使用的规则配置。
-    pub rules: RuleConfig,
     /// 4 个玩家的完整状态
     pub players: [Player; 4],
-    /// 当前场风（东场/南场）
+    /// 当前场风（东场/南场/西场）
     pub wind: TileType,
-    /// 当前局数（1-8，对应东一局到南四局）
+    /// 当前局数（1-12，对应东一局到西四局）
     pub round: u32,
     /// 本场数（连庄时递增）
     pub honba: u32,
@@ -61,6 +57,8 @@ pub struct GameState {
     pub pao_targets: [Option<usize>; 4],
     /// 当前游戏阶段（摸牌/行动/响应/局结束）
     pub phase: GamePhase,
+    /// 终局时、剩余立直棒加入前确定的最终排名。
+    pub ranking_at_game_end: Option<[usize; 4]>,
 }
 
 impl Default for GameState {

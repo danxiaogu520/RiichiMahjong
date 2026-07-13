@@ -4,7 +4,11 @@ use riichi_core::game::{CallType, GameEvent, ResponseAction, RoundEndReason, Tur
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
+use riichi_engine::rules::{
+    ALLOW_DOUBLE_RON, ALLOW_TRIPLE_RON, RESPONSE_TIMEOUT_MS, TURN_TIMEOUT_MS,
+};
 use riichi_logic::shanten::ShantenCalculator;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration, Instant};
@@ -44,7 +48,10 @@ impl GameLoop {
             if self.game.is_game_over() {
                 self.broadcast(ServerEvent::GameOver {
                     scores: self.scores(),
-                    ranking: self.game.final_ranking(),
+                    ranking: self
+                        .game
+                        .ranking_at_game_end
+                        .unwrap_or_else(|| self.game.final_ranking()),
                 })
                 .await;
                 return;
@@ -297,7 +304,9 @@ impl GameLoop {
             .await;
         }
 
-        let responses = self.wait_for_call_responses(&eligible).await;
+        let responses = self
+            .wait_for_prioritized_call_responses(&call_options, &eligible)
+            .await;
         for (pid, response) in responses {
             let player_options: Vec<_> = call_options
                 .iter()
@@ -308,6 +317,10 @@ impl GameLoop {
             let has_ron = player_options
                 .iter()
                 .any(|o| matches!(o.call_type, CallType::Ron));
+
+            if has_ron && !matches!(response, CallResponseMsg::Ron) {
+                let _ = self.game.record_response_pass(pid);
+            }
 
             match response {
                 CallResponseMsg::Ron if has_ron => {
@@ -345,9 +358,9 @@ impl GameLoop {
                     ordered_winners.push(candidate);
                 }
             }
-            let max_winners = if self.game.rules.allow_triple_ron {
+            let max_winners = if ALLOW_TRIPLE_RON {
                 3
-            } else if self.game.rules.allow_double_ron {
+            } else if ALLOW_DOUBLE_RON {
                 2
             } else {
                 1
@@ -419,7 +432,10 @@ impl GameLoop {
         if self.game.is_game_over() {
             self.broadcast(ServerEvent::GameOver {
                 scores: self.scores(),
-                ranking: self.game.final_ranking(),
+                ranking: self
+                    .game
+                    .ranking_at_game_end
+                    .unwrap_or_else(|| self.game.final_ranking()),
             })
             .await;
         } else {
@@ -464,7 +480,7 @@ impl GameLoop {
     }
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnActionMsg> {
-        let deadline = Instant::now() + Duration::from_millis(self.game.rules.turn_timeout_ms);
+        let deadline = Instant::now() + Duration::from_millis(TURN_TIMEOUT_MS);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             let received = timeout(remaining, self.action_rx.recv()).await;
@@ -492,41 +508,102 @@ impl GameLoop {
             })
     }
 
-    async fn wait_for_call_responses(
+    /// 收集同步响应：低优先级响应可以先到达，但在更高优先级尚未
+    /// 完成前只缓存、不处理。更高优先级动作一旦提交，低优先级响应
+    /// 全部失效；只有更高优先级全部 Pass/超时后才进入下一层。
+    async fn wait_for_prioritized_call_responses(
         &mut self,
+        call_options: &[riichi_core::game::CallOption],
         eligible: &[PlayerId],
     ) -> Vec<(PlayerId, CallResponseMsg)> {
         if eligible.is_empty() {
             return Vec::new();
         }
 
-        let deadline = Instant::now() + Duration::from_millis(self.game.rules.response_timeout_ms);
+        let deadline = Instant::now() + Duration::from_millis(RESPONSE_TIMEOUT_MS);
         let eligible_set: HashSet<PlayerId> = eligible.iter().copied().collect();
-        let mut received_players = HashSet::new();
-        let mut responses = Vec::with_capacity(eligible.len());
-        loop {
-            if received_players.len() == eligible_set.len() {
-                break;
+        let mut responses: HashMap<PlayerId, CallResponseMsg> = HashMap::new();
+
+        // 同一玩家只有一个合法的非 Pass 动作；按 CallOption 判断其
+        // 当前是否属于某个优先级层。荣和层可能有多个玩家，其他层
+        // 在合法牌局中最多只有一个玩家。
+        let priority_players = |priority: u8| -> Vec<PlayerId> {
+            eligible
+                .iter()
+                .copied()
+                .filter(|pid| {
+                    call_options.iter().any(|option| {
+                        option.player == *pid
+                            && match (&option.call_type, priority) {
+                                (CallType::Ron, 0) => true,
+                                (CallType::Minkan { .. }, 1) => true,
+                                (CallType::Pon { .. }, 2) => true,
+                                (CallType::Chi { .. }, 3) => true,
+                                _ => false,
+                            }
+                    })
+                })
+                .collect()
+        };
+
+        for priority in 0..=3u8 {
+            let players = priority_players(priority);
+            if players.is_empty() {
+                continue;
             }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let received = timeout(remaining, self.action_rx.recv()).await;
-            match received {
-                Ok(Some((pid, PlayerAction::CallResponse(response))))
-                    if eligible_set.contains(&pid) && received_players.insert(pid) =>
-                {
-                    responses.push((pid, response));
+
+            let pending: HashSet<PlayerId> = players
+                .iter()
+                .copied()
+                .filter(|pid| !responses.contains_key(pid))
+                .collect();
+            while !pending.iter().all(|pid| responses.contains_key(pid)) {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    break;
                 }
-                Ok(Some(_)) => continue,
-                Ok(None) | Err(_) => break,
+                let received = timeout(remaining, self.action_rx.recv()).await;
+                match received {
+                    Ok(Some((pid, PlayerAction::CallResponse(response))))
+                        if eligible_set.contains(&pid) && !responses.contains_key(&pid) =>
+                    {
+                        responses.insert(pid, response);
+                    }
+                    Ok(Some(_)) => continue,
+                    Ok(None) | Err(_) => break,
+                }
+            }
+
+            // 超时只补齐当前优先级尚未响应的玩家；缓存的低优先级
+            // 响应会在没有更高优先级动作时进入后续层。
+            for &player in &players {
+                responses.entry(player).or_insert(CallResponseMsg::Pass);
+            }
+
+            let has_action = responses.iter().any(|(pid, response)| {
+                players.contains(pid)
+                    && matches!(
+                        (priority, response),
+                        (0, CallResponseMsg::Ron)
+                            | (1, CallResponseMsg::Minkan { .. })
+                            | (2, CallResponseMsg::Pon { .. })
+                            | (3, CallResponseMsg::Chi { .. })
+                    )
+            });
+            if has_action {
+                break;
             }
         }
 
-        for &player in eligible {
-            if received_players.insert(player) {
-                responses.push((player, CallResponseMsg::Pass));
-            }
-        }
-        responses
+        eligible
+            .iter()
+            .map(|&player| {
+                (
+                    player,
+                    responses.remove(&player).unwrap_or(CallResponseMsg::Pass),
+                )
+            })
+            .collect()
     }
 
     fn riichi_options(&self, player: PlayerId) -> Vec<Tile> {
@@ -566,6 +643,24 @@ impl GameLoop {
             players[2].melds.clone(),
             players[3].melds.clone(),
         ];
+        let hand_counts = [
+            players[0].hand.len(),
+            players[1].hand.len(),
+            players[2].hand.len(),
+            players[3].hand.len(),
+        ];
+        let winds = [
+            players[0].wind,
+            players[1].wind,
+            players[2].wind,
+            players[3].wind,
+        ];
+        let is_riichi = [
+            players[0].is_riichi,
+            players[1].is_riichi,
+            players[2].is_riichi,
+            players[3].is_riichi,
+        ];
 
         #[allow(clippy::needless_range_loop)]
         for idx in 0..4 {
@@ -590,7 +685,10 @@ impl GameLoop {
                 },
                 hand_tiles: my_hand,
                 hand_count: players[idx].hand.len(),
+                hand_counts,
                 points,
+                winds,
+                is_riichi,
                 discards: discards.clone(),
                 melds_count,
                 melds: melds.clone(),
@@ -638,7 +736,8 @@ fn should_replace_call(
 
 fn call_priority_key(player: PlayerId, action: &ResponseAction, discarder: PlayerId) -> (u8, u8) {
     let priority = match action {
-        ResponseAction::Pon { .. } | ResponseAction::Minkan { .. } => 2,
+        ResponseAction::Minkan { .. } => 3,
+        ResponseAction::Pon { .. } => 2,
         ResponseAction::Chi { .. } => 1,
         ResponseAction::Pass | ResponseAction::Ron => 0,
     };
