@@ -19,9 +19,9 @@
 - `riichi-logic`：向听、和牌、役种、符数、点数及牌效分析。
 - `riichi-engine`：`GameState`、行动合法性、回合推进、响应窗口和结算。
 - `riichi-proto`：客户端/服务端消息、玩家视角状态和隐藏信息过滤。
-- `riichi-server`：网络、房间和连接边界；当前保留旧 CLI 入口作为迁移兼容层。
+- `riichi-server`：网络、房间和连接边界，以及 session 到线协议的转换。
 - `riichi-debug`：终端调试客户端，提供本地 AI 填位模式。
-- `riichi-session`：传输无关的单房间游戏会话，承载 GameLoop、内部命令和事件。
+- `riichi-session`：传输无关的单房间游戏会话，承载 GameSession、内部命令和事件。
 
 当前主要缺口是：独立网络入口、房间管理、连接会话、协议可靠性、Web UI、断线处理和部署流程。
 
@@ -98,7 +98,7 @@ riichi-engine ────► riichi-core + riichi-logic
 
 ### 阶段 1：独立 GameSession
 
-目标：把当前 `GameLoop` 封装为与传输方式无关的单房间游戏会话。
+目标：把当前 `GameSession` 封装为与传输方式无关的单房间游戏会话。
 
 工作项：
 
@@ -324,7 +324,7 @@ web-client/
 
 建议下一轮只实现以下范围：
 
-1. 将 `GameLoop` 重命名或封装为 `GameSession`。
+1. 将 `GameSession` 重命名或封装为 `GameSession`。
 2. 抽象与传输无关的玩家命令和玩家输出。
 3. 在 `riichi-server` 中增加一个最小 WebSocket 服务。
 4. 用一个网络终端客户端连接服务器。

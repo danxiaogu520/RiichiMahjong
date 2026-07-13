@@ -46,7 +46,7 @@ pub fn detect_calls(
         // 立直后仍可荣和，但不能再进行吃、碰、大明杠。
         if !player.is_riichi {
             // 大明杠检测：手中有 3 张相同牌
-            let count = hand.count_type(tt.0);
+            let count = hand.count_type(tt);
             if count >= 3 {
                 let hand_tiles = find_tiles_of_type_3(hand, tt);
                 options.push(CallOption {

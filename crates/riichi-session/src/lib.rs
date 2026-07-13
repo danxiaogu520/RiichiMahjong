@@ -10,7 +10,7 @@ pub mod game;
 
 pub use agent::{AgentFuture, PlayerAgent};
 pub use channel::{
-    create_player_pair, ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, PlayerHandle,
-    ServerEvent, TurnActionMsg,
+    create_player_pair, CallResponse, ClientHandle, PlayerAction, PlayerCommand, PlayerHandle,
+    SessionEvent, TurnAction,
 };
-pub use game::GameLoop;
+pub use game::GameSession;

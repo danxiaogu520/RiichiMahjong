@@ -84,7 +84,7 @@ fn render_opponent(f: &mut Frame, app: &App, index: usize, area: Rect) {
     if let Some((pending_player, pending_tile)) = app.pending_discard {
         if pending_player.0 == index {
             let river_len = app.discards[index].len();
-            if river_len > 0 && river_len % 6 == 0 {
+            if river_len > 0 && river_len.is_multiple_of(6) {
                 discards.push(Span::raw("\n  "));
             }
             discards.push(Span::styled(

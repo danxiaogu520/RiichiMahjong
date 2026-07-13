@@ -6,6 +6,5 @@ edition = "2021"
 [dependencies]
 riichi-core = { path = "../riichi-core" }
 riichi-engine = { path = "../riichi-engine" }
-riichi-logic = { path = "../riichi-logic" }
 rand = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::tile::{Rank, Suit, Tile};
+use crate::tile::{Tile, TileType};
 
 /// 手牌最大容量（13 张手牌 + 1 张摸牌 = 14）
 const MAX_HAND: usize = 14;
@@ -40,7 +40,8 @@ impl Hand {
     pub fn from_tiles(tiles: &[Tile]) -> Self {
         let mut hand = Self::new();
         for &tile in tiles {
-            hand.add(tile);
+            hand.add(tile)
+                .expect("Hand::from_tiles received more than 14 tiles");
         }
         hand
     }
@@ -66,14 +67,17 @@ impl Hand {
     }
 
     /// 添加一张牌（插入到排序位置）
-    pub fn add(&mut self, tile: Tile) {
-        assert!(self.tiles.len() < MAX_HAND, "手牌已满，无法添加");
+    pub fn add(&mut self, tile: Tile) -> Result<(), HandError> {
+        if self.is_full() {
+            return Err(HandError::HandFull);
+        }
         let pos = self
             .tiles
             .iter()
             .position(|&t| t.raw() > tile.raw())
             .unwrap_or(self.tiles.len());
         self.tiles.insert(pos, tile);
+        Ok(())
     }
 
     /// 移除一张牌
@@ -92,30 +96,17 @@ impl Hand {
         self.tiles.contains(&tile)
     }
 
-    /// 统计某种牌（按 type_index）的数量
-    pub fn count_type(&self, type_index: u8) -> usize {
+    /// 统计某种牌的数量
+    pub fn count_type(&self, tile_type: TileType) -> usize {
         self.tiles
             .iter()
-            .filter(|t| t.type_index() == type_index)
-            .count()
-    }
-
-    /// 统计某种牌（按花色和数字）的数量
-    pub fn count(&self, suit: Suit, rank: Rank) -> usize {
-        self.tiles
-            .iter()
-            .filter(|t| t.suit() == suit && t.rank() == rank)
+            .filter(|t| t.tile_type() == tile_type)
             .count()
     }
 
     /// 获取指定索引的牌
     pub fn get(&self, index: usize) -> Option<Tile> {
         self.tiles.get(index).copied()
-    }
-
-    /// 排序手牌
-    pub fn sort(&mut self) {
-        self.tiles.sort_by_key(|t| t.raw());
     }
 }
 
@@ -134,5 +125,33 @@ impl std::fmt::Display for Hand {
             write!(f, "{}", tile)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Hand, HandError};
+    use crate::tile::{Tile, TileType};
+
+    #[test]
+    fn add_keeps_tiles_sorted_and_counts_by_type() {
+        let mut hand = Hand::new();
+        hand.add(Tile::from_raw(2)).unwrap();
+        hand.add(Tile::from_raw(0)).unwrap();
+        hand.add(Tile::from_raw(1)).unwrap();
+
+        assert_eq!(
+            hand.tiles(),
+            &[Tile::from_raw(0), Tile::from_raw(1), Tile::from_raw(2)]
+        );
+        assert_eq!(hand.count_type(TileType::MAN1), 3);
+    }
+
+    #[test]
+    fn add_returns_hand_full_instead_of_panicking() {
+        let tiles = Tile::all_tiles();
+        let mut hand = Hand::from_tiles(&tiles[..14]);
+
+        assert_eq!(hand.add(tiles[14]), Err(HandError::HandFull));
     }
 }
