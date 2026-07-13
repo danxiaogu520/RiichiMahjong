@@ -1,9 +1,9 @@
 use riichi_core::player::PlayerId;
 use riichi_server::ai_client::run_ai_client;
-use riichi_server::channel::{
+use riichi_session::GameLoop;
+use riichi_session::{
     create_player_pair, ActionMsg, CallResponseMsg, PlayerAction, ServerEvent, TurnActionMsg,
 };
-use riichi_server::game::GameLoop;
 use tokio::sync::mpsc;
 
 #[tokio::main]

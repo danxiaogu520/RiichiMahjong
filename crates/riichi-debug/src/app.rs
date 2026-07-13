@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use riichi_ai::{choose_discard, decide_call, decide_riichi};
-use riichi_server::channel::{
+use riichi_session::{
     ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
 };
 
