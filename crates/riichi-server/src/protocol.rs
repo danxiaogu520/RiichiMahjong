@@ -32,7 +32,10 @@ pub fn client_message_to_action(message: ClientMessage) -> Option<PlayerAction> 
             CallResponsePayload::Chi { hand_tiles } => CallResponse::Chi { hand_tiles },
             CallResponsePayload::Minkan { hand_tiles } => CallResponse::Minkan { hand_tiles },
         })),
-        ClientMessage::JoinRoom { .. } | ClientMessage::Ready | ClientMessage::LeaveRoom => None,
+        ClientMessage::JoinRoom { .. }
+        | ClientMessage::RequestSnapshot
+        | ClientMessage::Ready
+        | ClientMessage::LeaveRoom => None,
     }
 }
 
