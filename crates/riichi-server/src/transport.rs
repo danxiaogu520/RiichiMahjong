@@ -208,10 +208,15 @@ async fn websocket_session(
                 if matches!(message, ServerMessage::StateSnapshot(_)) {
                     sent_snapshot = true;
                 }
+                let game_over = matches!(&message, ServerMessage::GameOver { .. });
                 if send_server_message(&outbound_tx, &mut sequencer, message)
                     .await
                     .is_err()
                 {
+                    break;
+                }
+                if game_over {
+                    let _ = application.finish_game(&room_id).await;
                     break;
                 }
             }

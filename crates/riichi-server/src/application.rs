@@ -159,6 +159,16 @@ impl ServerApplication {
             Arc::new(Mutex::new(client_handle.event_rx)),
         ))
     }
+
+    /// 对局结束后释放会话和房间，避免内存房间及控制通道永久保留。
+    pub async fn finish_game(&self, room_id: &str) -> Result<(), RoomError> {
+        self.sessions.lock().await.remove(room_id);
+        self.rooms
+            .write()
+            .expect("room manager lock poisoned")
+            .close_room(room_id)
+            .map(|_| ())
+    }
 }
 
 fn room_info(room: &crate::room::Room) -> RoomInfo {
@@ -229,5 +239,28 @@ mod tests {
                 .unwrap()
                 .started
         );
+    }
+
+    #[tokio::test]
+    async fn finished_game_releases_session_and_room() {
+        let app = ServerApplication::new();
+        let room = app.create_room();
+        let mut joined = Vec::new();
+        for name in ["东", "南", "西", "北"] {
+            joined.push(app.join_room(&room.id, name).unwrap());
+        }
+        for player in &joined {
+            app.set_ready(&room.id, &player.token, true).unwrap();
+        }
+
+        app.launch_game(&room.id).await.unwrap();
+        app.finish_game(&room.id).await.unwrap();
+
+        assert_eq!(app.authenticate(&room.id, &joined[0].token), Err(RoomError::NotFound));
+        assert!(matches!(
+            app.session_channels(&room.id, riichi_core::player::PlayerId(0))
+                .await,
+            Err(RoomError::GameNotStarted)
+        ));
     }
 }
