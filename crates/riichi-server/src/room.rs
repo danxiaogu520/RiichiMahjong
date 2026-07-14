@@ -91,6 +91,15 @@ impl Room {
             .ok_or(RoomError::InvalidPlayer)
     }
 
+    pub fn player_by_token(&self, token: &str) -> Result<PlayerId, RoomError> {
+        self.players
+            .iter()
+            .flatten()
+            .find(|player| player.token == token)
+            .map(|player| player.id)
+            .ok_or(RoomError::InvalidToken)
+    }
+
     pub fn set_ready(&mut self, player: PlayerId, ready: bool) -> Result<(), RoomError> {
         if self.started {
             return Err(RoomError::Started);

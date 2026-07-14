@@ -8,8 +8,9 @@ riichi-core = { path = "../riichi-core" }
 riichi-engine = { path = "../riichi-engine" }
 riichi-proto = { path = "../riichi-proto" }
 riichi-session = { path = "../riichi-session" }
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [dev-dependencies]
