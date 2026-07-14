@@ -2,6 +2,14 @@ use crate::room::{RoomError, RoomManager, RoomPlayer};
 use riichi_core::player::PlayerId;
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
+use tokio::sync::{mpsc, Mutex};
+
+type EventReceiver = Arc<Mutex<mpsc::Receiver<riichi_session::SessionEvent>>>;
+
+struct ActiveSession {
+    action_tx: mpsc::Sender<riichi_session::PlayerCommand>,
+    event_rxs: [EventReceiver; 4],
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RoomInfo {
@@ -24,6 +32,7 @@ pub struct JoinInfo {
 #[derive(Clone, Default)]
 pub struct ServerApplication {
     rooms: Arc<RwLock<RoomManager>>,
+    sessions: Arc<Mutex<std::collections::HashMap<String, ActiveSession>>>,
 }
 
 impl ServerApplication {
@@ -74,6 +83,64 @@ impl ServerApplication {
     pub fn authenticate(&self, room_id: &str, token: &str) -> Result<PlayerId, RoomError> {
         let rooms = self.rooms.read().expect("room manager lock poisoned");
         rooms.room(room_id)?.player_by_token(token)
+    }
+
+    pub async fn launch_game(&self, room_id: &str) -> Result<RoomInfo, RoomError> {
+        let room = {
+            let mut rooms = self.rooms.write().expect("room manager lock poisoned");
+            rooms.room_mut(room_id)?.start()?;
+            room_info(rooms.room(room_id)?)
+        };
+
+        let mut pairs = Vec::new();
+        for index in 0..4 {
+            pairs.push(riichi_session::create_player_pair(PlayerId(index)));
+        }
+        let event_txs = std::array::from_fn(|index| pairs[index].0.event_tx.clone());
+        let event_rxs = std::array::from_fn(|index| {
+            Arc::new(Mutex::new(std::mem::replace(
+                &mut pairs[index].1.event_rx,
+                mpsc::channel(1).1,
+            )))
+        });
+        let (action_tx, action_rx) = mpsc::channel(256);
+        for (mut player, _) in pairs {
+            let action_tx = action_tx.clone();
+            tokio::spawn(async move {
+                while let Some(command) = player.action_rx.recv().await {
+                    if action_tx.send(command).await.is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+
+        let session = riichi_session::GameSession::new(event_txs, action_tx.clone(), action_rx);
+        tokio::spawn(async move {
+            let mut session = session;
+            session.run().await;
+        });
+        self.sessions.lock().await.insert(
+            room_id.to_string(),
+            ActiveSession {
+                action_tx,
+                event_rxs,
+            },
+        );
+        Ok(room)
+    }
+
+    pub async fn session_channels(
+        &self,
+        room_id: &str,
+        player: PlayerId,
+    ) -> Result<(mpsc::Sender<riichi_session::PlayerCommand>, EventReceiver), RoomError> {
+        let sessions = self.sessions.lock().await;
+        let session = sessions.get(room_id).ok_or(RoomError::GameNotStarted)?;
+        Ok((
+            session.action_tx.clone(),
+            session.event_rxs[player.0].clone(),
+        ))
     }
 }
 

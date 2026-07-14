@@ -23,6 +23,7 @@ pub enum RoomError {
     InvalidPlayer,
     InvalidToken,
     EmptyNickname,
+    GameNotStarted,
 }
 
 impl fmt::Display for RoomError {
@@ -34,6 +35,7 @@ impl fmt::Display for RoomError {
             Self::InvalidPlayer => "玩家座位无效",
             Self::InvalidToken => "连接凭证无效",
             Self::EmptyNickname => "昵称不能为空",
+            Self::GameNotStarted => "游戏尚未开始",
         };
         formatter.write_str(message)
     }
