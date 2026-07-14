@@ -37,6 +37,7 @@ cargo run -p riichi-debug   # 启动终端调试客户端
 - [`docs/RULES.md`](docs/RULES.md)：固定规则口径、结算顺序和已知缺口
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md)：消息边界和状态视图
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)：当前限制与后续工作
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)：Tauri 构建、Linux 服务和 HTTPS/WSS 部署
 
 ## 许可
 
