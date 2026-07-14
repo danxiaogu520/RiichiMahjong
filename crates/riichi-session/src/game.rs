@@ -27,6 +27,7 @@ pub struct GameSession {
     pub action_rx: mpsc::Receiver<PlayerCommand>,
     control_rx: mpsc::Receiver<SessionControl>,
     control_enabled: bool,
+    action_forwarders: [Option<tokio::task::JoinHandle<()>>; 4],
 }
 
 impl GameSession {
@@ -44,6 +45,7 @@ impl GameSession {
             action_rx,
             control_rx,
             control_enabled: false,
+            action_forwarders: std::array::from_fn(|_| None),
         }
     }
 
@@ -61,6 +63,7 @@ impl GameSession {
             action_rx,
             control_rx,
             control_enabled: true,
+            action_forwarders: std::array::from_fn(|_| None),
         }
     }
 
@@ -149,14 +152,17 @@ impl GameSession {
         mut action_rx: mpsc::Receiver<PlayerCommand>,
     ) {
         self.event_txs[player.0] = event_tx;
+        if let Some(forwarder) = self.action_forwarders[player.0].take() {
+            forwarder.abort();
+        }
         let action_tx = self.action_tx.clone();
-        tokio::spawn(async move {
+        self.action_forwarders[player.0] = Some(tokio::spawn(async move {
             while let Some(message) = action_rx.recv().await {
                 if message.player == player && action_tx.send(message).await.is_err() {
                     break;
                 }
             }
-        });
+        }));
         self.broadcast_state().await;
         self.send_current_action_prompt(player).await;
     }

@@ -115,16 +115,9 @@ impl ServerApplication {
         }
         let event_txs = std::array::from_fn(|index| pairs[index].0.event_tx.clone());
         let (action_tx, action_rx) = mpsc::channel(256);
-        for (mut player, _) in pairs {
-            let action_tx = action_tx.clone();
-            tokio::spawn(async move {
-                while let Some(command) = player.action_rx.recv().await {
-                    if action_tx.send(command).await.is_err() {
-                        break;
-                    }
-                }
-            });
-        }
+        // 玩家连接建立后由 SessionControl 注入新的行动通道；这里不再
+        // 为尚未连接的初始 pair 创建永久转发任务，避免重连后旧连接继续提交。
+        drop(pairs);
 
         let (control_tx, control_rx) = mpsc::channel(32);
         let session = riichi_session::GameSession::new_with_control(
