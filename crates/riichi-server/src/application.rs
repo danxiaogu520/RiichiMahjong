@@ -70,6 +70,11 @@ impl ServerApplication {
         rooms.room_mut(room_id)?.start()?;
         Ok(room_info(rooms.room(room_id)?))
     }
+
+    pub fn authenticate(&self, room_id: &str, token: &str) -> Result<PlayerId, RoomError> {
+        let rooms = self.rooms.read().expect("room manager lock poisoned");
+        rooms.room(room_id)?.player_by_token(token)
+    }
 }
 
 fn room_info(room: &crate::room::Room) -> RoomInfo {
