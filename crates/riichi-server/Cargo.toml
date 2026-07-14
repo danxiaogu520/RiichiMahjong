@@ -8,3 +8,5 @@ riichi-core = { path = "../riichi-core" }
 riichi-engine = { path = "../riichi-engine" }
 riichi-proto = { path = "../riichi-proto" }
 riichi-session = { path = "../riichi-session" }
+axum = "0.7"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
