@@ -26,6 +26,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "category": "Game",
+    "shortDescription": "四人联网立直麻将客户端",
+    "longDescription": "通过房间码和朋友进行服务端权威的四人立直麻将对局。",
+    "copyright": "Copyright © 2026 Riichi Mahjong contributors"
   }
 }
