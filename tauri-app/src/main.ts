@@ -246,6 +246,9 @@ function handleServerMessage(message: ServerEnvelope): void {
     latestMessage = "本局已结束";
   } else if ("Error" in body) {
     latestMessage = String(body.Error);
+  } else if ("CommandRejected" in body) {
+    const rejection = body.CommandRejected as { reason?: string };
+    latestMessage = `操作已拒绝：${rejection.reason ?? "状态已过期"}`;
   }
   const status = document.querySelector<HTMLParagraphElement>("#game-status");
   if (status) status.textContent = latestMessage;
