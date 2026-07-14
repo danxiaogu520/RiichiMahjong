@@ -1,15 +1,16 @@
 use crate::room::{RoomError, RoomManager, RoomPlayer};
 use riichi_core::player::PlayerId;
+use serde::Serialize;
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RoomInfo {
     pub id: String,
     pub players: Vec<RoomPlayer>,
     pub started: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JoinInfo {
     pub room: RoomInfo,
     pub player: PlayerId,

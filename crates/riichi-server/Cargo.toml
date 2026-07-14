@@ -9,4 +9,8 @@ riichi-engine = { path = "../riichi-engine" }
 riichi-proto = { path = "../riichi-proto" }
 riichi-session = { path = "../riichi-session" }
 axum = "0.7"
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

@@ -675,7 +675,9 @@ dependencies = [
  "riichi-engine",
  "riichi-proto",
  "riichi-session",
+ "serde",
  "tokio",
+ "tower",
 ]
 
 [[package]]
