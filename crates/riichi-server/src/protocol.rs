@@ -6,10 +6,11 @@ use riichi_core::meld::MeldKind;
 use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
-    ActionRequest, CallResponsePayload, CallTypeView, ClientMessage, GamePhaseView, GameStateView,
-    MeldKindView, MeldView, PlayerView, ServerEnvelope, ServerMessage, TenpaiInfoView,
-    TurnActionPayload, WaitInfoView, PROTOCOL_VERSION,
+    ActionRequest, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage, GamePhaseView,
+    GameStateView, MeldKindView, MeldView, PlayerView, ServerEnvelope, ServerMessage,
+    TenpaiInfoView, TurnActionPayload, WaitInfoView, PROTOCOL_VERSION,
 };
+use std::collections::HashSet;
 
 use riichi_session::{CallResponse, PlayerAction, SessionEvent, TurnAction};
 
@@ -20,6 +21,41 @@ use riichi_session::{CallResponse, PlayerAction, SessionEvent, TurnAction};
 #[derive(Debug, Default)]
 pub struct ServerSequencer {
     next_seq: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandError {
+    Duplicate,
+    StaleSequence { expected: u64, actual: u64 },
+}
+
+/// 保存一个连接已经处理过的命令，拒绝重复提交和基于过期状态的行动。
+#[derive(Debug, Default)]
+pub struct CommandTracker {
+    seen: HashSet<u64>,
+}
+
+impl CommandTracker {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn validate(
+        &mut self,
+        envelope: &ClientEnvelope,
+        actual_seq: u64,
+    ) -> Result<(), CommandError> {
+        if envelope.expected_seq != actual_seq {
+            return Err(CommandError::StaleSequence {
+                expected: envelope.expected_seq,
+                actual: actual_seq,
+            });
+        }
+        if !self.seen.insert(envelope.command_id) {
+            return Err(CommandError::Duplicate);
+        }
+        Ok(())
+    }
 }
 
 impl ServerSequencer {
@@ -200,14 +236,15 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 #[cfg(test)]
 mod tests {
     use super::{
-        call_options_to_wire, client_message_to_action, state_update_to_wire, ServerSequencer,
+        call_options_to_wire, client_message_to_action, state_update_to_wire, CommandError,
+        CommandTracker, ServerSequencer,
     };
     use riichi_core::game::{CallOption, CallType};
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
     use riichi_engine::game::GamePhase;
     use riichi_proto::messages::{
-        ClientMessage, ServerMessage, TurnActionPayload, PROTOCOL_VERSION,
+        ClientEnvelope, ClientMessage, ServerMessage, TurnActionPayload, PROTOCOL_VERSION,
     };
     use riichi_session::{PlayerAction, SessionEvent, TurnAction};
 
@@ -292,5 +329,25 @@ mod tests {
         assert_eq!(first.seq, 1);
         assert_eq!(second.seq, 2);
         assert_eq!(sequencer.current_seq(), 2);
+    }
+
+    #[test]
+    fn command_tracker_rejects_stale_and_duplicate_commands() {
+        let mut tracker = CommandTracker::new();
+        let command = ClientEnvelope {
+            protocol_version: PROTOCOL_VERSION,
+            command_id: 7,
+            expected_seq: 3,
+            body: ClientMessage::Ready,
+        };
+        assert_eq!(
+            tracker.validate(&command, 2),
+            Err(CommandError::StaleSequence {
+                expected: 3,
+                actual: 2
+            })
+        );
+        assert_eq!(tracker.validate(&command, 3), Ok(()));
+        assert_eq!(tracker.validate(&command, 3), Err(CommandError::Duplicate));
     }
 }
