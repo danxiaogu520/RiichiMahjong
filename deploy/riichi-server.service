@@ -1,0 +1,22 @@
+[Unit]
+Description=Riichi Mahjong authoritative game server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riichi
+Group=riichi
+WorkingDirectory=/opt/riichi-mahjong
+EnvironmentFile=-/etc/riichi-mahjong/server.env
+ExecStart=/opt/riichi-mahjong/bin/riichi-server
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/riichi-mahjong
+
+[Install]
+WantedBy=multi-user.target
