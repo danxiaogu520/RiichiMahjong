@@ -27,7 +27,10 @@ struct AiState {
 pub async fn run_ai_client(mut handle: ClientHandle) {
     let mut state = AiState {
         hand_tiles: Vec::new(),
-        phase: GamePhase::DrawPhase,
+        phase: GamePhase::DrawPhase {
+            player: PlayerId(0),
+            position: riichi_core::game::DrawPosition::LiveWall,
+        },
         current_player: PlayerId(0),
         can_tsumo: false,
         can_riichi: false,
@@ -39,7 +42,6 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
         match event {
             SessionEvent::StateUpdate {
                 phase,
-                current_player,
                 hand_tiles,
                 discards,
                 melds,
@@ -47,7 +49,13 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 ..
             } => {
                 state.phase = phase;
-                state.current_player = current_player;
+                state.current_player = match state.phase {
+                    GamePhase::DrawPhase { player, .. }
+                    | GamePhase::ActionPhase { player, .. }
+                    | GamePhase::ResponsePhase { player, .. }
+                    | GamePhase::ChankanResponse { player, .. } => player,
+                    GamePhase::RoundOver => PlayerId(0),
+                };
                 state.hand_tiles = hand_tiles;
                 state.visible = build_visible_tiles(&melds, &discards, &dora, handle.id);
             }

@@ -5,6 +5,7 @@ use riichi_core::tile::TileType;
 use riichi_core::wall::Wall;
 
 use crate::game::{GamePhase, GameState};
+use riichi_core::game::DrawPosition;
 
 impl GameState {
     /// 创建新的游戏状态（默认值）
@@ -21,16 +22,17 @@ impl GameState {
                 Player::new(PlayerId(2), wind_from_index(2)),
                 Player::new(PlayerId(3), wind_from_index(3)),
             ],
-            current_player: PlayerId(0),
             wind: TileType::EAST,
             events: Vec::new(),
             history: Vec::new(),
             round_start_points: [starting_points; 4],
             kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             pao_targets: [None; 4],
-            phase: GamePhase::ActionPhase,
+            phase: GamePhase::DrawPhase {
+                player: PlayerId(0),
+                position: DrawPosition::LiveWall,
+            },
             ranking_at_game_end: None,
-            drawn_tile: None,
             round: 1,
             honba: 0,
             riichi_sticks: 0,

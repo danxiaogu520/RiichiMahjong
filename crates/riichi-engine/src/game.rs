@@ -1,4 +1,4 @@
-use riichi_core::game::GameEvent;
+use riichi_core::game::{DrawPosition, GameEvent};
 use riichi_core::player::Player;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -31,12 +31,6 @@ pub struct GameState {
     pub honba: u32,
     /// 场上未被赢走的立直棒数量
     pub riichi_sticks: u32,
-    /// 当前行动玩家
-    pub current_player: PlayerId,
-    /// 自摸牌缓冲区：刚从牌山摸到、尚未进手的牌
-    /// 摸牌后存在于缓冲区中，手牌保持 3n+1 张
-    /// 玩家行动时决定去向：打出（不进手）、自摸/暗杠/加杠（先提交到手牌再操作）
-    pub drawn_tile: Option<Tile>,
     /// 牌山（136 张牌的洗牌/摸牌/杠管理）
     pub wall: Wall,
     /// 宝牌列表（从宝牌指示牌推导出的宝牌类型）
@@ -77,5 +71,33 @@ pub struct TenpaiInfo {
 impl Default for GameState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl GameState {
+    /// 当前 phase 中拥有行动权或发起当前窗口的玩家。
+    pub fn current_player(&self) -> Option<PlayerId> {
+        match self.phase {
+            GamePhase::DrawPhase { player, .. }
+            | GamePhase::ActionPhase { player, .. }
+            | GamePhase::ResponsePhase { player, .. }
+            | GamePhase::ChankanResponse { player, .. } => Some(player),
+            GamePhase::RoundOver => None,
+        }
+    }
+
+    /// 当前行动阶段的摸牌；鸣牌后的行动阶段没有摸牌。
+    pub fn drawn_tile(&self) -> Option<Tile> {
+        match self.phase {
+            GamePhase::ActionPhase { drawn_tile, .. } => drawn_tile,
+            _ => None,
+        }
+    }
+
+    pub fn draw_position(&self) -> Option<DrawPosition> {
+        match self.phase {
+            GamePhase::DrawPhase { position, .. } => Some(position),
+            _ => None,
+        }
     }
 }

@@ -150,7 +150,7 @@ function renderTable(): void {
         <div class="dora-row">宝牌 ${gameState?.dora?.map(tileTypeLabel).join(" ") || "—"}</div>
       </div>
       <div class="game-grid">
-        <section class="hand-panel"><div class="panel-heading"><span>我的手牌</span><span>${ownPlayer?.points?.toLocaleString() ?? "—"} 点</span></div><div class="tile-row">${ownPlayer?.hand?.map((tile, index) => tileButton(tile, index)).join("") || "等待快照…"}${gameState?.drawn_tile !== null && gameState?.drawn_tile !== undefined ? `<span class="draw-gap"></span>${tileButton(gameState.drawn_tile, -1)}` : ""}</div></section>
+        <section class="hand-panel"><div class="panel-heading"><span>我的手牌</span><span>${ownPlayer?.points?.toLocaleString() ?? "—"} 点</span></div><div class="tile-row">${ownPlayer?.hand?.map((tile, index) => tileButton(tile, index)).join("") || "等待快照…"}${phaseDrawnTile() !== null && phaseDrawnTile() !== undefined ? `<span class="draw-gap"></span>${tileButton(phaseDrawnTile()!, -1)}` : ""}</div></section>
         <section class="action-panel"><p class="status" id="game-status">${escapeHtml(latestMessage || "等待牌局快照…")}</p><div id="action-buttons">${renderActions()}</div></section>
       </div>
       <section class="discards-panel"><div class="panel-heading"><span>牌河</span><span id="countdown"></span></div>${[0, 1, 2, 3].map((index) => `<div class="discard-line"><b>${["东", "南", "西", "北"][index]} ${playerName(index)}</b><span>${gameState?.players[index]?.discards?.map(tileLabel).join(" ") || "—"}</span></div>`).join("")}</section>
@@ -162,7 +162,7 @@ function renderTable(): void {
 }
 
 function renderSeat(index: number, name: string, ownIndex: number): string {
-  const active = gameState?.current_player?.[0] === index ? " active-seat" : "";
+  const active = phasePlayer()?.[0] === index ? " active-seat" : "";
   return `<div class="table-player player-${["bottom", "right", "top", "left"][index]}${active}">${["东", "南", "西", "北"][index]}家 · ${name}${index === ownIndex ? "（我）" : ""}<small>${gameState?.players[index]?.points?.toLocaleString() ?? "—"}</small></div>`;
 }
 
@@ -278,7 +278,23 @@ function callTiles(payload: unknown): string {
   return tiles.length ? ` · ${tiles.map(tileLabel).join("/")}` : "";
 }
 function windName(type: number): string { return ["东", "南", "西", "北"][type - 27] ?? "东"; }
-function phaseName(phase: string): string { return ({ DrawPhase: "摸牌", ActionPhase: "行动", ResponsePhase: "响应", ChankanResponse: "抢杠", RoundOver: "本局结束" } as Record<string, string>)[phase] ?? phase; }
+function phaseName(phase: GameStateView["phase"]): string {
+  if (typeof phase === "string") return "本局结束";
+  if ("DrawPhase" in phase) return "摸牌";
+  if ("ActionPhase" in phase) return "行动";
+  if ("ResponsePhase" in phase) return "响应";
+  return "抢杠";
+}
+
+function phasePlayer(): [number] | undefined {
+  if (!gameState || typeof gameState.phase === "string") return undefined;
+  return Object.values(gameState.phase)[0].player;
+}
+
+function phaseDrawnTile(): number | null | undefined {
+  if (!gameState || typeof gameState.phase === "string" || !("ActionPhase" in gameState.phase)) return undefined;
+  return gameState.phase.ActionPhase.drawn_tile;
+}
 function callName(kind: string): string { return ({ Ron: "荣和", Pon: "碰", Chi: "吃", Minkan: "大明杠", Pass: "跳过" } as Record<string, string>)[kind] ?? kind; }
 
 function escapeHtml(value: string): string {

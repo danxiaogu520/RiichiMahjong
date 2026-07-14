@@ -92,7 +92,7 @@ impl GameState {
     /// 模拟 hand + drawn_tile 合并后的 14 张手牌进行判定
     /// 返回 None 表示不能和，Some((点数变化, 役名列表)) 表示可以和
     pub fn check_tsumo(&self, player: PlayerId) -> Option<([i32; 4], Vec<String>)> {
-        let winning_tile = self.drawn_tile?;
+        let winning_tile = self.drawn_tile()?;
         let hand = &self.players[player.0].hand;
         self.check_win_with_hand(player, true, winning_tile, None, hand, false)
     }

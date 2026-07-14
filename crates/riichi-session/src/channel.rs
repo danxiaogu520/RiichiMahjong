@@ -15,9 +15,7 @@ use tokio::sync::mpsc;
 pub enum SessionEvent {
     StateUpdate {
         phase: GamePhase,
-        current_player: PlayerId,
         pending_discard: Option<(PlayerId, Tile)>,
-        drawn_tile: Option<Tile>,
         hand_tiles: Vec<Tile>,
         hand_count: usize,
         hand_counts: [usize; 4],

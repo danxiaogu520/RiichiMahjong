@@ -6,9 +6,10 @@ use riichi_core::meld::MeldKind;
 use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
-    ActionRequest, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage, GamePhaseView,
-    GameStateView, MeldKindView, MeldView, PlayerView, RoundEndReasonView, ServerEnvelope,
-    ServerMessage, TenpaiInfoView, TurnActionPayload, WaitInfoView, PROTOCOL_VERSION,
+    ActionRequest, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage,
+    DrawPositionView, GamePhaseView, GameStateView, MeldKindView, MeldView, PlayerView,
+    RoundEndReasonView, ServerEnvelope, ServerMessage, TenpaiInfoView, TurnActionPayload,
+    WaitInfoView, PROTOCOL_VERSION,
 };
 use std::collections::HashSet;
 
@@ -127,8 +128,6 @@ pub fn client_message_to_action(message: ClientMessage) -> Option<PlayerAction> 
 pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option<ServerMessage> {
     let SessionEvent::StateUpdate {
         phase,
-        current_player,
-        drawn_tile,
         hand_tiles,
         hand_count,
         hand_counts,
@@ -178,13 +177,9 @@ pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option
         round: *round,
         honba: *honba,
         riichi_sticks: *riichi_sticks,
-        current_player: *current_player,
-        drawn_tile: (*current_player == recipient)
-            .then_some(*drawn_tile)
-            .flatten(),
         dora: dora.clone(),
         remaining_tiles: *remaining_tiles,
-        phase: phase_view(phase),
+        phase: phase_view(phase, recipient),
         recent_events: Vec::new(),
         analysis: None,
         tenpai_info: tenpai_info.as_ref().map(|info| TenpaiInfoView {
@@ -288,12 +283,30 @@ fn round_end_reason_view(reason: &str) -> RoundEndReasonView {
     }
 }
 
-fn phase_view(phase: &GamePhase) -> GamePhaseView {
+fn phase_view(phase: &GamePhase, recipient: PlayerId) -> GamePhaseView {
     match phase {
-        GamePhase::DrawPhase => GamePhaseView::DrawPhase,
-        GamePhase::ActionPhase => GamePhaseView::ActionPhase,
-        GamePhase::ResponsePhase { .. } => GamePhaseView::ResponsePhase,
-        GamePhase::ChankanResponse { .. } => GamePhaseView::ChankanResponse,
+        GamePhase::DrawPhase { player, position } => GamePhaseView::DrawPhase {
+            player: *player,
+            position: match position {
+                riichi_core::game::DrawPosition::LiveWall => DrawPositionView::LiveWall,
+                riichi_core::game::DrawPosition::Rinshan => DrawPositionView::Rinshan,
+            },
+        },
+        GamePhase::ActionPhase { player, drawn_tile } => GamePhaseView::ActionPhase {
+            player: *player,
+            drawn_tile: (*player == recipient).then_some(*drawn_tile).flatten(),
+        },
+        GamePhase::ResponsePhase {
+            player,
+            discarded_tile,
+        } => GamePhaseView::ResponsePhase {
+            player: *player,
+            discarded_tile: *discarded_tile,
+        },
+        GamePhase::ChankanResponse { player, kan_tile } => GamePhaseView::ChankanResponse {
+            player: *player,
+            kan_tile: *kan_tile,
+        },
         GamePhase::RoundOver => GamePhaseView::RoundOver,
     }
 }
@@ -338,10 +351,11 @@ mod tests {
     #[test]
     fn state_view_only_exposes_recipient_hand_and_drawn_tile() {
         let event = SessionEvent::StateUpdate {
-            phase: GamePhase::ActionPhase,
-            current_player: PlayerId(0),
+            phase: GamePhase::ActionPhase {
+                player: PlayerId(0),
+                drawn_tile: Some(Tile::from_raw(12)),
+            },
             pending_discard: None,
-            drawn_tile: Some(Tile::from_raw(12)),
             hand_tiles: vec![Tile::from_raw(1)],
             hand_count: 1,
             hand_counts: [1; 4],
@@ -368,7 +382,13 @@ mod tests {
             Some(&[Tile::from_raw(1)][..])
         );
         assert!(view.players[1].hand.is_none());
-        assert_eq!(view.drawn_tile, Some(Tile::from_raw(12)));
+        assert!(matches!(
+            view.phase,
+            riichi_proto::messages::GamePhaseView::ActionPhase {
+                player: PlayerId(0),
+                drawn_tile: Some(tile),
+            } if tile == Tile::from_raw(12)
+        ));
     }
 
     #[test]
@@ -488,10 +508,11 @@ mod tests {
     #[test]
     fn first_state_can_be_marked_as_a_complete_snapshot() {
         let event = SessionEvent::StateUpdate {
-            phase: GamePhase::ActionPhase,
-            current_player: PlayerId(0),
+            phase: GamePhase::ActionPhase {
+                player: PlayerId(0),
+                drawn_tile: None,
+            },
             pending_discard: None,
-            drawn_tile: None,
             hand_tiles: Vec::new(),
             hand_count: 0,
             hand_counts: [0; 4],

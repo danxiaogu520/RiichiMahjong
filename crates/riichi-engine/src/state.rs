@@ -20,8 +20,8 @@ impl GameState {
         }
 
         let mut visible = self.build_visible_tiles(player);
-        if self.current_player == player {
-            if let Some(drawn) = self.drawn_tile {
+        if self.current_player() == Some(player) {
+            if let Some(drawn) = self.drawn_tile() {
                 visible.all_discards.inc(drawn.tile_type());
             }
         }
@@ -44,7 +44,11 @@ impl GameState {
 
     /// 推进到下一个玩家
     pub fn advance_turn(&mut self) {
-        self.current_player = self.current_player.next();
+        let next = self.current_player().unwrap_or(PlayerId(0)).next();
+        self.phase = GamePhase::DrawPhase {
+            player: next,
+            position: riichi_core::game::DrawPosition::LiveWall,
+        };
     }
 
     /// 判断指定的牌是否来自岭上（wall[132..=135]）
