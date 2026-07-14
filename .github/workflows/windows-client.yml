@@ -1,0 +1,48 @@
+name: Build Windows client
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri-app/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        working-directory: tauri-app
+        run: npm ci
+
+      - name: Build Tauri Windows bundles
+        working-directory: tauri-app
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: riichi-mahjong-windows-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            tauri-app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.exe
+            tauri-app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.msi
