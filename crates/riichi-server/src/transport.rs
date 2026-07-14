@@ -11,6 +11,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::{SinkExt, StreamExt};
 use riichi_proto::messages::{ClientEnvelope, ServerMessage};
 use riichi_session::SessionEvent;
 use serde::Deserialize;
@@ -127,8 +128,13 @@ async fn websocket(
     }))
 }
 
+enum Outbound {
+    Text(String),
+    Pong(Vec<u8>),
+}
+
 async fn websocket_session(
-    mut socket: WebSocket,
+    socket: WebSocket,
     room_id: String,
     token: String,
     player: riichi_core::player::PlayerId,
@@ -136,6 +142,28 @@ async fn websocket_session(
     action_tx: tokio::sync::mpsc::Sender<riichi_session::PlayerCommand>,
     event_rx: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<SessionEvent>>>,
 ) {
+    let (mut socket_sender, mut socket_receiver) = socket.split();
+    let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::channel(64);
+    let writer = tokio::spawn(async move {
+        while let Some(message) = outbound_rx.recv().await {
+            let result = match message {
+                Outbound::Text(text) => socket_sender.send(Message::Text(text)).await,
+                Outbound::Pong(payload) => socket_sender.send(Message::Pong(payload)).await,
+            };
+            if result.is_err() {
+                break;
+            }
+        }
+    });
+    let (inbound_tx, mut inbound_rx) = tokio::sync::mpsc::channel(64);
+    let reader = tokio::spawn(async move {
+        while let Some(message) = socket_receiver.next().await {
+            if inbound_tx.send(message.map_err(|_| ())).await.is_err() {
+                break;
+            }
+        }
+    });
+
     let mut sequencer = crate::protocol::ServerSequencer::new();
     let mut command_tracker = CommandTracker::new();
     let mut sent_snapshot = false;
@@ -143,7 +171,7 @@ async fn websocket_session(
         room_id: room_id.clone(),
         player_id: player,
     };
-    if send_server_message(&mut socket, &mut sequencer, welcome)
+    if send_server_message(&outbound_tx, &mut sequencer, welcome)
         .await
         .is_err()
     {
@@ -153,7 +181,7 @@ async fn websocket_session(
     loop {
         let received = timeout(Duration::from_secs(60), async {
             tokio::select! {
-                message = socket.recv() => message.map(Ok),
+                message = inbound_rx.recv() => message.map(Ok),
                 event = async {
                     let mut receiver = event_rx.lock().await;
                     receiver.recv().await
@@ -175,7 +203,7 @@ async fn websocket_session(
                 if matches!(message, ServerMessage::StateSnapshot(_)) {
                     sent_snapshot = true;
                 }
-                if send_server_message(&mut socket, &mut sequencer, message)
+                if send_server_message(&outbound_tx, &mut sequencer, message)
                     .await
                     .is_err()
                 {
@@ -183,7 +211,7 @@ async fn websocket_session(
                 }
             }
             Ok(Ok(Message::Ping(payload))) => {
-                if socket.send(Message::Pong(payload)).await.is_err() {
+                if outbound_tx.send(Outbound::Pong(payload)).await.is_err() {
                     break;
                 }
             }
@@ -191,7 +219,7 @@ async fn websocket_session(
                 let envelope = serde_json::from_str::<ClientEnvelope>(&text);
                 let Ok(envelope) = envelope else {
                     if send_server_message(
-                        &mut socket,
+                        &outbound_tx,
                         &mut sequencer,
                         ServerMessage::Error("无法解析客户端协议消息".to_string()),
                     )
@@ -213,7 +241,7 @@ async fn websocket_session(
                         let ack_seq = sequencer.current_seq().saturating_add(1);
                         if action_tx.send(command).await.is_err()
                             || send_server_message(
-                                &mut socket,
+                                &outbound_tx,
                                 &mut sequencer,
                                 ServerMessage::CommandAccepted {
                                     command_id,
@@ -229,7 +257,7 @@ async fn websocket_session(
                     Ok(None) => {}
                     Err(error) => {
                         if send_server_message(
-                            &mut socket,
+                            &outbound_tx,
                             &mut sequencer,
                             ServerMessage::Error(format!("命令拒绝: {error:?}")),
                         )
@@ -245,16 +273,18 @@ async fn websocket_session(
             Ok(Ok(Message::Binary(_))) | Ok(Ok(Message::Pong(_))) => {}
         }
     }
+    reader.abort();
+    writer.abort();
     let _ = application.disconnect_player(&room_id, &token);
 }
 
 async fn send_server_message(
-    socket: &mut WebSocket,
+    outbound_tx: &tokio::sync::mpsc::Sender<Outbound>,
     sequencer: &mut crate::protocol::ServerSequencer,
     message: ServerMessage,
 ) -> Result<(), ()> {
     let text = serde_json::to_string(&sequencer.envelope(message)).map_err(|_| ())?;
-    socket.send(Message::Text(text)).await.map_err(|_| ())
+    outbound_tx.send(Outbound::Text(text)).await.map_err(|_| ())
 }
 
 #[cfg(test)]
