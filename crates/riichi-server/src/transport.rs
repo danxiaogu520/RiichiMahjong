@@ -1,4 +1,5 @@
 use crate::application::{JoinInfo, RoomInfo, ServerApplication};
+use crate::protocol::{client_envelope_to_command, session_event_to_wire, CommandTracker};
 use crate::room::RoomError;
 use axum::extract::{
     ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,6 +9,8 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use riichi_proto::messages::{ClientEnvelope, ServerMessage};
+use riichi_session::SessionEvent;
 use serde::Deserialize;
 use tokio::time::{timeout, Duration};
 
@@ -22,11 +25,19 @@ pub struct WebSocketQuery {
     pub token: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ReadyRequest {
+    pub token: String,
+    pub ready: bool,
+}
+
 pub fn router(application: ServerApplication) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/rooms", post(create_room))
         .route("/rooms/:room_id/join", post(join_room))
+        .route("/rooms/:room_id/ready", post(set_ready))
+        .route("/rooms/:room_id/start", post(start_room))
         .route("/ws", get(websocket))
         .with_state(application)
 }
@@ -50,6 +61,32 @@ async fn join_room(
         .map_err(room_error_response)
 }
 
+async fn set_ready(
+    State(application): State<ServerApplication>,
+    Path(room_id): Path<String>,
+    Json(request): Json<ReadyRequest>,
+) -> Result<Json<RoomInfo>, (StatusCode, String)> {
+    application
+        .set_ready(&room_id, &request.token, request.ready)
+        .map(Json)
+        .map_err(room_error_response)
+}
+
+async fn start_room(
+    State(application): State<ServerApplication>,
+    Path(room_id): Path<String>,
+    Json(request): Json<ReadyRequest>,
+) -> Result<Json<RoomInfo>, (StatusCode, String)> {
+    application
+        .authenticate(&room_id, &request.token)
+        .map_err(room_error_response)?;
+    application
+        .launch_game(&room_id)
+        .await
+        .map(Json)
+        .map_err(room_error_response)
+}
+
 fn room_error_response(error: RoomError) -> (StatusCode, String) {
     let status = match error {
         RoomError::NotFound => StatusCode::NOT_FOUND,
@@ -66,48 +103,131 @@ async fn websocket(
     let player = application
         .authenticate(&query.room_id, &query.token)
         .map_err(room_error_response)?;
-    Ok(upgrade.on_upgrade(move |socket| websocket_session(socket, query.room_id, player)))
+    let (action_tx, event_rx) = application
+        .session_channels(&query.room_id, player)
+        .await
+        .map_err(room_error_response)?;
+    Ok(upgrade.on_upgrade(move |socket| {
+        websocket_session(socket, query.room_id, player, action_tx, event_rx)
+    }))
 }
 
 async fn websocket_session(
     mut socket: WebSocket,
     room_id: String,
     player: riichi_core::player::PlayerId,
+    action_tx: tokio::sync::mpsc::Sender<riichi_session::PlayerCommand>,
+    event_rx: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<SessionEvent>>>,
 ) {
     let mut sequencer = crate::protocol::ServerSequencer::new();
+    let mut command_tracker = CommandTracker::new();
     let welcome = riichi_proto::messages::ServerMessage::RoomJoined {
         room_id,
         player_id: player,
     };
-    if let Ok(text) = serde_json::to_string(&sequencer.envelope(welcome)) {
-        if socket.send(Message::Text(text)).await.is_err() {
-            return;
-        }
+    if send_server_message(&mut socket, &mut sequencer, welcome)
+        .await
+        .is_err()
+    {
+        return;
     }
 
-    while let Ok(Some(result)) = timeout(Duration::from_secs(60), socket.recv()).await {
+    loop {
+        let received = timeout(Duration::from_secs(60), async {
+            tokio::select! {
+                message = socket.recv() => message.map(Ok),
+                event = async {
+                    let mut receiver = event_rx.lock().await;
+                    receiver.recv().await
+                } => event.map(Err),
+            }
+        })
+        .await;
+        let Ok(Some(result)) = received else { break };
         match result {
-            Ok(Message::Ping(payload)) => {
+            Err(event) => {
+                let Some(message) = session_event_to_wire(&event, player) else {
+                    continue;
+                };
+                if send_server_message(&mut socket, &mut sequencer, message)
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Ok(Ok(Message::Ping(payload))) => {
                 if socket.send(Message::Pong(payload)).await.is_err() {
                     break;
                 }
             }
-            Ok(Message::Text(text)) => {
-                if serde_json::from_str::<riichi_proto::messages::ClientEnvelope>(&text).is_err() {
-                    let error = riichi_proto::messages::ServerMessage::Error(
-                        "无法解析客户端协议消息".to_string(),
-                    );
-                    if let Ok(text) = serde_json::to_string(&sequencer.envelope(error)) {
-                        if socket.send(Message::Text(text)).await.is_err() {
+            Ok(Ok(Message::Text(text))) => {
+                let envelope = serde_json::from_str::<ClientEnvelope>(&text);
+                let Ok(envelope) = envelope else {
+                    if send_server_message(
+                        &mut socket,
+                        &mut sequencer,
+                        ServerMessage::Error("无法解析客户端协议消息".to_string()),
+                    )
+                    .await
+                    .is_err()
+                    {
+                        break;
+                    }
+                    continue;
+                };
+                let command_id = envelope.command_id;
+                match client_envelope_to_command(
+                    envelope,
+                    player,
+                    &mut command_tracker,
+                    sequencer.current_seq(),
+                ) {
+                    Ok(Some(command)) => {
+                        let ack_seq = sequencer.current_seq().saturating_add(1);
+                        if action_tx.send(command).await.is_err()
+                            || send_server_message(
+                                &mut socket,
+                                &mut sequencer,
+                                ServerMessage::CommandAccepted {
+                                    command_id,
+                                    seq: ack_seq,
+                                },
+                            )
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        if send_server_message(
+                            &mut socket,
+                            &mut sequencer,
+                            ServerMessage::Error(format!("命令拒绝: {error:?}")),
+                        )
+                        .await
+                        .is_err()
+                        {
                             break;
                         }
                     }
                 }
             }
-            Ok(Message::Close(_)) | Err(_) => break,
-            Ok(Message::Binary(_)) | Ok(Message::Pong(_)) => {}
+            Ok(Ok(Message::Close(_))) | Ok(Err(_)) => break,
+            Ok(Ok(Message::Binary(_))) | Ok(Ok(Message::Pong(_))) => {}
         }
     }
+}
+
+async fn send_server_message(
+    socket: &mut WebSocket,
+    sequencer: &mut crate::protocol::ServerSequencer,
+    message: ServerMessage,
+) -> Result<(), ()> {
+    let text = serde_json::to_string(&sequencer.envelope(message)).map_err(|_| ())?;
+    socket.send(Message::Text(text)).await.map_err(|_| ())
 }
 
 #[cfg(test)]
