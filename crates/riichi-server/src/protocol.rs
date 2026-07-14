@@ -437,9 +437,11 @@ mod tests {
             body: ClientMessage::RequestSnapshot,
         };
 
-        assert!(client_envelope_to_command(request, PlayerId(1), &mut tracker, 4)
-            .unwrap()
-            .is_none());
+        assert!(
+            client_envelope_to_command(request, PlayerId(1), &mut tracker, 4)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

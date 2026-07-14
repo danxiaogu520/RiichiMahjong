@@ -130,10 +130,10 @@ impl ServerApplication {
             let mut session = session;
             session.run().await;
         });
-        self.sessions.lock().await.insert(
-            room_id.to_string(),
-            ActiveSession { control_tx },
-        );
+        self.sessions
+            .lock()
+            .await
+            .insert(room_id.to_string(), ActiveSession { control_tx });
         Ok(room)
     }
 
@@ -256,7 +256,10 @@ mod tests {
         app.launch_game(&room.id).await.unwrap();
         app.finish_game(&room.id).await.unwrap();
 
-        assert_eq!(app.authenticate(&room.id, &joined[0].token), Err(RoomError::NotFound));
+        assert_eq!(
+            app.authenticate(&room.id, &joined[0].token),
+            Err(RoomError::NotFound)
+        );
         assert!(matches!(
             app.session_channels(&room.id, riichi_core::player::PlayerId(0))
                 .await,
