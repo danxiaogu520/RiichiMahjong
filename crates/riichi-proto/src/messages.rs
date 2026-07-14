@@ -221,6 +221,7 @@ pub enum RoundEndReasonView {
     SuufonRenda,
     SuuchaRiichi,
     SuuKantsu,
+    Unknown(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
