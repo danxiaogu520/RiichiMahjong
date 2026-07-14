@@ -1,0 +1,19 @@
+[package]
+name = "riichi-mahjong-client"
+version = "0.1.0"
+description = "Tauri client for Riichi Mahjong"
+authors = ["Riichi Mahjong contributors"]
+edition = "2021"
+
+[lib]
+name = "riichi_mahjong_client_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0" }
+
+[dependencies]
+tauri = { version = "2.0.0" }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
