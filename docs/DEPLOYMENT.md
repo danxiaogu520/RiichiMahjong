@@ -12,7 +12,9 @@ npm run tauri build
 
 `npm run tauri build` 会根据 [`src-tauri/tauri.conf.json`](../tauri-app/src-tauri/tauri.conf.json)
 生成当前平台的安装包。Windows 和 Linux 构建应在对应平台或 CI runner 上执行；Linux
-桌面构建需要 Tauri 的 GTK/WebKitGTK 开发依赖。
+桌面构建需要 Tauri 的 GTK/WebKitGTK 开发依赖，例如 `pkg-config`、GTK、WebKitGTK、
+Pango 和 Cairo。当前仓库已验证前端生产构建；在缺少这些系统库的环境中，原生构建会
+在 `glib-sys`/`gdk-sys` 链接阶段失败。
 
 ## Linux 服务器
 
