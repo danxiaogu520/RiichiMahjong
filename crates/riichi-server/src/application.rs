@@ -7,8 +7,7 @@ use tokio::sync::{mpsc, Mutex};
 type EventReceiver = Arc<Mutex<mpsc::Receiver<riichi_session::SessionEvent>>>;
 
 struct ActiveSession {
-    action_tx: mpsc::Sender<riichi_session::PlayerCommand>,
-    event_rxs: [EventReceiver; 4],
+    control_tx: mpsc::Sender<riichi_session::SessionControl>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -115,12 +114,6 @@ impl ServerApplication {
             pairs.push(riichi_session::create_player_pair(PlayerId(index)));
         }
         let event_txs = std::array::from_fn(|index| pairs[index].0.event_tx.clone());
-        let event_rxs = std::array::from_fn(|index| {
-            Arc::new(Mutex::new(std::mem::replace(
-                &mut pairs[index].1.event_rx,
-                mpsc::channel(1).1,
-            )))
-        });
         let (action_tx, action_rx) = mpsc::channel(256);
         for (mut player, _) in pairs {
             let action_tx = action_tx.clone();
@@ -133,17 +126,20 @@ impl ServerApplication {
             });
         }
 
-        let session = riichi_session::GameSession::new(event_txs, action_tx.clone(), action_rx);
+        let (control_tx, control_rx) = mpsc::channel(32);
+        let session = riichi_session::GameSession::new_with_control(
+            event_txs,
+            action_tx.clone(),
+            action_rx,
+            control_rx,
+        );
         tokio::spawn(async move {
             let mut session = session;
             session.run().await;
         });
         self.sessions.lock().await.insert(
             room_id.to_string(),
-            ActiveSession {
-                action_tx,
-                event_rxs,
-            },
+            ActiveSession { control_tx },
         );
         Ok(room)
     }
@@ -155,9 +151,19 @@ impl ServerApplication {
     ) -> Result<(mpsc::Sender<riichi_session::PlayerCommand>, EventReceiver), RoomError> {
         let sessions = self.sessions.lock().await;
         let session = sessions.get(room_id).ok_or(RoomError::GameNotStarted)?;
+        let (player_handle, client_handle) = riichi_session::create_player_pair(player);
+        session
+            .control_tx
+            .send(riichi_session::SessionControl {
+                player,
+                event_tx: player_handle.event_tx,
+                action_rx: player_handle.action_rx,
+            })
+            .await
+            .map_err(|_| RoomError::GameNotStarted)?;
         Ok((
-            session.action_tx.clone(),
-            session.event_rxs[player.0].clone(),
+            client_handle.action_tx,
+            Arc::new(Mutex::new(client_handle.event_rx)),
         ))
     }
 }
