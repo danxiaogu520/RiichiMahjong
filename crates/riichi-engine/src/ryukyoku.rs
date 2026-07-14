@@ -15,7 +15,7 @@ impl GameState {
     /// 3. 手牌中有九种不同的幺九牌（包括手牌和摸到的牌）
     pub fn can_declare_kyuushu(&self, player: PlayerId) -> bool {
         // 检查当前是否是该玩家的回合
-        if self.current_player.0 != player.0 {
+        if self.current_player() != Some(player) {
             return false;
         }
         // 检查是否有任何鸣牌
@@ -45,7 +45,7 @@ impl GameState {
         }
         // 检查手牌中是否有九种不同的幺九牌
         let hand = &self.players[player.0].hand;
-        let tile_count = hand.len() + if self.drawn_tile.is_some() { 1 } else { 0 };
+        let tile_count = hand.len() + if self.drawn_tile().is_some() { 1 } else { 0 };
         if tile_count != 14 {
             return false;
         }
@@ -55,7 +55,7 @@ impl GameState {
                 types.insert(tile.tile_type());
             }
         }
-        if let Some(drawn) = self.drawn_tile {
+        if let Some(drawn) = self.drawn_tile() {
             if drawn.is_yaochuuhai() {
                 types.insert(drawn.tile_type());
             }
@@ -167,7 +167,10 @@ mod tests {
     #[test]
     fn kyuushu_is_available_before_this_players_first_discard() {
         let mut state = GameState::new();
-        state.current_player = PlayerId(1);
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: None,
+        };
         state.players[1].hand = riichi_core::hand::Hand::from_tiles(&[
             Tile::from_raw(0),
             Tile::from_raw(32),
@@ -183,7 +186,10 @@ mod tests {
             Tile::from_raw(128),
             Tile::from_raw(132),
         ]);
-        state.drawn_tile = Some(Tile::from_raw(4));
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: Some(Tile::from_raw(4)),
+        };
         state.events.push(GameEvent::PlayerDiscarded {
             player: PlayerId(0),
             tile: Tile::from_raw(4),
@@ -195,7 +201,10 @@ mod tests {
     #[test]
     fn kyuushu_is_unavailable_after_this_players_first_discard() {
         let mut state = GameState::new();
-        state.current_player = PlayerId(1);
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: None,
+        };
         state.players[1].hand = riichi_core::hand::Hand::from_tiles(&[
             Tile::from_raw(0),
             Tile::from_raw(32),
@@ -211,7 +220,10 @@ mod tests {
             Tile::from_raw(128),
             Tile::from_raw(132),
         ]);
-        state.drawn_tile = Some(Tile::from_raw(4));
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: Some(Tile::from_raw(4)),
+        };
         state.events.push(GameEvent::PlayerDiscarded {
             player: PlayerId(1),
             tile: Tile::from_raw(4),

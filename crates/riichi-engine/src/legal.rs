@@ -20,12 +20,14 @@ impl GameState {
     /// 调用方仍必须在提交时再次验证，候选列表不能替代服务器校验。
     pub fn legal_actions(&self, player: PlayerId) -> Vec<LegalAction> {
         match &self.phase {
-            GamePhase::ActionPhase if player == self.current_player => {
+            GamePhase::ActionPhase {
+                player: current, ..
+            } if player == *current => {
                 let mut actions = Vec::new();
                 for &tile in self.players[player.0].hand.tiles() {
                     actions.push(LegalAction::Turn(TurnAction::Discard(tile)));
                 }
-                if let Some(tile) = self.drawn_tile {
+                if let Some(tile) = self.drawn_tile() {
                     actions.push(LegalAction::Turn(TurnAction::Discard(tile)));
                 }
                 if self.can_declare_riichi(player) {
@@ -76,19 +78,21 @@ impl GameState {
     ) -> Result<(), riichi_core::game::GameError> {
         match action {
             LegalAction::Turn(turn) => {
-                if !matches!(&self.phase, GamePhase::ActionPhase) || player != self.current_player {
+                if !matches!(&self.phase, GamePhase::ActionPhase { .. })
+                    || player != self.current_player().unwrap()
+                {
                     return Err(riichi_core::game::GameError::InvalidAction(
                         "当前不是该玩家的行动阶段".to_string(),
                     ));
                 }
                 match turn {
                     TurnAction::Discard(tile) => {
-                        if self.players[player.0].is_riichi && self.drawn_tile != Some(*tile) {
+                        if self.players[player.0].is_riichi && self.drawn_tile() != Some(*tile) {
                             return Err(riichi_core::game::GameError::InvalidAction(
                                 "立直后只能摸切".to_string(),
                             ));
                         }
-                        if self.drawn_tile != Some(*tile)
+                        if self.drawn_tile() != Some(*tile)
                             && !self.players[player.0].hand.contains(*tile)
                         {
                             return Err(riichi_core::game::GameError::TileNotInHand(*tile));
@@ -137,8 +141,8 @@ impl GameState {
             }
             LegalAction::Response(response) => {
                 let discarder = match &self.phase {
-                    GamePhase::ResponsePhase { discarder, .. } => *discarder,
-                    GamePhase::ChankanResponse { kakan_player, .. } => *kakan_player,
+                    GamePhase::ResponsePhase { player, .. }
+                    | GamePhase::ChankanResponse { player, .. } => *player,
                     _ => {
                         return Err(riichi_core::game::GameError::InvalidAction(
                             "当前不在响应阶段".to_string(),

@@ -94,8 +94,6 @@ pub struct GameStateView {
     pub round: u32,
     pub honba: u32,
     pub riichi_sticks: u32,
-    pub current_player: PlayerId,
-    pub drawn_tile: Option<Tile>,
     pub dora: Vec<TileType>,
     pub remaining_tiles: usize,
     pub phase: GamePhaseView,
@@ -148,11 +146,29 @@ pub enum MeldKindView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GamePhaseView {
-    DrawPhase,
-    ActionPhase,
-    ResponsePhase,
-    ChankanResponse,
+    DrawPhase {
+        player: PlayerId,
+        position: DrawPositionView,
+    },
+    ActionPhase {
+        player: PlayerId,
+        drawn_tile: Option<Tile>,
+    },
+    ResponsePhase {
+        player: PlayerId,
+        discarded_tile: Tile,
+    },
+    ChankanResponse {
+        player: PlayerId,
+        kan_tile: Tile,
+    },
     RoundOver,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DrawPositionView {
+    LiveWall,
+    Rinshan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

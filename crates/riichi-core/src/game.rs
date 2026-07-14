@@ -6,18 +6,29 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GamePhase {
-    DrawPhase,
-    ActionPhase,
+    DrawPhase {
+        player: PlayerId,
+        position: DrawPosition,
+    },
+    ActionPhase {
+        player: PlayerId,
+        drawn_tile: Option<Tile>,
+    },
     ResponsePhase {
+        player: PlayerId,
         discarded_tile: Tile,
-        discarder: PlayerId,
     },
     ChankanResponse {
-        kakan_tile: Tile,
-        kakan_player: PlayerId,
-        meld_index: usize,
+        player: PlayerId,
+        kan_tile: Tile,
     },
     RoundOver,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DrawPosition {
+    LiveWall,
+    Rinshan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
