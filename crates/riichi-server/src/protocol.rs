@@ -27,6 +27,7 @@ pub struct ServerSequencer {
 pub enum CommandError {
     Duplicate,
     StaleSequence { expected: u64, actual: u64 },
+    UnsupportedVersion { received: u16, supported: u16 },
 }
 
 /// 保存一个连接已经处理过的命令，拒绝重复提交和基于过期状态的行动。
@@ -56,6 +57,23 @@ impl CommandTracker {
         }
         Ok(())
     }
+}
+
+pub fn client_envelope_to_command(
+    envelope: ClientEnvelope,
+    player: PlayerId,
+    tracker: &mut CommandTracker,
+    actual_seq: u64,
+) -> Result<Option<riichi_session::PlayerCommand>, CommandError> {
+    if envelope.protocol_version != PROTOCOL_VERSION {
+        return Err(CommandError::UnsupportedVersion {
+            received: envelope.protocol_version,
+            supported: PROTOCOL_VERSION,
+        });
+    }
+    tracker.validate(&envelope, actual_seq)?;
+    Ok(client_message_to_action(envelope.body)
+        .map(|action| riichi_session::PlayerCommand::new(player, action)))
 }
 
 impl ServerSequencer {
@@ -286,8 +304,8 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 #[cfg(test)]
 mod tests {
     use super::{
-        call_options_to_wire, client_message_to_action, session_event_to_wire,
-        state_update_to_wire, CommandError, CommandTracker, ServerSequencer,
+        call_options_to_wire, client_envelope_to_command, client_message_to_action,
+        session_event_to_wire, state_update_to_wire, CommandError, CommandTracker, ServerSequencer,
     };
     use riichi_core::game::{CallOption, CallType};
     use riichi_core::player::PlayerId;
@@ -419,5 +437,26 @@ mod tests {
         };
         assert_eq!(request.player, PlayerId(2));
         assert_eq!(request.discard_options, vec![Tile::from_raw(4)]);
+    }
+
+    #[test]
+    fn authenticated_command_gets_connection_identity() {
+        let mut tracker = CommandTracker::new();
+        let command = ClientEnvelope {
+            protocol_version: PROTOCOL_VERSION,
+            command_id: 1,
+            expected_seq: 0,
+            body: ClientMessage::TurnAction {
+                action: TurnActionPayload::Discard(Tile::from_raw(9)),
+            },
+        };
+        let command = client_envelope_to_command(command, PlayerId(3), &mut tracker, 0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(command.player, PlayerId(3));
+        assert!(matches!(
+            command.action,
+            PlayerAction::TurnAction(TurnAction::Discard(tile)) if tile == Tile::from_raw(9)
+        ));
     }
 }
