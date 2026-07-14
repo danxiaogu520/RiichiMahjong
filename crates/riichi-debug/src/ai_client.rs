@@ -9,10 +9,10 @@ use riichi_logic::shanten::ShantenCalculator;
 use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::channel::{
-    ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
-};
 use riichi_ai::{choose_discard, decide_call, decide_riichi};
+use riichi_session::channel::{
+    CallResponse, ClientHandle, PlayerAction, PlayerCommand, SessionEvent, TurnAction,
+};
 
 struct AiState {
     hand_tiles: Vec<Tile>,
@@ -37,7 +37,7 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
 
     while let Some(event) = handle.event_rx.recv().await {
         match event {
-            ServerEvent::StateUpdate {
+            SessionEvent::StateUpdate {
                 phase,
                 current_player,
                 hand_tiles,
@@ -51,7 +51,7 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 state.hand_tiles = hand_tiles;
                 state.visible = build_visible_tiles(&melds, &discards, &dora, handle.id);
             }
-            ServerEvent::ActionRequired {
+            SessionEvent::ActionRequired {
                 can_tsumo,
                 can_riichi,
                 riichi_options,
@@ -65,19 +65,19 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
                 let action = decide_turn(&handle.id, &mut state, &riichi_options, &discard_options);
                 let _ = handle.action_tx.send(action).await;
             }
-            ServerEvent::CallRequired { options } => {
+            SessionEvent::CallRequired { options } => {
                 wait_before_decision().await;
-                let response = decide_call(handle.id, &options).unwrap_or(ResponseAction::Pass);
+                let response = decide_call(&options).unwrap_or(ResponseAction::Pass);
                 let response = match response {
-                    ResponseAction::Ron => CallResponseMsg::Ron,
-                    _ => CallResponseMsg::Pass,
+                    ResponseAction::Ron => CallResponse::Ron,
+                    _ => CallResponse::Pass,
                 };
-                let msg: ActionMsg = (handle.id, PlayerAction::CallResponse(response));
+                let msg = PlayerCommand::new(handle.id, PlayerAction::CallResponse(response));
                 let _ = handle.action_tx.send(msg).await;
             }
-            ServerEvent::RoundResult { .. } => {}
-            ServerEvent::GameOver { .. } => break,
-            ServerEvent::Error(_) => {}
+            SessionEvent::RoundResult { .. } => {}
+            SessionEvent::GameOver { .. } => break,
+            SessionEvent::Error(_) => {}
         }
     }
 }
@@ -92,28 +92,27 @@ fn decide_turn(
     state: &mut AiState,
     riichi_options: &[Tile],
     discard_options: &[Tile],
-) -> ActionMsg {
+) -> PlayerCommand {
     if state.can_tsumo {
-        return (*player, PlayerAction::TurnAction(TurnActionMsg::Tsumo));
+        return PlayerCommand::new(*player, PlayerAction::TurnAction(TurnAction::Tsumo));
     }
     if state.can_riichi {
         if let Some(tile) = decide_riichi(
-            *player,
             &mut state.calculator,
             &state.hand_tiles,
             &state.visible,
             riichi_options,
         ) {
-            return (
+            return PlayerCommand::new(
                 *player,
-                PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)),
+                PlayerAction::TurnAction(TurnAction::RiichiDiscard(tile)),
             );
         }
         // 牌效分析异常时也不能退化为普通打牌；合法立直牌是安全兜底。
         if let Some(&tile) = riichi_options.first() {
-            return (
+            return PlayerCommand::new(
                 *player,
-                PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)),
+                PlayerAction::TurnAction(TurnAction::RiichiDiscard(tile)),
             );
         }
     }
@@ -132,10 +131,7 @@ fn decide_turn(
             .or_else(|| state.hand_tiles.last().copied())
             .unwrap_or_else(|| Tile::from_raw(0))
     };
-    (
-        *player,
-        PlayerAction::TurnAction(TurnActionMsg::Discard(tile)),
-    )
+    PlayerCommand::new(*player, PlayerAction::TurnAction(TurnAction::Discard(tile)))
 }
 
 fn build_visible_tiles(

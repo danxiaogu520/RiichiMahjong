@@ -1,3 +1,5 @@
+mod ai_client;
+mod analysis;
 mod app;
 mod input;
 mod ui;
@@ -13,11 +15,10 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc;
 
+use crate::ai_client::run_ai_client;
 use crate::app::App;
 use riichi_core::player::PlayerId;
-use riichi_server::ai_client::run_ai_client;
-use riichi_server::channel::{create_player_pair, ActionMsg};
-use riichi_server::game::GameLoop;
+use riichi_session::{create_player_pair, GameSession, PlayerCommand};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -33,7 +34,7 @@ async fn main() -> io::Result<()> {
         p3_handle.event_tx,
     ];
 
-    let (merged_tx, merged_rx) = mpsc::channel::<ActionMsg>(64);
+    let (merged_tx, merged_rx) = mpsc::channel::<PlayerCommand>(64);
 
     let tx0 = merged_tx.clone();
     let tx1 = merged_tx.clone();
@@ -70,7 +71,7 @@ async fn main() -> io::Result<()> {
     tokio::spawn(run_ai_client(p2_client));
     tokio::spawn(run_ai_client(p3_client));
 
-    let mut game_loop = GameLoop::new(event_txs, merged_tx, merged_rx);
+    let mut game_loop = GameSession::new(event_txs, merged_tx, merged_rx);
     tokio::spawn(async move {
         game_loop.run().await;
     });

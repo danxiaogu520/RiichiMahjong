@@ -64,7 +64,7 @@ impl GameState {
             for player in self.players.iter_mut() {
                 for _ in 0..4 {
                     let tile = self.wall.draw().unwrap();
-                    player.hand.add(tile);
+                    player.hand.add(tile).expect("配牌时手牌不应超过容量");
                 }
             }
         }
@@ -72,7 +72,7 @@ impl GameState {
         // 再各摸 1 张 = 13 张
         for player in self.players.iter_mut() {
             let tile = self.wall.draw().unwrap();
-            player.hand.add(tile);
+            player.hand.add(tile).expect("配牌时手牌不应超过容量");
         }
 
         // 庄家摸第 14 张牌进入自摸牌缓冲区（不进手）
@@ -145,7 +145,10 @@ impl GameState {
     /// 仅在需要操作手牌时调用（自摸/暗杠/加杠）
     pub fn insert_tile(&mut self) {
         if let Some(tile) = self.drawn_tile.take() {
-            self.players[self.current_player.0].hand.add(tile);
+            self.players[self.current_player.0]
+                .hand
+                .add(tile)
+                .expect("提交摸牌时手牌不应超过容量");
         }
     }
 
@@ -186,7 +189,10 @@ impl GameState {
         } else {
             // 打出手牌：先提交自摸牌到手牌，再从手牌移除
             if let Some(drawn) = self.drawn_tile.take() {
-                self.players[cp].hand.add(drawn);
+                self.players[cp]
+                    .hand
+                    .add(drawn)
+                    .expect("打牌时手牌不应超过容量");
             }
             let player = &mut self.players[cp];
             if !player.hand.contains(tile) {

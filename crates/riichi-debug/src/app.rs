@@ -10,13 +10,13 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use riichi_ai::{choose_discard, decide_call, decide_riichi};
-use riichi_server::channel::{
-    ActionMsg, CallResponseMsg, ClientHandle, PlayerAction, ServerEvent, TurnActionMsg,
+use riichi_session::{
+    CallResponse, ClientHandle, PlayerAction, PlayerCommand, SessionEvent, TurnAction,
 };
 
 pub struct App {
-    pub event_rx: mpsc::Receiver<ServerEvent>,
-    pub action_tx: mpsc::Sender<ActionMsg>,
+    pub event_rx: mpsc::Receiver<SessionEvent>,
+    pub action_tx: mpsc::Sender<PlayerCommand>,
 
     pub phase: GamePhase,
     pub current_player: PlayerId,
@@ -118,7 +118,7 @@ impl App {
     pub async fn process_server_events(&mut self) {
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
-                ServerEvent::StateUpdate {
+                SessionEvent::StateUpdate {
                     phase,
                     current_player,
                     pending_discard,
@@ -136,7 +136,6 @@ impl App {
                     honba,
                     riichi_sticks,
                     tenpai_info,
-                    analysis_options,
                     ..
                 } => {
                     self.phase = phase;
@@ -156,7 +155,13 @@ impl App {
                     self.honba = honba;
                     self.riichi_sticks = riichi_sticks;
                     self.tenpai_info = tenpai_info;
-                    self.analysis_options = analysis_options;
+                    self.analysis_options = crate::analysis::analyze_discards(
+                        &self.hand_tiles,
+                        &self.discards,
+                        &self.melds,
+                        &self.dora,
+                        self.pending_discard,
+                    );
                     self.ai_action_in_flight = false;
                     // 每个状态快照都代表新的权威牌局状态；响应选项只对
                     // 生成它的那一张弃牌有效，不能跨响应窗口保留。
@@ -168,7 +173,7 @@ impl App {
                         self.selected = self.selectable_indices().first().copied().unwrap_or(0);
                     }
                 }
-                ServerEvent::ActionRequired {
+                SessionEvent::ActionRequired {
                     can_tsumo,
                     can_riichi,
                     riichi_options,
@@ -192,7 +197,7 @@ impl App {
                         self.schedule_ai_decision();
                     }
                 }
-                ServerEvent::CallRequired { options } => {
+                SessionEvent::CallRequired { options } => {
                     self.call_options = options;
                     self.call_selected = 0;
                     self.ai_action_in_flight = false;
@@ -200,7 +205,7 @@ impl App {
                         self.schedule_ai_decision();
                     }
                 }
-                ServerEvent::RoundResult {
+                SessionEvent::RoundResult {
                     reason,
                     win_details,
                     point_changes,
@@ -219,13 +224,13 @@ impl App {
                         scores[0], scores[1], scores[2], scores[3]
                     ));
                 }
-                ServerEvent::GameOver { scores, ranking } => {
+                SessionEvent::GameOver { scores, ranking } => {
                     self.scores = scores;
                     self.ranking = ranking;
                     self.game_over = true;
                     self.show_result = true;
                 }
-                ServerEvent::Error(message) => {
+                SessionEvent::Error(message) => {
                     self.messages.push(message);
                 }
             }
@@ -290,7 +295,7 @@ impl App {
         self.ai_action_in_flight = true;
 
         if !self.call_options.is_empty() {
-            let response = decide_call(PlayerId(0), &self.call_options);
+            let response = decide_call(&self.call_options);
             match response {
                 Some(riichi_core::game::ResponseAction::Ron) => self.send_call_ron(),
                 _ => self.send_call_pass(),
@@ -305,7 +310,6 @@ impl App {
         }
         if self.can_riichi {
             if let Some(tile) = decide_riichi(
-                PlayerId(0),
                 &mut self.ai_calculator,
                 &self.hand_tiles,
                 &visible,
@@ -367,81 +371,82 @@ impl App {
     }
 
     pub fn send_discard(&self, tile: Tile) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::TurnAction(TurnActionMsg::Discard(tile)),
+            PlayerAction::TurnAction(TurnAction::Discard(tile)),
         ));
     }
 
     pub fn send_tsumo(&self) {
-        let _ = self
-            .action_tx
-            .try_send((PlayerId(0), PlayerAction::TurnAction(TurnActionMsg::Tsumo)));
+        let _ = self.action_tx.try_send(PlayerCommand::new(
+            PlayerId(0),
+            PlayerAction::TurnAction(TurnAction::Tsumo),
+        ));
     }
 
     pub fn send_riichi_tile(&self, tile: Option<Tile>) {
         let Some(tile) = tile else {
             return;
         };
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::TurnAction(TurnActionMsg::RiichiDiscard(tile)),
+            PlayerAction::TurnAction(TurnAction::RiichiDiscard(tile)),
         ));
     }
 
     pub fn send_ankan(&self, tile: Tile) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::TurnAction(TurnActionMsg::Ankan(tile)),
+            PlayerAction::TurnAction(TurnAction::Ankan(tile)),
         ));
     }
 
     pub fn send_kakan(&self, meld_index: usize, tile: Tile) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::TurnAction(TurnActionMsg::Kakan(meld_index, tile)),
+            PlayerAction::TurnAction(TurnAction::Kakan(meld_index, tile)),
         ));
     }
 
     pub fn send_kyuushu(&self) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::TurnAction(TurnActionMsg::KyuushuKyuuhai),
+            PlayerAction::TurnAction(TurnAction::KyuushuKyuuhai),
         ));
     }
 
     pub fn send_call_ron(&self) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::CallResponse(CallResponseMsg::Ron),
+            PlayerAction::CallResponse(CallResponse::Ron),
         ));
     }
 
     pub fn send_call_pon(&self, hand_tiles: [Tile; 2]) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::CallResponse(CallResponseMsg::Pon { hand_tiles }),
+            PlayerAction::CallResponse(CallResponse::Pon { hand_tiles }),
         ));
     }
 
     pub fn send_call_chi(&self, hand_tiles: [Tile; 2]) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::CallResponse(CallResponseMsg::Chi { hand_tiles }),
+            PlayerAction::CallResponse(CallResponse::Chi { hand_tiles }),
         ));
     }
 
     pub fn send_call_minkan(&self, hand_tiles: [Tile; 3]) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::CallResponse(CallResponseMsg::Minkan { hand_tiles }),
+            PlayerAction::CallResponse(CallResponse::Minkan { hand_tiles }),
         ));
     }
 
     pub fn send_call_pass(&self) {
-        let _ = self.action_tx.try_send((
+        let _ = self.action_tx.try_send(PlayerCommand::new(
             PlayerId(0),
-            PlayerAction::CallResponse(CallResponseMsg::Pass),
+            PlayerAction::CallResponse(CallResponse::Pass),
         ));
     }
 

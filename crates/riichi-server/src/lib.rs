@@ -1,4 +1,4 @@
-pub mod ai_client;
-pub mod channel;
-pub mod game;
+pub mod application;
 pub mod protocol;
+pub mod room;
+pub mod transport;

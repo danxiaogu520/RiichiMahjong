@@ -1,4 +1,4 @@
 [workspace]
 members = ["crates/*"]
-default-members = ["crates/riichi-client"]
+default-members = ["crates/riichi-debug"]
 resolver = "2"
