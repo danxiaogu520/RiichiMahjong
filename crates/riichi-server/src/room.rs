@@ -101,6 +101,28 @@ impl Room {
             .ok_or(RoomError::InvalidToken)
     }
 
+    pub fn connect_by_token(&mut self, token: &str) -> Result<PlayerId, RoomError> {
+        let player = self
+            .players
+            .iter_mut()
+            .flatten()
+            .find(|player| player.token == token)
+            .ok_or(RoomError::InvalidToken)?;
+        player.connected = true;
+        Ok(player.id)
+    }
+
+    pub fn disconnect_by_token(&mut self, token: &str) -> Result<PlayerId, RoomError> {
+        let player = self
+            .players
+            .iter_mut()
+            .flatten()
+            .find(|player| player.token == token)
+            .ok_or(RoomError::InvalidToken)?;
+        player.connected = false;
+        Ok(player.id)
+    }
+
     pub fn set_ready(&mut self, player: PlayerId, ready: bool) -> Result<(), RoomError> {
         if self.started {
             return Err(RoomError::Started);
@@ -240,6 +262,48 @@ mod tests {
         assert_eq!(
             manager.room_mut(&room_id).unwrap().reconnect("invalid"),
             Err(RoomError::InvalidToken)
+        );
+    }
+
+    #[test]
+    fn connection_lifecycle_updates_only_the_token_owner() {
+        let mut manager = RoomManager::new();
+        let room_id = manager.create_room();
+        let (player, token) = manager.join(&room_id, "玩家").unwrap();
+        assert!(
+            manager
+                .room(&room_id)
+                .unwrap()
+                .player(player)
+                .unwrap()
+                .connected
+        );
+
+        manager
+            .room_mut(&room_id)
+            .unwrap()
+            .disconnect_by_token(&token)
+            .unwrap();
+        assert!(
+            !manager
+                .room(&room_id)
+                .unwrap()
+                .player(player)
+                .unwrap()
+                .connected
+        );
+        manager
+            .room_mut(&room_id)
+            .unwrap()
+            .connect_by_token(&token)
+            .unwrap();
+        assert!(
+            manager
+                .room(&room_id)
+                .unwrap()
+                .player(player)
+                .unwrap()
+                .connected
         );
     }
 }
