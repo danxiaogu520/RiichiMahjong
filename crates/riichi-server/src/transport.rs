@@ -1,5 +1,7 @@
 use crate::application::{JoinInfo, RoomInfo, ServerApplication};
-use crate::protocol::{client_envelope_to_command, session_event_to_wire, CommandTracker};
+use crate::protocol::{
+    client_envelope_to_command, session_event_to_wire, state_snapshot_to_wire, CommandTracker,
+};
 use crate::room::RoomError;
 use axum::extract::{
     ws::{Message, WebSocket, WebSocketUpgrade},
@@ -126,6 +128,7 @@ async fn websocket_session(
 ) {
     let mut sequencer = crate::protocol::ServerSequencer::new();
     let mut command_tracker = CommandTracker::new();
+    let mut sent_snapshot = false;
     let welcome = riichi_proto::messages::ServerMessage::RoomJoined {
         room_id,
         player_id: player,
@@ -151,9 +154,17 @@ async fn websocket_session(
         let Ok(Some(result)) = received else { break };
         match result {
             Err(event) => {
-                let Some(message) = session_event_to_wire(&event, player) else {
+                let message = if !sent_snapshot {
+                    state_snapshot_to_wire(&event, player)
+                } else {
+                    session_event_to_wire(&event, player)
+                };
+                let Some(message) = message else {
                     continue;
                 };
+                if matches!(message, ServerMessage::StateSnapshot(_)) {
+                    sent_snapshot = true;
+                }
                 if send_server_message(&mut socket, &mut sequencer, message)
                     .await
                     .is_err()

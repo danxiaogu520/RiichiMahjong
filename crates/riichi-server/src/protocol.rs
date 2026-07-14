@@ -202,6 +202,13 @@ pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option
     })))
 }
 
+pub fn state_snapshot_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option<ServerMessage> {
+    match state_update_to_wire(event, recipient) {
+        Some(ServerMessage::StateUpdate(view)) => Some(ServerMessage::StateSnapshot(view)),
+        other => other,
+    }
+}
+
 pub fn action_required_to_wire(request: ActionRequest) -> ServerMessage {
     ServerMessage::ActionRequired(request)
 }
@@ -305,7 +312,8 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 mod tests {
     use super::{
         call_options_to_wire, client_envelope_to_command, client_message_to_action,
-        session_event_to_wire, state_update_to_wire, CommandError, CommandTracker, ServerSequencer,
+        session_event_to_wire, state_snapshot_to_wire, state_update_to_wire, CommandError,
+        CommandTracker, ServerSequencer,
     };
     use riichi_core::game::{CallOption, CallType};
     use riichi_core::player::PlayerId;
@@ -457,6 +465,35 @@ mod tests {
         assert!(matches!(
             command.action,
             PlayerAction::TurnAction(TurnAction::Discard(tile)) if tile == Tile::from_raw(9)
+        ));
+    }
+
+    #[test]
+    fn first_state_can_be_marked_as_a_complete_snapshot() {
+        let event = SessionEvent::StateUpdate {
+            phase: GamePhase::ActionPhase,
+            current_player: PlayerId(0),
+            pending_discard: None,
+            drawn_tile: None,
+            hand_tiles: Vec::new(),
+            hand_count: 0,
+            hand_counts: [0; 4],
+            points: [25_000; 4],
+            winds: [riichi_core::tile::TileType::EAST; 4],
+            is_riichi: [false; 4],
+            discards: std::array::from_fn(|_| Vec::new()),
+            melds_count: [0; 4],
+            melds: std::array::from_fn(|_| Vec::new()),
+            dora: Vec::new(),
+            remaining_tiles: 70,
+            round: 1,
+            honba: 0,
+            riichi_sticks: 0,
+            tenpai_info: None,
+        };
+        assert!(matches!(
+            state_snapshot_to_wire(&event, PlayerId(0)),
+            Some(ServerMessage::StateSnapshot(_))
         ));
     }
 }
