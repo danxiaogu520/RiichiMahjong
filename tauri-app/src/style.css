@@ -91,3 +91,42 @@ button {
 
 button span { float: right; font-size: 20px; line-height: 14px; }
 .status { margin: 0; color: #7f969e; font-size: 12px; }
+
+.lobby-shell { max-width: 720px; }
+.lobby-topline { display: flex; align-items: center; justify-content: space-between; }
+.lobby-title { margin-top: 24px; font-size: clamp(42px, 8vw, 64px); }
+.lobby-title span { color: #f2c879; letter-spacing: .08em; }
+.text-button { margin: 0; padding: 0; color: #9eafb7; background: transparent; font-size: 13px; font-weight: 500; }
+.player-list { display: grid; gap: 8px; margin-top: 32px; }
+.player-row { display: flex; align-items: center; gap: 14px; min-height: 62px; padding: 12px 14px; border: 1px solid #29434e; border-radius: 12px; background: rgba(20, 34, 43, .72); }
+.player-row.own-player { border-color: #6bc5a2; }
+.seat { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #102018; background: #f2c879; font-weight: 800; }
+.player-name { flex: 1; font-weight: 650; }
+.ready-state { color: #758b94; font-size: 12px; }
+.ready-state.is-ready { color: #8fe2bd; }
+.lobby-actions { display: flex; gap: 12px; margin-top: 20px; }
+.lobby-actions button { flex: 1; }
+.secondary-button { color: #e9d49c; background: #3a3630; }
+.secondary-button:disabled { cursor: not-allowed; opacity: .45; }
+.empty-state { padding: 28px; border: 1px dashed #35535e; border-radius: 12px; color: #7f969e; text-align: center; }
+
+.table-shell { min-height: 100vh; padding: 28px; background: #101820; }
+.table-header { display: flex; justify-content: space-between; max-width: 1200px; margin: 0 auto; }
+.connection-dot { color: #8fe2bd; font-size: 12px; }
+.mahjong-table { position: relative; width: min(100%, 900px); aspect-ratio: 1.5; margin: 5vh auto 0; border: 18px solid #684b34; border-radius: 28px; background: #28604f; box-shadow: inset 0 0 0 3px #8b6845, 0 30px 80px #070c0f; }
+.table-center { position: absolute; inset: 35% 35%; display: grid; place-content: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; color: #d7eee2; text-align: center; }
+.table-center span { color: #98c3b0; font-size: 11px; }
+.table-player { position: absolute; color: #d7eee2; font-size: 13px; font-weight: 700; }
+.player-top { top: 7%; left: 50%; transform: translateX(-50%); }
+.player-left { top: 50%; left: 4%; transform: translateY(-50%); }
+.player-right { top: 50%; right: 4%; transform: translateY(-50%); }
+.player-bottom { bottom: 7%; left: 50%; transform: translateX(-50%); color: #f2c879; }
+.hand-panel { width: min(100%, 900px); margin: 20px auto; padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
+.tile-row { min-height: 50px; }
+
+@media (max-width: 640px) {
+  .shell { width: min(100% - 32px, 560px); padding-top: 8vh; }
+  .join-card { padding: 18px; }
+  .table-shell { padding: 18px; }
+  .mahjong-table { border-width: 10px; }
+}
