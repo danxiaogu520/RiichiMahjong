@@ -7,11 +7,39 @@ use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
     ActionRequest, CallResponsePayload, CallTypeView, ClientMessage, GamePhaseView, GameStateView,
-    MeldKindView, MeldView, PlayerView, ServerMessage, TenpaiInfoView, TurnActionPayload,
-    WaitInfoView,
+    MeldKindView, MeldView, PlayerView, ServerEnvelope, ServerMessage, TenpaiInfoView,
+    TurnActionPayload, WaitInfoView, PROTOCOL_VERSION,
 };
 
 use riichi_session::{CallResponse, PlayerAction, SessionEvent, TurnAction};
+
+/// 为一个连接分配递增的服务端事件序号。
+///
+/// 序号属于传输连接，而不是牌局状态；因此重连连接应创建新的分配器，
+/// 并从完整快照开始建立自己的事件序列。
+#[derive(Debug, Default)]
+pub struct ServerSequencer {
+    next_seq: u64,
+}
+
+impl ServerSequencer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn envelope(&mut self, body: ServerMessage) -> ServerEnvelope {
+        self.next_seq = self.next_seq.saturating_add(1);
+        ServerEnvelope {
+            protocol_version: PROTOCOL_VERSION,
+            seq: self.next_seq,
+            body,
+        }
+    }
+
+    pub fn current_seq(&self) -> u64 {
+        self.next_seq
+    }
+}
 
 /// Converts an authenticated wire message into the internal action format.
 /// The player identity is supplied by the session, never by the wire message.
@@ -171,12 +199,16 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 
 #[cfg(test)]
 mod tests {
-    use super::{call_options_to_wire, client_message_to_action, state_update_to_wire};
+    use super::{
+        call_options_to_wire, client_message_to_action, state_update_to_wire, ServerSequencer,
+    };
     use riichi_core::game::{CallOption, CallType};
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
     use riichi_engine::game::GamePhase;
-    use riichi_proto::messages::{ClientMessage, ServerMessage, TurnActionPayload};
+    use riichi_proto::messages::{
+        ClientMessage, ServerMessage, TurnActionPayload, PROTOCOL_VERSION,
+    };
     use riichi_session::{PlayerAction, SessionEvent, TurnAction};
 
     #[test]
@@ -246,5 +278,19 @@ mod tests {
         assert_eq!(request.player, PlayerId(1));
         assert_eq!(request.options.len(), 1);
         assert_eq!(request.options[0].player, PlayerId(1));
+    }
+
+    #[test]
+    fn server_sequencer_assigns_monotonic_connection_sequence() {
+        let mut sequencer = ServerSequencer::new();
+        assert_eq!(sequencer.current_seq(), 0);
+
+        let first = sequencer.envelope(ServerMessage::Error("first".into()));
+        let second = sequencer.envelope(ServerMessage::Error("second".into()));
+
+        assert_eq!(first.protocol_version, PROTOCOL_VERSION);
+        assert_eq!(first.seq, 1);
+        assert_eq!(second.seq, 2);
+        assert_eq!(sequencer.current_seq(), 2);
     }
 }
