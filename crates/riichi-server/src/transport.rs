@@ -108,21 +108,31 @@ async fn websocket(
     upgrade: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let player = application
-        .authenticate(&query.room_id, &query.token)
+        .connect_player(&query.room_id, &query.token)
         .map_err(room_error_response)?;
     let (action_tx, event_rx) = application
         .session_channels(&query.room_id, player)
         .await
         .map_err(room_error_response)?;
     Ok(upgrade.on_upgrade(move |socket| {
-        websocket_session(socket, query.room_id, player, action_tx, event_rx)
+        websocket_session(
+            socket,
+            query.room_id,
+            query.token,
+            player,
+            application,
+            action_tx,
+            event_rx,
+        )
     }))
 }
 
 async fn websocket_session(
     mut socket: WebSocket,
     room_id: String,
+    token: String,
     player: riichi_core::player::PlayerId,
+    application: ServerApplication,
     action_tx: tokio::sync::mpsc::Sender<riichi_session::PlayerCommand>,
     event_rx: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<SessionEvent>>>,
 ) {
@@ -130,7 +140,7 @@ async fn websocket_session(
     let mut command_tracker = CommandTracker::new();
     let mut sent_snapshot = false;
     let welcome = riichi_proto::messages::ServerMessage::RoomJoined {
-        room_id,
+        room_id: room_id.clone(),
         player_id: player,
     };
     if send_server_message(&mut socket, &mut sequencer, welcome)
@@ -235,6 +245,7 @@ async fn websocket_session(
             Ok(Ok(Message::Binary(_))) | Ok(Ok(Message::Pong(_))) => {}
         }
     }
+    let _ = application.disconnect_player(&room_id, &token);
 }
 
 async fn send_server_message(

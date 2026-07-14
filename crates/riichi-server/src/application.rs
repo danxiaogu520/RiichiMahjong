@@ -93,6 +93,16 @@ impl ServerApplication {
         rooms.room(room_id)?.player_by_token(token)
     }
 
+    pub fn connect_player(&self, room_id: &str, token: &str) -> Result<PlayerId, RoomError> {
+        let mut rooms = self.rooms.write().expect("room manager lock poisoned");
+        rooms.room_mut(room_id)?.connect_by_token(token)
+    }
+
+    pub fn disconnect_player(&self, room_id: &str, token: &str) -> Result<PlayerId, RoomError> {
+        let mut rooms = self.rooms.write().expect("room manager lock poisoned");
+        rooms.room_mut(room_id)?.disconnect_by_token(token)
+    }
+
     pub async fn launch_game(&self, room_id: &str) -> Result<RoomInfo, RoomError> {
         let room = {
             let mut rooms = self.rooms.write().expect("room manager lock poisoned");
