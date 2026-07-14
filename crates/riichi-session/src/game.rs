@@ -15,7 +15,9 @@ use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration, Instant};
 
-use crate::channel::{CallResponse, PlayerAction, PlayerCommand, SessionEvent, TurnAction};
+use crate::channel::{
+    CallResponse, PlayerAction, PlayerCommand, SessionControl, SessionEvent, TurnAction,
+};
 
 pub struct GameSession {
     pub game: GameState,
@@ -23,6 +25,8 @@ pub struct GameSession {
     pub event_txs: [mpsc::Sender<SessionEvent>; 4],
     pub action_tx: mpsc::Sender<PlayerCommand>,
     pub action_rx: mpsc::Receiver<PlayerCommand>,
+    control_rx: mpsc::Receiver<SessionControl>,
+    control_enabled: bool,
 }
 
 impl GameSession {
@@ -31,12 +35,32 @@ impl GameSession {
         action_tx: mpsc::Sender<PlayerCommand>,
         action_rx: mpsc::Receiver<PlayerCommand>,
     ) -> Self {
+        let (_, control_rx) = mpsc::channel(1);
         Self {
             game: GameState::new(),
             rng: StdRng::from_entropy(),
             event_txs,
             action_tx,
             action_rx,
+            control_rx,
+            control_enabled: false,
+        }
+    }
+
+    pub fn new_with_control(
+        event_txs: [mpsc::Sender<SessionEvent>; 4],
+        action_tx: mpsc::Sender<PlayerCommand>,
+        action_rx: mpsc::Receiver<PlayerCommand>,
+        control_rx: mpsc::Receiver<SessionControl>,
+    ) -> Self {
+        Self {
+            game: GameState::new(),
+            rng: StdRng::from_entropy(),
+            event_txs,
+            action_tx,
+            action_rx,
+            control_rx,
+            control_enabled: true,
         }
     }
 
@@ -579,7 +603,24 @@ impl GameSession {
         let deadline = Instant::now() + Duration::from_millis(TURN_TIMEOUT_MS);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            let received = timeout(remaining, self.action_rx.recv()).await;
+            let received = timeout(remaining, async {
+                if self.control_enabled {
+                    tokio::select! {
+                        command = self.action_rx.recv() => command,
+                        control = self.control_rx.recv() => {
+                            if let Some(control) = control {
+                                self.reconnect_player(control.player, control.event_tx, control.action_rx).await;
+                            } else {
+                                self.control_enabled = false;
+                            }
+                            None
+                        }
+                    }
+                } else {
+                    self.action_rx.recv().await
+                }
+            })
+            .await;
             match received {
                 Ok(Some(PlayerCommand {
                     player: pid,
@@ -656,7 +697,23 @@ impl GameSession {
                 if remaining.is_zero() {
                     break;
                 }
-                let received = timeout(remaining, self.action_rx.recv()).await;
+                let received = timeout(remaining, async {
+                    if self.control_enabled {
+                        tokio::select! {
+                            command = self.action_rx.recv() => command,
+                            control = self.control_rx.recv() => {
+                                if let Some(control) = control {
+                                    self.reconnect_player(control.player, control.event_tx, control.action_rx).await;
+                                } else {
+                                    self.control_enabled = false;
+                                }
+                                None
+                            }
+                        }
+                    } else {
+                        self.action_rx.recv().await
+                    }
+                }).await;
                 match received {
                     Ok(Some(PlayerCommand {
                         player: pid,

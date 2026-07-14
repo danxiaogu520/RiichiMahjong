@@ -101,6 +101,16 @@ pub struct PlayerCommand {
     pub action: PlayerAction,
 }
 
+/// 由传输层发送给单房间会话的控制消息。
+///
+/// 重连时替换指定座位的事件和行动通道，牌局状态仍只由 GameSession
+/// 所在线程修改。
+pub struct SessionControl {
+    pub player: PlayerId,
+    pub event_tx: mpsc::Sender<SessionEvent>,
+    pub action_rx: mpsc::Receiver<PlayerCommand>,
+}
+
 impl PlayerCommand {
     pub fn new(player: PlayerId, action: PlayerAction) -> Self {
         Self { player, action }

@@ -11,6 +11,6 @@ pub mod game;
 pub use agent::{AgentFuture, PlayerAgent};
 pub use channel::{
     create_player_pair, CallResponse, ClientHandle, PlayerAction, PlayerCommand, PlayerHandle,
-    SessionEvent, TurnAction,
+    SessionControl, SessionEvent, TurnAction,
 };
 pub use game::GameSession;
