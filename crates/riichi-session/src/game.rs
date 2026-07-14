@@ -843,10 +843,12 @@ fn call_priority_key(player: PlayerId, action: &ResponseAction, discarder: Playe
 
 #[cfg(test)]
 mod tests {
-    use super::{call_priority_key, should_replace_call};
+    use super::{call_priority_key, should_replace_call, GameSession};
     use riichi_core::game::ResponseAction;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
+    use crate::{create_player_pair, SessionEvent};
+    use tokio::sync::mpsc;
 
     #[test]
     fn pon_beats_chi_and_nearer_call_wins_same_priority() {
@@ -874,5 +876,31 @@ mod tests {
             discarder,
         ));
         assert_eq!(call_priority_key(PlayerId(1), &chi, discarder).0, 1);
+    }
+
+    #[tokio::test]
+    async fn reconnect_sends_state_and_current_action_prompt() {
+        let mut pairs = Vec::new();
+        for index in 0..4 {
+            pairs.push(create_player_pair(PlayerId(index)));
+        }
+        let event_txs = std::array::from_fn(|index| pairs[index].0.event_tx.clone());
+        let (action_tx, action_rx) = mpsc::channel(8);
+        let mut session = GameSession::new(event_txs, action_tx, action_rx);
+        let (replacement_tx, mut replacement_rx) = mpsc::channel(8);
+        let (_, replacement_action_rx) = mpsc::channel(8);
+
+        session
+            .reconnect_player(PlayerId(0), replacement_tx, replacement_action_rx)
+            .await;
+
+        assert!(matches!(
+            replacement_rx.recv().await,
+            Some(SessionEvent::StateUpdate { .. })
+        ));
+        assert!(matches!(
+            replacement_rx.recv().await,
+            Some(SessionEvent::ActionRequired { .. })
+        ));
     }
 }
