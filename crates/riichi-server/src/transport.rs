@@ -31,6 +31,11 @@ pub struct ReadyRequest {
     pub ready: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct StartRequest {
+    pub token: String,
+}
+
 pub fn router(application: ServerApplication) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -75,7 +80,7 @@ async fn set_ready(
 async fn start_room(
     State(application): State<ServerApplication>,
     Path(room_id): Path<String>,
-    Json(request): Json<ReadyRequest>,
+    Json(request): Json<StartRequest>,
 ) -> Result<Json<RoomInfo>, (StatusCode, String)> {
     application
         .authenticate(&room_id, &request.token)

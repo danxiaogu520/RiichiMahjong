@@ -203,4 +203,22 @@ mod tests {
         assert!(!encoded.contains(&joined.token));
         assert!(encoded.contains("玩家"));
     }
+
+    #[tokio::test]
+    async fn game_cannot_start_before_all_four_players_are_ready() {
+        let app = ServerApplication::new();
+        let room = app.create_room();
+        let joined = app.join_room(&room.id, "玩家").unwrap();
+
+        assert_eq!(
+            app.launch_game(&room.id).await,
+            Err(RoomError::InvalidPlayer)
+        );
+        app.set_ready(&room.id, &joined.token, true).unwrap();
+        assert!(
+            !app.set_ready(&room.id, &joined.token, true)
+                .unwrap()
+                .started
+        );
+    }
 }
