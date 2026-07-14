@@ -12,7 +12,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use riichi_proto::messages::{ClientEnvelope, ServerMessage};
+use riichi_proto::messages::{ClientEnvelope, ClientMessage, ServerMessage};
 use riichi_session::SessionEvent;
 use serde::Deserialize;
 use tokio::time::{timeout, Duration};
@@ -236,6 +236,7 @@ async fn websocket_session(
                     continue;
                 };
                 let command_id = envelope.command_id;
+                let requests_snapshot = matches!(&envelope.body, ClientMessage::RequestSnapshot);
                 match client_envelope_to_command(
                     envelope,
                     player,
@@ -257,6 +258,28 @@ async fn websocket_session(
                             .is_err()
                         {
                             break;
+                        }
+                    }
+                    Ok(None) if requests_snapshot => {
+                        // 快照请求不改变牌局，只从该玩家专属事件队列中取下一份
+                        // 状态更新，避免把其他玩家的隐藏信息暴露给重连客户端。
+                        let snapshot = loop {
+                            let event = {
+                                let mut receiver = event_rx.lock().await;
+                                receiver.recv().await
+                            };
+                            let Some(event) = event else { break None };
+                            if let Some(message) = state_snapshot_to_wire(&event, player) {
+                                break Some(message);
+                            }
+                        };
+                        if let Some(message) = snapshot {
+                            if send_server_message(&outbound_tx, &mut sequencer, message)
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
                         }
                     }
                     Ok(None) => {}

@@ -50,6 +50,8 @@ export class ClientTransport {
   }
 
   connect(roomId: string, token: string, callbacks: TransportCallbacks): void {
+    // 每条 WebSocket 连接都有自己的服务端序号；重连必须从快照重新建立序列。
+    this.sequence = 0;
     const url = new URL(this.httpOrigin);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/ws";
@@ -58,6 +60,10 @@ export class ClientTransport {
     this.socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as ServerEnvelope;
+        if (typeof message.seq === "number" && message.seq > this.sequence + 1 && this.sequence !== 0) {
+          callbacks.onError("检测到消息序号缺失，正在请求完整快照");
+          this.requestSnapshot();
+        }
         if (typeof message.seq === "number") {
           this.sequence = message.seq;
         }
@@ -81,6 +87,10 @@ export class ClientTransport {
       body,
     };
     this.socket.send(JSON.stringify(envelope));
+  }
+
+  requestSnapshot(): void {
+    this.send({ RequestSnapshot: null });
   }
 
   close(): void {

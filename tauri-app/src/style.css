@@ -111,22 +111,43 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 .empty-state { padding: 28px; border: 1px dashed #35535e; border-radius: 12px; color: #7f969e; text-align: center; }
 
 .table-shell { min-height: 100vh; padding: 28px; background: #101820; }
-.table-header { display: flex; justify-content: space-between; max-width: 1200px; margin: 0 auto; }
+.table-header { display: flex; align-items: center; gap: 18px; max-width: 1200px; margin: 0 auto; }
+.table-header .eyebrow { flex: 1; margin: 0; }
 .connection-dot { color: #8fe2bd; font-size: 12px; }
 .mahjong-table { position: relative; width: min(100%, 900px); aspect-ratio: 1.5; margin: 5vh auto 0; border: 18px solid #684b34; border-radius: 28px; background: #28604f; box-shadow: inset 0 0 0 3px #8b6845, 0 30px 80px #070c0f; }
 .table-center { position: absolute; inset: 35% 35%; display: grid; place-content: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; color: #d7eee2; text-align: center; }
 .table-center span { color: #98c3b0; font-size: 11px; }
-.table-player { position: absolute; color: #d7eee2; font-size: 13px; font-weight: 700; }
+.table-player { position: absolute; display: grid; gap: 4px; color: #d7eee2; font-size: 13px; font-weight: 700; text-align: center; }
+.table-player small { color: #9fc4b5; font-size: 11px; font-weight: 500; }
+.table-player.active-seat { color: #f2c879; text-shadow: 0 0 16px rgba(242, 200, 121, .5); }
 .player-top { top: 7%; left: 50%; transform: translateX(-50%); }
 .player-left { top: 50%; left: 4%; transform: translateY(-50%); }
 .player-right { top: 50%; right: 4%; transform: translateY(-50%); }
 .player-bottom { bottom: 7%; left: 50%; transform: translateX(-50%); color: #f2c879; }
-.hand-panel { width: min(100%, 900px); margin: 20px auto; padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
-.tile-row { min-height: 50px; }
+.dora-row { position: absolute; top: 50%; right: 7%; color: #b7d8ca; font-size: 11px; }
+.game-grid { width: min(100%, 900px); margin: 20px auto; display: grid; grid-template-columns: 1fr 270px; gap: 12px; }
+.hand-panel, .action-panel, .discards-panel { padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
+.panel-heading { display: flex; justify-content: space-between; margin-bottom: 12px; color: #b7c6cb; font-size: 12px; }
+.tile-row { display: flex; flex-wrap: wrap; align-items: end; gap: 4px; min-height: 54px; }
+.tile { min-width: 34px; margin: 0; padding: 9px 6px; border: 1px solid #cbd8d1; border-radius: 5px; color: #26332f; background: #eef5ef; font-size: 12px; font-weight: 800; }
+.tile:hover { transform: translateY(-4px); background: #f2c879; }
+.tile.disabled-tile { cursor: default; opacity: .55; }
+.tile.disabled-tile:hover { transform: none; background: #eef5ef; }
+.drawn-tile { margin-left: 10px; }
+.draw-gap { width: 2px; }
+.action-panel { display: grid; align-content: start; gap: 12px; }
+.action-panel button { width: 100%; margin: 0; padding: 10px; font-size: 12px; }
+.action-panel .secondary-button { color: #e9d49c; background: #3a3630; }
+.discards-panel { width: min(100%, 900px); margin: 0 auto; }
+.discard-line { display: grid; grid-template-columns: 130px 1fr; gap: 10px; min-height: 28px; color: #b7c6cb; font-size: 12px; }
+.discard-line span { color: #d7eee2; word-spacing: 7px; }
 
 @media (max-width: 640px) {
   .shell { width: min(100% - 32px, 560px); padding-top: 8vh; }
   .join-card { padding: 18px; }
   .table-shell { padding: 18px; }
   .mahjong-table { border-width: 10px; }
+  .game-grid { grid-template-columns: 1fr; }
+  .dora-row { top: 63%; right: 50%; transform: translateX(50%); }
+  .discard-line { grid-template-columns: 90px 1fr; }
 }

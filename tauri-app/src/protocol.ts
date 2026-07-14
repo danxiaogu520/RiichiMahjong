@@ -55,6 +55,49 @@ export interface ServerEnvelope {
   body: Record<string, unknown>;
 }
 
+export interface GameStateView {
+  players: PlayerView[];
+  wind: [number];
+  round: number;
+  honba: number;
+  riichi_sticks: number;
+  current_player: PlayerId;
+  drawn_tile: number | null;
+  dora: [number][];
+  remaining_tiles: number;
+  phase: string;
+}
+
+export interface PlayerView {
+  id: PlayerId;
+  hand: number[] | null;
+  hand_count: number;
+  points: number;
+  wind: [number];
+  discards: number[];
+  melds: MeldView[];
+  is_riichi: boolean;
+  riichi_declaration_tile: number | null;
+}
+
+export interface MeldView { kind: string; tiles: number[]; from_player: PlayerId | null; }
+
+export interface ActionRequest {
+  player: PlayerId;
+  can_tsumo: boolean;
+  can_riichi: boolean;
+  riichi_options: number[];
+  discard_options: number[];
+  ankan_options: number[];
+  kakan_options: [number, number][];
+  can_kyuushu: boolean;
+}
+
+export interface CallRequest {
+  player: PlayerId;
+  options: { player: PlayerId; call_type: Record<string, unknown> }[];
+}
+
 export function playerIndex(player: PlayerId): number {
   return player[0];
 }
