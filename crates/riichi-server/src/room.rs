@@ -1,12 +1,11 @@
 use riichi_core::player::PlayerId;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_ROOM_ID: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomPlayer {
     pub id: PlayerId,
     pub nickname: String,

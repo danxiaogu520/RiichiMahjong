@@ -14,8 +14,16 @@ struct ActiveSession {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RoomInfo {
     pub id: String,
-    pub players: Vec<RoomPlayer>,
+    pub players: Vec<RoomPlayerView>,
     pub started: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RoomPlayerView {
+    pub id: PlayerId,
+    pub nickname: String,
+    pub ready: bool,
+    pub connected: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -147,8 +155,22 @@ impl ServerApplication {
 fn room_info(room: &crate::room::Room) -> RoomInfo {
     RoomInfo {
         id: room.id.clone(),
-        players: room.players.iter().flatten().cloned().collect(),
+        players: room
+            .players
+            .iter()
+            .flatten()
+            .map(room_player_view)
+            .collect(),
         started: room.started,
+    }
+}
+
+fn room_player_view(player: &RoomPlayer) -> RoomPlayerView {
+    RoomPlayerView {
+        id: player.id,
+        nickname: player.nickname.clone(),
+        ready: player.ready,
+        connected: player.connected,
     }
 }
 
@@ -169,5 +191,16 @@ mod tests {
         );
         let updated = app.set_ready(&room.id, &joined.token, true).unwrap();
         assert!(updated.players[0].ready);
+    }
+
+    #[test]
+    fn room_info_never_serializes_connection_tokens() {
+        let app = ServerApplication::new();
+        let room = app.create_room();
+        let joined = app.join_room(&room.id, "玩家").unwrap();
+        let encoded = serde_json::to_string(&joined.room).unwrap();
+
+        assert!(!encoded.contains(&joined.token));
+        assert!(encoded.contains("玩家"));
     }
 }
