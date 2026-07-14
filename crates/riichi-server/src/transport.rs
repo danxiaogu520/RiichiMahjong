@@ -109,7 +109,7 @@ async fn websocket(
     upgrade: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let player = application
-        .connect_player(&query.room_id, &query.token)
+        .authenticate(&query.room_id, &query.token)
         .map_err(room_error_response)?;
     let (action_tx, event_rx) = application
         .session_channels(&query.room_id, player)
@@ -142,6 +142,9 @@ async fn websocket_session(
     action_tx: tokio::sync::mpsc::Sender<riichi_session::PlayerCommand>,
     event_rx: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<SessionEvent>>>,
 ) {
+    if application.connect_player(&room_id, &token).is_err() {
+        return;
+    }
     let (mut socket_sender, mut socket_receiver) = socket.split();
     let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::channel(64);
     let writer = tokio::spawn(async move {
