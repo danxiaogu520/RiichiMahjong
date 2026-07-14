@@ -428,6 +428,21 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_request_is_sequence_checked_but_never_becomes_an_action() {
+        let mut tracker = CommandTracker::new();
+        let request = ClientEnvelope {
+            protocol_version: PROTOCOL_VERSION,
+            command_id: 8,
+            expected_seq: 4,
+            body: ClientMessage::RequestSnapshot,
+        };
+
+        assert!(client_envelope_to_command(request, PlayerId(1), &mut tracker, 4)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn action_event_is_scoped_to_the_authenticated_recipient() {
         let event = SessionEvent::ActionRequired {
             can_tsumo: true,
