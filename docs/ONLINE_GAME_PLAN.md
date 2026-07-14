@@ -41,6 +41,7 @@
 - 对局发送 `GameOver` 后会释放 `ActiveSession` 和内存房间，避免结束房间与控制通道长期驻留；已增加清理回归测试。
 - 阶段 7 已固化 Tauri 生产 bundle 元数据，并将客户端服务器地址保存到本地配置，重新打开客户端时自动恢复。
 - 阶段 7 已提供 Linux systemd 服务单元、环境变量示例、Nginx HTTPS/WSS 反向代理模板和部署文档；当前环境的 Tauri 原生构建已验证到系统依赖阶段，缺少 `pkg-config`/GTK/WebKitGTK 时无法继续链接。
+- 阶段 7 已增加 GitHub Actions Windows runner 构建 workflow，会自动上传 `.exe` 和 `.msi` 安装包 artifact。
 
 ## 3. 目标架构
 
