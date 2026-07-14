@@ -102,6 +102,22 @@ impl Room {
         Ok(())
     }
 
+    pub fn set_ready_with_token(
+        &mut self,
+        token: &str,
+        ready: bool,
+    ) -> Result<PlayerId, RoomError> {
+        let player = self
+            .players
+            .iter()
+            .flatten()
+            .find(|player| player.token == token)
+            .map(|player| player.id)
+            .ok_or(RoomError::InvalidToken)?;
+        self.set_ready(player, ready)?;
+        Ok(player)
+    }
+
     pub fn all_ready(&self) -> bool {
         self.players
             .iter()
