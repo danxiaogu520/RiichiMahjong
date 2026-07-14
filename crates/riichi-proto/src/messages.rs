@@ -32,6 +32,7 @@ pub struct ServerEnvelope {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     JoinRoom { room_id: String },
+    RequestSnapshot,
     TurnAction { action: TurnActionPayload },
     CallResponse { action: CallResponsePayload },
     Ready,
@@ -64,7 +65,18 @@ pub enum ServerMessage {
         player_id: PlayerId,
     },
     StateUpdate(Box<GameStateView>),
+    StateSnapshot(Box<GameStateView>),
     Event(GameEventView),
+    CommandAccepted {
+        command_id: u64,
+        seq: u64,
+    },
+    CommandRejected {
+        command_id: u64,
+        expected_seq: u64,
+        actual_seq: u64,
+        reason: String,
+    },
     ActionRequired(ActionRequest),
     CallRequired(CallRequest),
     RoundResult(RoundResultView),
