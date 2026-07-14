@@ -7,8 +7,8 @@ use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
     ActionRequest, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage, GamePhaseView,
-    GameStateView, MeldKindView, MeldView, PlayerView, ServerEnvelope, ServerMessage,
-    TenpaiInfoView, TurnActionPayload, WaitInfoView, PROTOCOL_VERSION,
+    GameStateView, MeldKindView, MeldView, PlayerView, RoundEndReasonView, ServerEnvelope,
+    ServerMessage, TenpaiInfoView, TurnActionPayload, WaitInfoView, PROTOCOL_VERSION,
 };
 use std::collections::HashSet;
 
@@ -213,6 +213,56 @@ pub fn call_options_to_wire(player: PlayerId, options: &[CallOption]) -> ServerM
     })
 }
 
+/// Converts any internal session event into the authenticated player's wire
+/// view. This is the only transport-facing conversion for live game events.
+pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option<ServerMessage> {
+    match event {
+        SessionEvent::StateUpdate { .. } => state_update_to_wire(event, recipient),
+        SessionEvent::ActionRequired {
+            can_tsumo,
+            can_riichi,
+            riichi_options,
+            discard_options,
+            ankan_options,
+            kakan_options,
+            can_kyuushu,
+        } => Some(ServerMessage::ActionRequired(ActionRequest {
+            player: recipient,
+            can_tsumo: *can_tsumo,
+            can_riichi: *can_riichi,
+            riichi_options: riichi_options.clone(),
+            discard_options: discard_options.clone(),
+            ankan_options: ankan_options.clone(),
+            kakan_options: kakan_options.clone(),
+            can_kyuushu: *can_kyuushu,
+        })),
+        SessionEvent::CallRequired { options } => Some(call_options_to_wire(recipient, options)),
+        SessionEvent::RoundResult {
+            reason,
+            point_changes,
+            ..
+        } => Some(ServerMessage::RoundResult(
+            riichi_proto::messages::RoundResultView {
+                reason: round_end_reason_view(reason),
+                point_changes: *point_changes,
+            },
+        )),
+        SessionEvent::GameOver { scores, ranking } => Some(ServerMessage::GameOver {
+            scores: *scores,
+            ranking: *ranking,
+        }),
+        SessionEvent::Error(message) => Some(ServerMessage::Error(message.clone())),
+    }
+}
+
+fn round_end_reason_view(reason: &str) -> RoundEndReasonView {
+    match reason {
+        "流局" => RoundEndReasonView::ExhaustiveDraw,
+        "途中流局" => RoundEndReasonView::KyuushuKyuuhai,
+        _ => RoundEndReasonView::Unknown(reason.to_string()),
+    }
+}
+
 fn phase_view(phase: &GamePhase) -> GamePhaseView {
     match phase {
         GamePhase::DrawPhase => GamePhaseView::DrawPhase,
@@ -236,8 +286,8 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 #[cfg(test)]
 mod tests {
     use super::{
-        call_options_to_wire, client_message_to_action, state_update_to_wire, CommandError,
-        CommandTracker, ServerSequencer,
+        call_options_to_wire, client_message_to_action, session_event_to_wire,
+        state_update_to_wire, CommandError, CommandTracker, ServerSequencer,
     };
     use riichi_core::game::{CallOption, CallType};
     use riichi_core::player::PlayerId;
@@ -349,5 +399,25 @@ mod tests {
         );
         assert_eq!(tracker.validate(&command, 3), Ok(()));
         assert_eq!(tracker.validate(&command, 3), Err(CommandError::Duplicate));
+    }
+
+    #[test]
+    fn action_event_is_scoped_to_the_authenticated_recipient() {
+        let event = SessionEvent::ActionRequired {
+            can_tsumo: true,
+            can_riichi: false,
+            riichi_options: Vec::new(),
+            discard_options: vec![Tile::from_raw(4)],
+            ankan_options: Vec::new(),
+            kakan_options: Vec::new(),
+            can_kyuushu: false,
+        };
+        let ServerMessage::ActionRequired(request) =
+            session_event_to_wire(&event, PlayerId(2)).unwrap()
+        else {
+            panic!("expected action request")
+        };
+        assert_eq!(request.player, PlayerId(2));
+        assert_eq!(request.discard_options, vec![Tile::from_raw(4)]);
     }
 }
