@@ -16,6 +16,19 @@ npm run tauri build
 Pango 和 Cairo。当前仓库已验证前端生产构建；在缺少这些系统库的环境中，原生构建会
 在 `glib-sys`/`gdk-sys` 链接阶段失败。
 
+## GitHub Actions Windows 构建
+
+仓库中的 [`.github/workflows/windows-client.yml`](../.github/workflows/windows-client.yml)
+会在 `main`/`master` 推送或手动触发时，在 `windows-latest` runner 上构建 Tauri Windows
+安装包，并将 `.exe` 和 `.msi` 上传为 Actions artifact。
+
+手动构建步骤：
+
+1. 将本分支推送到 GitHub。
+2. 打开仓库的 **Actions → Build Windows client**。
+3. 点击 **Run workflow**。
+4. 等 workflow 成功后，在运行详情页的 **Artifacts** 下载 `riichi-mahjong-windows-*`。
+
 ## Linux 服务器
 
 将 release 二进制复制到 `/opt/riichi-mahjong/bin/riichi-server`，创建运行用户和目录：
