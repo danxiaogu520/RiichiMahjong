@@ -16,6 +16,7 @@ use riichi_proto::messages::{ClientEnvelope, ServerMessage};
 use riichi_session::SessionEvent;
 use serde::Deserialize;
 use tokio::time::{timeout, Duration};
+use tower_http::cors::CorsLayer;
 
 #[derive(Debug, Deserialize)]
 pub struct JoinRequest {
@@ -47,6 +48,7 @@ pub fn router(application: ServerApplication) -> Router {
         .route("/rooms/:room_id/ready", post(set_ready))
         .route("/rooms/:room_id/start", post(start_room))
         .route("/ws", get(websocket))
+        .layer(CorsLayer::permissive())
         .with_state(application)
 }
 
