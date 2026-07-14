@@ -109,7 +109,7 @@ impl GameState {
 
         let mut options = Vec::new();
         for tt in (0..34u8).map(TileType) {
-            let hand_count = hand.count_type(tt.0);
+            let hand_count = hand.count_type(tt);
             let drawn_count = self.drawn_tile.is_some_and(|tile| tile.tile_type() == tt) as usize;
             if hand_count + drawn_count < 4 {
                 continue;
@@ -117,7 +117,9 @@ impl GameState {
 
             let mut hand_after = hand.clone();
             if let Some(drawn) = self.drawn_tile {
-                hand_after.add(drawn);
+                hand_after
+                    .add(drawn)
+                    .expect("计算立直选项时手牌不应超过容量");
             }
             let mut removed = 0;
             for tile in hand_after.tiles().to_vec() {

@@ -2,9 +2,37 @@ use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use serde::{Deserialize, Serialize};
 
+/// 当前客户端与服务端共同支持的线协议版本。
+pub const PROTOCOL_VERSION: u16 = 1;
+
+/// 客户端发送给服务端的统一消息外壳。
+///
+/// `command_id` 用于识别重复提交，`expected_seq` 用于让服务端发现
+/// 客户端基于过期状态发起的行动。身份不放在外壳中，服务端应从连接
+/// 会话中取得经过认证的座位。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientEnvelope {
+    pub protocol_version: u16,
+    pub command_id: u64,
+    pub expected_seq: u64,
+    pub body: ClientMessage,
+}
+
+/// 服务端发送给客户端的统一消息外壳。
+///
+/// 同一连接上的 `seq` 必须单调递增；客户端可以用它检测丢失或乱序
+/// 的事件，并在需要时请求完整状态快照。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerEnvelope {
+    pub protocol_version: u16,
+    pub seq: u64,
+    pub body: ServerMessage,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     JoinRoom { room_id: String },
+    RequestSnapshot,
     TurnAction { action: TurnActionPayload },
     CallResponse { action: CallResponsePayload },
     Ready,
@@ -37,7 +65,18 @@ pub enum ServerMessage {
         player_id: PlayerId,
     },
     StateUpdate(Box<GameStateView>),
+    StateSnapshot(Box<GameStateView>),
     Event(GameEventView),
+    CommandAccepted {
+        command_id: u64,
+        seq: u64,
+    },
+    CommandRejected {
+        command_id: u64,
+        expected_seq: u64,
+        actual_seq: u64,
+        reason: String,
+    },
     ActionRequired(ActionRequest),
     CallRequired(CallRequest),
     RoundResult(RoundResultView),
@@ -182,6 +221,7 @@ pub enum RoundEndReasonView {
     SuufonRenda,
     SuuchaRiichi,
     SuuKantsu,
+    Unknown(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

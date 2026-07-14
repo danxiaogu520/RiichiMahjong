@@ -252,7 +252,10 @@ impl GameState {
             for (player_index, change) in changes.iter().enumerate() {
                 self.players[player_index].points += change;
             }
-            self.players[winner.0].hand.add(discarded_tile);
+            self.players[winner.0]
+                .hand
+                .add(discarded_tile)
+                .map_err(|error| GameError::InvalidAction(error.to_string()))?;
             events.push(GameEvent::PlayerWon {
                 player: winner,
                 is_tsumo: false,
@@ -425,7 +428,10 @@ impl GameState {
             ResponseAction::Ron => {
                 let result = self.check_win(player, false, discarded_tile, Some(discarder), false);
                 if let Some((changes, yaku_names)) = result {
-                    self.players[player.0].hand.add(discarded_tile);
+                    self.players[player.0]
+                        .hand
+                        .add(discarded_tile)
+                        .map_err(|error| GameError::InvalidAction(error.to_string()))?;
                     // 应用点数变化
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
@@ -574,7 +580,10 @@ impl GameState {
 
                 let result = self.check_win(player, false, kakan_tile, Some(kakan_player), true);
                 if let Some((changes, yaku_names)) = result {
-                    self.players[player.0].hand.add(kakan_tile);
+                    self.players[player.0]
+                        .hand
+                        .add(kakan_tile)
+                        .map_err(|error| GameError::InvalidAction(error.to_string()))?;
                     // 应用点数变化
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
@@ -617,15 +626,14 @@ impl GameState {
         let mut options = Vec::new();
         for &tile in hand.tiles() {
             let tt = tile.tile_type();
-            if seen.insert(tt) && hand.count_type(tt.0) == 4 {
+            if seen.insert(tt) && hand.count_type(tt) == 4 {
                 options.push(tile);
             }
         }
         // 自摸牌可能与手牌 3 张组合成暗杠（3+1=4）
         if let Some(drawn) = self.drawn_tile {
             let drawn_tt = drawn.tile_type();
-            if !options.iter().any(|t| t.tile_type() == drawn_tt)
-                && hand.count_type(drawn_tt.0) == 3
+            if !options.iter().any(|t| t.tile_type() == drawn_tt) && hand.count_type(drawn_tt) == 3
             {
                 options.push(drawn);
             }
@@ -652,7 +660,7 @@ impl GameState {
             return Err(GameError::InvalidAction("海底牌不能暗杠".to_string()));
         }
         let tt = tile.tile_type();
-        let available = self.players[player.0].hand.count_type(tt.0)
+        let available = self.players[player.0].hand.count_type(tt)
             + usize::from(self.drawn_tile.is_some_and(|drawn| drawn.tile_type() == tt));
         if available < 4 {
             return Err(GameError::InvalidAction("手中没有 4 张相同牌".to_string()));
@@ -845,7 +853,7 @@ mod tests {
             state.players[0].hand.remove(existing).unwrap();
         }
         for _ in 0..4 {
-            state.players[0].hand.add(tile);
+            state.players[0].hand.add(tile).unwrap();
         }
         state.players[0]
             .melds
