@@ -907,10 +907,10 @@ fn call_priority_key(player: PlayerId, action: &ResponseAction, discarder: Playe
 #[cfg(test)]
 mod tests {
     use super::{call_priority_key, should_replace_call, GameSession};
+    use crate::{create_player_pair, SessionEvent};
     use riichi_core::game::ResponseAction;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
-    use crate::{create_player_pair, SessionEvent};
     use tokio::sync::mpsc;
 
     #[test]
