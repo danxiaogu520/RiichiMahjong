@@ -236,6 +236,7 @@ async fn websocket_session(
                     continue;
                 };
                 let command_id = envelope.command_id;
+                let expected_seq = envelope.expected_seq;
                 let requests_snapshot = matches!(&envelope.body, ClientMessage::RequestSnapshot);
                 match client_envelope_to_command(
                     envelope,
@@ -284,10 +285,16 @@ async fn websocket_session(
                     }
                     Ok(None) => {}
                     Err(error) => {
+                        let actual_seq = sequencer.current_seq();
                         if send_server_message(
                             &outbound_tx,
                             &mut sequencer,
-                            ServerMessage::Error(format!("命令拒绝: {error:?}")),
+                            ServerMessage::CommandRejected {
+                                command_id,
+                                expected_seq,
+                                actual_seq,
+                                reason: format!("{error:?}"),
+                            },
                         )
                         .await
                         .is_err()
