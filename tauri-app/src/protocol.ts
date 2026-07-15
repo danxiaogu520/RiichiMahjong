@@ -1,4 +1,4 @@
-export type PlayerId = [number];
+export type PlayerId = number;
 
 export interface RoomPlayerView {
   id: PlayerId;
@@ -57,11 +57,11 @@ export interface ServerEnvelope {
 
 export interface GameStateView {
   players: PlayerView[];
-  wind: [number];
+  wind: number;
   round: number;
   honba: number;
   riichi_sticks: number;
-  dora: [number][];
+  dora: number[];
   remaining_tiles: number;
   phase: GamePhaseView;
 }
@@ -78,7 +78,7 @@ export interface PlayerView {
   hand: number[] | null;
   hand_count: number;
   points: number;
-  wind: [number];
+  wind: number;
   discards: number[];
   melds: MeldView[];
   is_riichi: boolean;
@@ -104,5 +104,5 @@ export interface CallRequest {
 }
 
 export function playerIndex(player: PlayerId): number {
-  return player[0];
+  return player;
 }

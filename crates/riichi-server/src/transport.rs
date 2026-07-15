@@ -7,7 +7,7 @@ use axum::extract::{
     ws::{Message, WebSocket, WebSocketUpgrade},
     Path, Query, State,
 };
-use axum::http::StatusCode;
+use axum::http::{header::HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -16,7 +16,7 @@ use riichi_proto::messages::{ClientEnvelope, ClientMessage, ServerMessage};
 use riichi_session::SessionEvent;
 use serde::Deserialize;
 use tokio::time::{timeout, Duration};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 #[derive(Debug, Deserialize)]
 pub struct JoinRequest {
@@ -50,8 +50,22 @@ pub fn router(application: ServerApplication) -> Router {
         .route("/rooms/:room_id/ready", post(set_ready))
         .route("/rooms/:room_id/start", post(start_room))
         .route("/ws", get(websocket))
-        .layer(CorsLayer::permissive())
+        .layer(cors_layer())
         .with_state(application)
+}
+
+fn cors_layer() -> CorsLayer {
+    let configured = std::env::var("RIICHI_ALLOWED_ORIGINS").unwrap_or_else(|_| {
+        "http://localhost:1420,http://127.0.0.1:1420,tauri://localhost,http://tauri.localhost,https://tauri.localhost".to_string()
+    });
+    let origins = configured
+        .split(',')
+        .filter_map(|origin| origin.trim().parse::<HeaderValue>().ok())
+        .collect::<Vec<_>>();
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods(Any)
+        .allow_headers(Any)
 }
 
 async fn health() -> impl IntoResponse {
