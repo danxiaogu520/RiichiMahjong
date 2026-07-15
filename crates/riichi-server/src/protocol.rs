@@ -1,7 +1,9 @@
 //! Internal channel messages and wire protocol messages are deliberately kept
 //! separate. This module is the single conversion boundary between them.
 
-use riichi_core::game::{CallKind, CallOption, CallType, DiscardKind, GameEvent, WinKind};
+use riichi_core::game::{
+    CallKind, CallOption, CallType, DiscardKind, GameEvent, RoundEndReason, WinKind,
+};
 use riichi_core::meld::MeldKind;
 use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
@@ -267,7 +269,7 @@ pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Optio
             ..
         } => Some(ServerMessage::RoundResult(
             riichi_proto::messages::RoundResultView {
-                reason: round_end_reason_view(reason),
+                reason: round_end_reason_label_view(reason),
                 point_changes: *point_changes,
             },
         )),
@@ -338,15 +340,32 @@ fn game_event_to_wire(event: &GameEvent, recipient: PlayerId) -> GameEventView {
         },
         GameEvent::AbortiveDraw { player, reason } => GameEventView::AbortiveDraw {
             player: *player,
-            reason: round_end_reason_view(&format!("{:?}", reason)),
+            reason: round_end_reason_view(reason),
         },
     }
 }
 
-fn round_end_reason_view(reason: &str) -> RoundEndReasonView {
+fn round_end_reason_view(reason: &RoundEndReason) -> RoundEndReasonView {
+    match reason {
+        RoundEndReason::ExhaustiveDraw => RoundEndReasonView::ExhaustiveDraw,
+        RoundEndReason::Win { winner, is_tsumo } => RoundEndReasonView::Win {
+            winner: *winner,
+            is_tsumo: *is_tsumo,
+        },
+        RoundEndReason::MultiWin { winners } => RoundEndReasonView::MultiWin {
+            winners: winners.clone(),
+        },
+        RoundEndReason::KyuushuKyuuhai => RoundEndReasonView::KyuushuKyuuhai,
+        RoundEndReason::SuufonRenda => RoundEndReasonView::SuufonRenda,
+        RoundEndReason::SuuchaRiichi => RoundEndReasonView::SuuchaRiichi,
+        RoundEndReason::SuuKantsu => RoundEndReasonView::SuuKantsu,
+    }
+}
+
+fn round_end_reason_label_view(reason: &str) -> RoundEndReasonView {
     match reason {
         "流局" => RoundEndReasonView::ExhaustiveDraw,
-        "途中流局" => RoundEndReasonView::KyuushuKyuuhai,
+        "途中流局" => RoundEndReasonView::Unknown(reason.to_string()),
         _ => RoundEndReasonView::Unknown(reason.to_string()),
     }
 }
@@ -393,10 +412,10 @@ fn meld_kind(kind: MeldKind) -> MeldKindView {
 mod tests {
     use super::{
         call_options_to_wire, client_envelope_to_command, client_message_to_action,
-        session_event_to_wire, state_snapshot_to_wire, state_update_to_wire, CommandError,
-        CommandTracker, ServerSequencer,
+        round_end_reason_view, session_event_to_wire, state_snapshot_to_wire, state_update_to_wire,
+        CommandError, CommandTracker, ServerSequencer,
     };
-    use riichi_core::game::{CallOption, CallType};
+    use riichi_core::game::{CallOption, CallType, RoundEndReason};
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
     use riichi_engine::game::GamePhase;
@@ -600,6 +619,22 @@ mod tests {
         assert!(matches!(
             state_snapshot_to_wire(&event, PlayerId(0)),
             Some(ServerMessage::StateSnapshot(_))
+        ));
+    }
+
+    #[test]
+    fn round_end_reason_view_preserves_abortive_draw_kinds() {
+        assert!(matches!(
+            round_end_reason_view(&RoundEndReason::KyuushuKyuuhai),
+            riichi_proto::messages::RoundEndReasonView::KyuushuKyuuhai
+        ));
+        assert!(matches!(
+            round_end_reason_view(&RoundEndReason::SuufonRenda),
+            riichi_proto::messages::RoundEndReasonView::SuufonRenda
+        ));
+        assert!(matches!(
+            round_end_reason_view(&RoundEndReason::SuuKantsu),
+            riichi_proto::messages::RoundEndReasonView::SuuKantsu
         ));
     }
 }
