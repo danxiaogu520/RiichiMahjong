@@ -76,11 +76,22 @@ impl GameState {
         if !self.can_declare_riichi(player) {
             return Err(GameError::InvalidAction("不满足立直条件".to_string()));
         }
+        self.apply_riichi_event(player)?;
+        self.record_event(GameEvent::Riichi { player });
+        Ok(())
+    }
+
+    pub(crate) fn apply_riichi_event(&mut self, player: PlayerId) -> Result<(), GameError> {
+        if self.players[player.0].is_riichi {
+            return Err(GameError::InvalidAction("玩家已经立直".to_string()));
+        }
+        if self.players[player.0].points < 1000 {
+            return Err(GameError::InvalidAction("立直点数不足".to_string()));
+        }
         let p = &mut self.players[player.0];
         p.points -= 1000;
         p.is_riichi = true;
         self.riichi_sticks += 1;
-        self.record_event(GameEvent::PlayerDeclaredRiichi { player });
         Ok(())
     }
 

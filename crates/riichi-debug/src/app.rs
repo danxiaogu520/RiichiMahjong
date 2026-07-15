@@ -243,6 +243,7 @@ impl App {
                 SessionEvent::Error(message) => {
                     self.messages.push(message);
                 }
+                SessionEvent::GameEvent { .. } => {}
             }
         }
     }

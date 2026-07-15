@@ -1,8 +1,8 @@
 use rand::Rng;
 use riichi_core::game::GameError::{InvalidAction, WallExhausted};
-use riichi_core::game::{DrawPosition, GameEvent, RoundEndReason};
+use riichi_core::game::{DiscardKind, DrawPosition, GameEvent, RoundEndReason};
 use riichi_core::hand::Hand;
-use riichi_core::player::FuritenState;
+use riichi_core::player::{FuritenState, PlayerId};
 use riichi_core::tile::Tile;
 use riichi_core::wall::Wall;
 
@@ -80,11 +80,7 @@ impl GameState {
             position: DrawPosition::LiveWall,
         };
 
-        // 记录局开始事件
-        self.record_event(GameEvent::RoundStarted {
-            round_number: self.round,
-            dealer: self.get_dealer(),
-        });
+        self.round_end_reason = None;
     }
 
     /// 获取本局结算后的四家点棒变化。
@@ -113,14 +109,30 @@ impl GameState {
             } => player,
             _ => return Err(GameError::InvalidAction("当前不在普通摸牌阶段".to_string())),
         };
-        let tile = self.wall.draw().ok_or(WallExhausted)?;
+        let tile = self.wall.peek_draw().ok_or(WallExhausted)?;
+        self.apply_draw_event(player, tile)?;
+        self.record_event(GameEvent::Draw { player, tile });
+        Ok(tile)
+    }
+
+    pub(crate) fn apply_draw_event(
+        &mut self,
+        player: PlayerId,
+        tile: Tile,
+    ) -> Result<(), GameError> {
+        let actual = self.wall.draw().ok_or(WallExhausted)?;
+        if actual != tile {
+            return Err(GameError::InvalidAction(format!(
+                "事件摸牌与牌山不一致：事件为 {}，实际为 {}",
+                tile, actual
+            )));
+        }
         self.update_discard_furiten(player);
-        self.record_event(GameEvent::PlayerDrew { player, tile });
         self.phase = GamePhase::ActionPhase {
             player,
             drawn_tile: Some(tile),
         };
-        Ok(tile)
+        Ok(())
     }
 
     /// 岭上补摸（杠后从岭上摸牌）
@@ -140,15 +152,34 @@ impl GameState {
         };
         let tile = self
             .wall
+            .peek_rinshan()
+            .ok_or(InvalidAction("岭上牌已耗尽".to_string()))?;
+        self.apply_rinshan_draw_event(player, tile)?;
+        self.record_event(GameEvent::Draw { player, tile });
+        Ok(tile)
+    }
+
+    pub(crate) fn apply_rinshan_draw_event(
+        &mut self,
+        player: PlayerId,
+        tile: Tile,
+    ) -> Result<(), GameError> {
+        let actual = self
+            .wall
             .draw_rinshan()
             .ok_or(InvalidAction("岭上牌已耗尽".to_string()))?;
+        if actual != tile {
+            return Err(GameError::InvalidAction(format!(
+                "事件岭上摸牌与牌山不一致：事件为 {}，实际为 {}",
+                tile, actual
+            )));
+        }
         self.update_discard_furiten(player);
-        self.record_event(GameEvent::PlayerDrew { player, tile });
         self.phase = GamePhase::ActionPhase {
             player,
             drawn_tile: Some(tile),
         };
-        Ok(tile)
+        Ok(())
     }
 
     /// 将自摸牌从缓冲区提交到手牌
@@ -188,15 +219,12 @@ impl GameState {
             _ => return Err(GameError::InvalidAction("当前不在行动阶段".to_string())),
         };
         let cp = current_player.0;
-
         if self.kuikae_forbidden[cp].contains(&tile.tile_type()) {
             return Err(GameError::InvalidAction(format!(
                 "食替：{} 不能立刻打出",
                 tile
             )));
         }
-
-        // 立直后只能打出摸到的牌
         if self.players[cp].is_riichi {
             if let Some(drawn) = drawn_tile {
                 if tile != drawn {
@@ -206,6 +234,36 @@ impl GameState {
                 }
             }
         }
+        let discard_kind = if Some(tile) == drawn_tile {
+            DiscardKind::Tsumogiri
+        } else {
+            DiscardKind::Tedashi
+        };
+        self.apply_discard_event(current_player, tile, discard_kind)?;
+        self.record_event(GameEvent::Discard {
+            player: current_player,
+            tile,
+            kind: discard_kind,
+        });
+        Ok(())
+    }
+
+    pub(crate) fn apply_discard_event(
+        &mut self,
+        event_player: riichi_core::player::PlayerId,
+        tile: Tile,
+        discard_kind: DiscardKind,
+    ) -> Result<(), GameError> {
+        let (current_player, drawn_tile) = match self.phase {
+            GamePhase::ActionPhase { player, drawn_tile } => (player, drawn_tile),
+            _ => return Err(GameError::InvalidAction("当前不在行动阶段".to_string())),
+        };
+        if event_player != current_player {
+            return Err(GameError::InvalidAction(
+                "弃牌事件玩家与当前阶段不一致".to_string(),
+            ));
+        }
+        let cp = current_player.0;
 
         if Some(tile) == drawn_tile {
             // 打出自摸牌：直接从缓冲区消耗，不进手
@@ -234,7 +292,10 @@ impl GameState {
         // 更新玩家状态
         let player = &mut self.players[cp];
         // 检查是否已有立直事件，如果没有则记录立直宣言牌
-        let has_riichi_event = self.events.iter().any(|e| matches!(e, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == current_player));
+        let has_riichi_event = self
+            .events
+            .iter()
+            .any(|e| matches!(e, GameEvent::Riichi { player: pid } if *pid == current_player));
         if player.is_riichi && !has_riichi_event {
             // 立直宣言牌通过事件记录，这里不需要额外操作
         }
@@ -242,11 +303,16 @@ impl GameState {
         player.furiten.clear_round(); // 清除本轮振听
         self.kuikae_forbidden[cp].clear();
 
-        // 记录打牌事件
-        self.record_event(GameEvent::PlayerDiscarded {
-            player: current_player,
-            tile,
-        });
+        let expected_kind = if Some(tile) == drawn_tile {
+            DiscardKind::Tsumogiri
+        } else {
+            DiscardKind::Tedashi
+        };
+        if expected_kind != discard_kind {
+            return Err(GameError::InvalidAction(
+                "弃牌事件类型与当前状态不一致".to_string(),
+            ));
+        }
 
         // 进入响应阶段（等待其他人吃/碰/杠/荣和）
         self.phase = GamePhase::ResponsePhase {

@@ -11,3 +11,5 @@ mod ryukyoku;
 mod settlement;
 mod state;
 mod win;
+
+pub use state::HanchanReplay;

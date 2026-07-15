@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use riichi_core::game::GameEvent;
+use riichi_core::game::{CallKind, GameEvent};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::TileType;
 
@@ -19,23 +19,18 @@ impl GameState {
             return false;
         }
         // 检查是否有任何鸣牌
-        if self.events.iter().any(|e| {
-            matches!(
-                e,
-                GameEvent::PlayerCalledPon { .. }
-                    | GameEvent::PlayerCalledChi { .. }
-                    | GameEvent::PlayerCalledMinkan { .. }
-                    | GameEvent::PlayerCalledAnkan { .. }
-                    | GameEvent::PlayerCalledKakan { .. }
-            )
-        }) {
+        if self
+            .events
+            .iter()
+            .any(|e| matches!(e, GameEvent::Call { .. }))
+        {
             return false;
         }
         // 检查是否是首巡状态
         if self.events.iter().any(|e| {
             matches!(
                 e,
-                GameEvent::PlayerDiscarded {
+                GameEvent::Discard {
                     player: discarded_player,
                     ..
                 } if *discarded_player == player
@@ -70,23 +65,18 @@ impl GameState {
     /// 2. 没有任何鸣牌
     pub fn check_suufon_renda(&self) -> bool {
         // 检查是否有任何鸣牌
-        if self.events.iter().any(|e| {
-            matches!(
-                e,
-                GameEvent::PlayerCalledPon { .. }
-                    | GameEvent::PlayerCalledChi { .. }
-                    | GameEvent::PlayerCalledMinkan { .. }
-                    | GameEvent::PlayerCalledAnkan { .. }
-                    | GameEvent::PlayerCalledKakan { .. }
-            )
-        }) {
+        if self
+            .events
+            .iter()
+            .any(|e| matches!(e, GameEvent::Call { .. }))
+        {
             return false;
         }
         // 检查是否是首巡状态
         if self
             .events
             .iter()
-            .filter(|e| matches!(e, GameEvent::PlayerDiscarded { .. }))
+            .filter(|e| matches!(e, GameEvent::Discard { .. }))
             .count()
             != 4
         {
@@ -95,7 +85,7 @@ impl GameState {
         // 检查四位玩家的首巡弃牌是否都是同一风牌
         let mut first = [None::<TileType>; 4];
         for e in &self.events {
-            if let GameEvent::PlayerDiscarded { player, tile } = e {
+            if let GameEvent::Discard { player, tile, .. } = e {
                 if first[player.0].is_none() {
                     first[player.0] = Some(tile.tile_type());
                 }
@@ -118,7 +108,7 @@ impl GameState {
     pub fn check_suucha_riichi(&self) -> bool {
         self.events
             .iter()
-            .filter(|e| matches!(e, GameEvent::PlayerDeclaredRiichi { .. }))
+            .filter(|e| matches!(e, GameEvent::Riichi { .. }))
             .count()
             >= 4
     }
@@ -140,15 +130,18 @@ impl GameState {
             .filter(|e| {
                 matches!(
                     e,
-                    GameEvent::PlayerCalledMinkan { .. }
-                        | GameEvent::PlayerCalledAnkan { .. }
-                        | GameEvent::PlayerCalledKakan { .. }
+                    GameEvent::Call {
+                        kind: CallKind::Minkan | CallKind::Ankan | CallKind::Kakan,
+                        ..
+                    }
                 )
             })
             .map(|e| match e {
-                GameEvent::PlayerCalledMinkan { player, .. }
-                | GameEvent::PlayerCalledAnkan { player, .. }
-                | GameEvent::PlayerCalledKakan { player, .. } => player,
+                GameEvent::Call {
+                    player,
+                    kind: CallKind::Minkan | CallKind::Ankan | CallKind::Kakan,
+                    ..
+                } => player,
                 _ => unreachable!(),
             })
             .collect::<HashSet<&PlayerId>>()
@@ -190,9 +183,10 @@ mod tests {
             player: PlayerId(1),
             drawn_tile: Some(Tile::from_raw(4)),
         };
-        state.events.push(GameEvent::PlayerDiscarded {
+        state.events.push(GameEvent::Discard {
             player: PlayerId(0),
             tile: Tile::from_raw(4),
+            kind: riichi_core::game::DiscardKind::Tedashi,
         });
 
         assert!(state.can_declare_kyuushu(PlayerId(1)));
@@ -224,9 +218,10 @@ mod tests {
             player: PlayerId(1),
             drawn_tile: Some(Tile::from_raw(4)),
         };
-        state.events.push(GameEvent::PlayerDiscarded {
+        state.events.push(GameEvent::Discard {
             player: PlayerId(1),
             tile: Tile::from_raw(4),
+            kind: riichi_core::game::DiscardKind::Tedashi,
         });
 
         assert!(!state.can_declare_kyuushu(PlayerId(1)));

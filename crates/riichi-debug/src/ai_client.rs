@@ -86,6 +86,7 @@ pub async fn run_ai_client(mut handle: ClientHandle) {
             SessionEvent::RoundResult { .. } => {}
             SessionEvent::GameOver { .. } => break,
             SessionEvent::Error(_) => {}
+            SessionEvent::GameEvent { .. } => {}
         }
     }
 }

@@ -1,5 +1,6 @@
 use riichi_core::game::{
-    CallOption, CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction,
+    CallOption, CallType, EventEnvelope, GameEvent, ResponseAction, RoundEndReason, TurnAction,
+    WinKind,
 };
 use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
@@ -9,6 +10,69 @@ use riichi_logic::analysis::analyze_wait_tiles;
 use crate::game::{GameError, GamePhase, GameState};
 
 impl GameState {
+    /// Resolve a turn command against a cloned state, then apply only the
+    /// resulting authoritative events to the live state.
+    pub fn execute_action_event_sourced(
+        &mut self,
+        action: TurnAction,
+    ) -> Result<Vec<EventEnvelope>, GameError> {
+        let mut candidate = self.clone();
+        let start = candidate.event_log().len();
+        candidate.execute_action(action)?;
+        let events = candidate.event_log()[start..].to_vec();
+        for envelope in &events {
+            let applied = EventEnvelope {
+                event_id: self.event_log().len() as u64 + 1,
+                event: envelope.event.clone(),
+            };
+            self.apply_event(&applied)
+                .map_err(GameError::InvalidAction)?;
+            self.event_log.push(applied);
+        }
+        Ok(events)
+    }
+
+    pub fn execute_call_event_sourced(
+        &mut self,
+        player: PlayerId,
+        action: ResponseAction,
+    ) -> Result<Vec<EventEnvelope>, GameError> {
+        let mut candidate = self.clone();
+        let start = candidate.event_log().len();
+        candidate.execute_call(player, action)?;
+        let events = candidate.event_log()[start..].to_vec();
+        for envelope in &events {
+            let applied = EventEnvelope {
+                event_id: self.event_log().len() as u64 + 1,
+                event: envelope.event.clone(),
+            };
+            self.apply_event(&applied)
+                .map_err(GameError::InvalidAction)?;
+            self.event_log.push(applied);
+        }
+        Ok(events)
+    }
+
+    pub fn execute_multiple_ron_event_sourced(
+        &mut self,
+        winners: &[PlayerId],
+    ) -> Result<Vec<EventEnvelope>, GameError> {
+        let mut candidate = self.clone();
+        let start = candidate.event_log().len();
+        candidate.execute_multiple_ron(winners)?;
+        let events = candidate.event_log()[start..].to_vec();
+        for envelope in &events {
+            let applied = EventEnvelope {
+                event_id: self.event_log().len() as u64 + 1,
+                event: envelope.event.clone(),
+            };
+            self.apply_event(&applied)
+                .map_err(GameError::InvalidAction)?;
+            self.event_log.push(applied);
+        }
+        Ok(events)
+    }
+
     /// 更新大三元/大四喜的责任支付者。
     ///
     /// Mortal 在当前碰/大明杠处理完成后再检查副露集合；因此只有导致
@@ -69,6 +133,7 @@ impl GameState {
                 self.players[player.0].furiten.round = true;
             }
         }
+        self.record_event(GameEvent::Pass { player });
         Ok(())
     }
 
@@ -124,14 +189,9 @@ impl GameState {
                         "立直宣言牌必须使手牌听牌".to_string(),
                     ));
                 }
-                // 宣告立直
-                {
-                    let p = &mut self.players[current_player.0];
-                    p.points -= 1000; // 放置立直棒
-                    p.is_riichi = true;
-                }
-                self.riichi_sticks += 1;
-                new_events.push(GameEvent::PlayerDeclaredRiichi {
+                // 宣告立直作为一个动作事件应用，随后再执行宣言牌弃牌。
+                self.apply_riichi_event(current_player)?;
+                self.record_event(GameEvent::Riichi {
                     player: current_player,
                 });
                 // 打出宣言牌
@@ -157,18 +217,18 @@ impl GameState {
                     GameError::InvalidAction("没有摸到的牌，无法自摸".to_string())
                 })?;
                 let result = self.check_win(current_player, true, winning_tile, None, false);
-                if let Some((changes, yaku_names)) = result {
+                if let Some((changes, _yaku_names)) = result {
                     self.insert_tile(); // 提交自摸牌到手牌
                                         // 应用点数变化
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
                     self.riichi_sticks = 0;
-                    new_events.push(GameEvent::PlayerWon {
-                        player: current_player,
-                        is_tsumo: true,
-                        points: changes[current_player.0],
-                        yaku_names,
+                    new_events.push(GameEvent::Win {
+                        winners: vec![current_player],
+                        tile: winning_tile,
+                        kind: WinKind::Tsumo,
+                        loser: None,
                     });
                     self.resolve_round_end(RoundEndReason::Win {
                         winner: current_player,
@@ -184,6 +244,10 @@ impl GameState {
                 if !self.can_declare_kyuushu(current_player) {
                     return Err(GameError::InvalidAction("不满足九种九牌条件".to_string()));
                 }
+                new_events.push(GameEvent::AbortiveDraw {
+                    player: Some(current_player),
+                    reason: RoundEndReason::KyuushuKyuuhai,
+                });
                 self.resolve_round_end(RoundEndReason::KyuushuKyuuhai);
             }
 
@@ -240,8 +304,7 @@ impl GameState {
 
         let riichi_bonus = self.riichi_sticks * 1000;
         let honba_bonus = self.honba * 300;
-        let mut events = Vec::new();
-        for (index, (winner, (mut changes, yaku_names))) in results.into_iter().enumerate() {
+        for (index, (winner, (mut changes, _yaku_names))) in results.into_iter().enumerate() {
             // Mortal 的多家荣和规则：本场棒和立直棒只在第一位赢家
             // 的这次荣和中结算，后续赢家只取得本身的和牌点数。
             if index > 0 {
@@ -259,19 +322,19 @@ impl GameState {
                 .hand
                 .add(discarded_tile)
                 .map_err(|error| GameError::InvalidAction(error.to_string()))?;
-            events.push(GameEvent::PlayerWon {
-                player: winner,
-                is_tsumo: false,
-                points: changes[winner.0],
-                yaku_names,
-            });
         }
         self.riichi_sticks = 0;
-        self.record_events(&events);
+        let event = GameEvent::Win {
+            winners: winners.to_vec(),
+            tile: discarded_tile,
+            kind: WinKind::Ron,
+            loser: Some(discarder),
+        };
+        self.record_event(event.clone());
         self.resolve_round_end(RoundEndReason::MultiWin {
             winners: winners.to_vec(),
         });
-        Ok(events)
+        Ok(vec![event])
     }
 
     /// 获取当前玩家可执行的副露选项（响应阶段）
@@ -422,7 +485,7 @@ impl GameState {
             // 荣和
             ResponseAction::Ron => {
                 let result = self.check_win(player, false, discarded_tile, Some(discarder), false);
-                if let Some((changes, yaku_names)) = result {
+                if let Some((changes, _yaku_names)) = result {
                     self.players[player.0]
                         .hand
                         .add(discarded_tile)
@@ -433,11 +496,11 @@ impl GameState {
                     }
                     // 本局和牌后，场上供托由赢家取得；结算结果已经包含供托点数。
                     self.riichi_sticks = 0;
-                    new_events.push(GameEvent::PlayerWon {
-                        player,
-                        is_tsumo: false,
-                        points: changes[player.0],
-                        yaku_names,
+                    new_events.push(GameEvent::Win {
+                        winners: vec![player],
+                        tile: discarded_tile,
+                        kind: WinKind::Ron,
+                        loser: Some(discarder),
                     });
                     self.resolve_round_end(RoundEndReason::Win {
                         winner: player,
@@ -470,10 +533,13 @@ impl GameState {
                 };
                 self.kuikae_forbidden[player.0] = vec![discarded_tile.tile_type()];
                 self.update_discard_furiten(player);
-                new_events.push(GameEvent::PlayerCalledPon {
+                new_events.push(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
-                    from_player: discarder,
+                    kind: riichi_core::game::CallKind::Pon,
+                    called_tile: Some(discarded_tile),
+                    from_player: Some(discarder),
+                    meld_index: None,
                 });
                 self.update_pao_after_open_call(player, discarder, discarded_tile);
             }
@@ -497,10 +563,13 @@ impl GameState {
                 };
                 self.kuikae_forbidden[player.0] = vec![discarded_tile.tile_type()];
                 self.update_discard_furiten(player);
-                new_events.push(GameEvent::PlayerCalledChi {
+                new_events.push(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
-                    from_player: discarder,
+                    kind: riichi_core::game::CallKind::Chi,
+                    called_tile: Some(discarded_tile),
+                    from_player: Some(discarder),
+                    meld_index: None,
                 });
             }
             // 大明杠
@@ -527,10 +596,13 @@ impl GameState {
                     player,
                     kan_tile: discarded_tile,
                 };
-                new_events.push(GameEvent::PlayerCalledMinkan {
+                new_events.push(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
-                    from_player: discarder,
+                    kind: riichi_core::game::CallKind::Minkan,
+                    called_tile: Some(discarded_tile),
+                    from_player: Some(discarder),
+                    meld_index: None,
                 });
                 self.update_pao_after_open_call(player, discarder, discarded_tile);
                 // 四杠散了检查
@@ -609,7 +681,7 @@ impl GameState {
                 }
 
                 let result = self.check_win(player, false, kakan_tile, Some(kakan_player), true);
-                if let Some((changes, yaku_names)) = result {
+                if let Some((changes, _yaku_names)) = result {
                     self.players[player.0]
                         .hand
                         .add(kakan_tile)
@@ -619,11 +691,11 @@ impl GameState {
                         self.players[i].points += change;
                     }
                     self.riichi_sticks = 0;
-                    new_events.push(GameEvent::PlayerWon {
-                        player,
-                        is_tsumo: false,
-                        points: changes[player.0],
-                        yaku_names,
+                    new_events.push(GameEvent::Win {
+                        winners: vec![player],
+                        tile: kakan_tile,
+                        kind: WinKind::Ron,
+                        loser: Some(kakan_player),
                     });
                     self.resolve_round_end(RoundEndReason::Win {
                         winner: player,
@@ -739,9 +811,13 @@ impl GameState {
             p.melds.push(Meld::ankan(tiles_to_remove.clone()));
         }
 
-        let new_events = vec![GameEvent::PlayerCalledAnkan {
+        let new_events = vec![GameEvent::Call {
             player,
             tiles: tiles_to_remove,
+            kind: riichi_core::game::CallKind::Ankan,
+            called_tile: None,
+            from_player: None,
+            meld_index: None,
         }];
 
         self.phase = GamePhase::ChankanResponse {
@@ -843,10 +919,13 @@ impl GameState {
             };
         }
 
-        let new_events = vec![GameEvent::PlayerCalledKakan {
+        let new_events = vec![GameEvent::Call {
             player,
-            tile,
-            original_pon,
+            tiles: vec![tile],
+            kind: riichi_core::game::CallKind::Kakan,
+            called_tile: Some(tile),
+            from_player: None,
+            meld_index: Some(meld_index),
         }];
 
         // 进入抢杠荣和响应阶段。抢杠成立时，杠宝牌才会翻开，

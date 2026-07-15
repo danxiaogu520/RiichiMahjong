@@ -8,33 +8,25 @@ use riichi_logic::win_check;
 use crate::game::GameState;
 
 fn is_call_event(event: &GameEvent) -> bool {
-    matches!(
-        event,
-        GameEvent::PlayerCalledPon { .. }
-            | GameEvent::PlayerCalledChi { .. }
-            | GameEvent::PlayerCalledMinkan { .. }
-            | GameEvent::PlayerCalledAnkan { .. }
-            | GameEvent::PlayerCalledKakan { .. }
-    )
+    matches!(event, GameEvent::Call { .. })
 }
 
 fn is_ippatsu_active(events: &[GameEvent], player: PlayerId) -> bool {
-    let Some(index) = events.iter().rposition(
-        |event| matches!(event, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
-    ) else {
+    let Some(index) = events
+        .iter()
+        .rposition(|event| matches!(event, GameEvent::Riichi { player: pid } if *pid == player))
+    else {
         return false;
     };
     let declaration_discard_before = index > 0
         && matches!(
             &events[index - 1],
-            GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player
+            GameEvent::Discard { player: pid, .. } if *pid == player
         );
     let after = &events[index + 1..];
     let own_discards_after = after
         .iter()
-        .filter(|event| {
-            matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
-        })
+        .filter(|event| matches!(event, GameEvent::Discard { player: pid, .. } if *pid == player))
         .count();
     !after.iter().any(is_call_event)
         && if declaration_discard_before {
@@ -45,18 +37,16 @@ fn is_ippatsu_active(events: &[GameEvent], player: PlayerId) -> bool {
 }
 
 fn is_double_riichi_active(events: &[GameEvent], player: PlayerId) -> bool {
-    let has_riichi = events.iter().any(
-        |event| matches!(event, GameEvent::PlayerDeclaredRiichi { player: pid } if *pid == player),
-    );
+    let has_riichi = events
+        .iter()
+        .any(|event| matches!(event, GameEvent::Riichi { player: pid } if *pid == player));
     let discard_count = events
         .iter()
-        .filter(|event| matches!(event, GameEvent::PlayerDiscarded { .. }))
+        .filter(|event| matches!(event, GameEvent::Discard { .. }))
         .count();
     let own_discard_count = events
         .iter()
-        .filter(|event| {
-            matches!(event, GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player)
-        })
+        .filter(|event| matches!(event, GameEvent::Discard { player: pid, .. } if *pid == player))
         .count();
     has_riichi && discard_count <= 4 && own_discard_count == 1 && !events.iter().any(is_call_event)
 }
@@ -126,24 +116,18 @@ impl GameState {
         // 且宣言前没有鸣牌、全桌弃牌数仍不超过一轮四张。
         let is_double_riichi = is_double_riichi_active(&self.events, player);
 
-        let has_call = self.events.iter().any(|event| {
-            matches!(
-                event,
-                GameEvent::PlayerCalledPon { .. }
-                    | GameEvent::PlayerCalledChi { .. }
-                    | GameEvent::PlayerCalledMinkan { .. }
-                    | GameEvent::PlayerCalledAnkan { .. }
-                    | GameEvent::PlayerCalledKakan { .. }
-            )
-        });
+        let has_call = self
+            .events
+            .iter()
+            .any(|event| matches!(event, GameEvent::Call { .. }));
         let has_any_discard = self
             .events
             .iter()
-            .any(|event| matches!(event, GameEvent::PlayerDiscarded { .. }));
+            .any(|event| matches!(event, GameEvent::Discard { .. }));
         let has_player_discard = self.events.iter().any(|event| {
             matches!(
                 event,
-                GameEvent::PlayerDiscarded { player: pid, .. } if *pid == player
+                GameEvent::Discard { player: pid, .. } if *pid == player
             )
         });
 
@@ -247,16 +231,17 @@ mod context_tests {
     use riichi_core::tile::Tile;
 
     fn discard(player: PlayerId) -> GameEvent {
-        GameEvent::PlayerDiscarded {
+        GameEvent::Discard {
             player,
             tile: Tile::from_raw(0),
+            kind: riichi_core::game::DiscardKind::Tedashi,
         }
     }
 
     #[test]
     fn ippatsu_expires_on_the_next_own_discard() {
         let player = PlayerId(0);
-        let riichi = GameEvent::PlayerDeclaredRiichi { player };
+        let riichi = GameEvent::Riichi { player };
         assert!(is_ippatsu_active(
             &[discard(player), riichi.clone()],
             player
@@ -270,11 +255,14 @@ mod context_tests {
     #[test]
     fn ippatsu_is_cancelled_by_any_call() {
         let player = PlayerId(0);
-        let riichi = GameEvent::PlayerDeclaredRiichi { player };
-        let call = GameEvent::PlayerCalledPon {
+        let riichi = GameEvent::Riichi { player };
+        let call = GameEvent::Call {
             player: PlayerId(1),
             tiles: vec![Tile::from_raw(0); 3],
-            from_player: player,
+            kind: riichi_core::game::CallKind::Pon,
+            called_tile: Some(Tile::from_raw(0)),
+            from_player: Some(player),
+            meld_index: None,
         };
         assert!(!is_ippatsu_active(&[discard(player), riichi, call], player));
     }
@@ -282,7 +270,7 @@ mod context_tests {
     #[test]
     fn double_riichi_requires_the_first_discard_cycle() {
         let player = PlayerId(0);
-        let riichi = GameEvent::PlayerDeclaredRiichi { player };
+        let riichi = GameEvent::Riichi { player };
         assert!(is_double_riichi_active(
             &[discard(player), riichi.clone()],
             player

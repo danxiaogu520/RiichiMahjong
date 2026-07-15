@@ -108,7 +108,7 @@ impl GameState {
             self.players[i].points += payments[i];
         }
 
-        self.record_event(GameEvent::ExhaustiveDrawResult { tenpai, payments });
+        let _ = (tenpai, payments);
     }
 
     /// 获取满足流局满贯条件的玩家。
@@ -123,11 +123,10 @@ impl GameState {
                 !discards.is_empty()
                     && discards.iter().all(|tile| tile.is_yaochuuhai())
                     && !self.events.iter().any(|event| match event {
-                        GameEvent::PlayerCalledPon { from_player, .. }
-                        | GameEvent::PlayerCalledChi { from_player, .. }
-                        | GameEvent::PlayerCalledMinkan { from_player, .. } => {
-                            *from_player == player
-                        }
+                        GameEvent::Call {
+                            from_player: Some(from_player),
+                            ..
+                        } => *from_player == player,
                         _ => false,
                     })
             })
@@ -184,19 +183,13 @@ impl GameState {
 
     fn dealer_has_passed(&self) -> bool {
         let dealer = self.get_dealer();
-        self.events
-            .iter()
-            .rev()
-            .find_map(|event| match event {
-                GameEvent::RoundEnded { reason } => Some(match reason {
-                    RoundEndReason::Win { winner, .. } => *winner != dealer,
-                    RoundEndReason::MultiWin { winners } => !winners.contains(&dealer),
-                    RoundEndReason::ExhaustiveDraw => self.get_waiting_tiles(dealer).is_empty(),
-                    _ => false,
-                }),
-                _ => None,
-            })
-            .unwrap_or(false)
+        match &self.round_end_reason {
+            Some(RoundEndReason::Win { winner, .. }) => *winner != dealer,
+            Some(RoundEndReason::MultiWin { winners }) => !winners.contains(&dealer),
+            Some(RoundEndReason::ExhaustiveDraw) => self.get_waiting_tiles(dealer).is_empty(),
+            Some(_) => false,
+            None => false,
+        }
     }
 
     /// 统一处理局结束：荒牌罚符 + 连庄/过庄 + 设置 RoundOver
@@ -208,7 +201,7 @@ impl GameState {
 
         self.advance_round(&reason);
 
-        self.record_event(GameEvent::RoundEnded { reason });
+        self.round_end_reason = Some(reason);
         self.phase = GamePhase::RoundOver;
 
         if self.is_game_over() {
@@ -281,11 +274,9 @@ mod tests {
         state.players[0].points = 25_000;
         state.players[1].points = 20_000;
         state.players[2].points = 23_000;
-        state.events.push(riichi_core::game::GameEvent::RoundEnded {
-            reason: riichi_core::game::RoundEndReason::Win {
-                winner: PlayerId(3),
-                is_tsumo: true,
-            },
+        state.round_end_reason = Some(riichi_core::game::RoundEndReason::Win {
+            winner: PlayerId(3),
+            is_tsumo: true,
         });
 
         assert!(state.is_game_over());
