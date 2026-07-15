@@ -1,7 +1,8 @@
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use riichi_core::game::{
-    CallType, GameEvent, ResponseAction, RoundEndReason, TurnAction as EngineTurnAction,
+    CallType, DrawPosition, Hanchan, HanchanSetup, ResponseAction, RoundEndReason, RoundSetup,
+    TurnAction as EngineTurnAction,
 };
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
@@ -21,6 +22,9 @@ use crate::channel::{
 
 pub struct GameSession {
     pub game: GameState,
+    /// Authoritative Hanchan log. `game.event_log` is the materialized engine
+    /// view; this copy is the session-owned record used for replay/catch-up.
+    pub hanchan: Option<Hanchan>,
     pub rng: StdRng,
     pub event_txs: [mpsc::Sender<SessionEvent>; 4],
     pub action_tx: mpsc::Sender<PlayerCommand>,
@@ -39,6 +43,7 @@ impl GameSession {
         let (_, control_rx) = mpsc::channel(1);
         Self {
             game: GameState::new(),
+            hanchan: None,
             rng: StdRng::from_entropy(),
             event_txs,
             action_tx,
@@ -57,6 +62,7 @@ impl GameSession {
     ) -> Self {
         Self {
             game: GameState::new(),
+            hanchan: None,
             rng: StdRng::from_entropy(),
             event_txs,
             action_tx,
@@ -69,6 +75,7 @@ impl GameSession {
 
     pub async fn run(&mut self) {
         self.game.start_round(&mut self.rng);
+        self.initialize_hanchan_log();
         self.broadcast_state().await;
 
         loop {
@@ -85,23 +92,26 @@ impl GameSession {
             }
 
             match self.game.phase {
-                GamePhase::DrawPhase => {
-                    if self.game.draw().is_err() {
+                GamePhase::DrawPhase { position, .. } => {
+                    let result = match position {
+                        DrawPosition::LiveWall => self.game.draw(),
+                        DrawPosition::Rinshan => self.game.draw_rinshan(),
+                    };
+                    if result.is_err() {
                         self.handle_round_end().await;
                         continue;
                     }
                     self.broadcast_state().await;
                 }
-                GamePhase::ActionPhase => {
-                    let player = self.game.current_player;
+                GamePhase::ActionPhase { player, drawn_tile } => {
                     let can_tsumo = self.game.check_tsumo(player).is_some();
                     let can_riichi = self.game.can_declare_riichi(player);
                     let riichi_options = self.riichi_options(player);
                     let discard_options = if self.game.players[player.0].is_riichi {
-                        self.game.drawn_tile.into_iter().collect()
+                        drawn_tile.into_iter().collect()
                     } else {
                         let mut options = self.game.players[player.0].hand.tiles().to_vec();
-                        if let Some(drawn) = self.game.drawn_tile {
+                        if let Some(drawn) = drawn_tile {
                             options.push(drawn);
                         }
                         options
@@ -148,6 +158,7 @@ impl GameSession {
     pub async fn reconnect_player(
         &mut self,
         player: PlayerId,
+        last_event_id: u64,
         event_tx: mpsc::Sender<SessionEvent>,
         mut action_rx: mpsc::Receiver<PlayerCommand>,
     ) {
@@ -163,6 +174,11 @@ impl GameSession {
                 }
             }
         }));
+        for envelope in self.game.events_after(last_event_id).cloned() {
+            let _ = self.event_txs[player.0]
+                .send(SessionEvent::GameEvent { envelope })
+                .await;
+        }
         self.broadcast_state().await;
         self.send_current_action_prompt(player).await;
     }
@@ -170,17 +186,20 @@ impl GameSession {
     /// 向重连玩家重新发送当前阶段的操作提示。
     async fn send_current_action_prompt(&self, player: PlayerId) {
         match self.game.phase {
-            GamePhase::ActionPhase if self.game.current_player == player => {
+            GamePhase::ActionPhase {
+                player: current,
+                drawn_tile,
+            } if current == player => {
                 let _ = self.event_txs[player.0]
                     .send(SessionEvent::ActionRequired {
                         can_tsumo: self.game.check_tsumo(player).is_some(),
                         can_riichi: self.game.can_declare_riichi(player),
                         riichi_options: self.riichi_options(player),
                         discard_options: if self.game.players[player.0].is_riichi {
-                            self.game.drawn_tile.into_iter().collect()
+                            drawn_tile.into_iter().collect()
                         } else {
                             let mut options = self.game.players[player.0].hand.tiles().to_vec();
-                            if let Some(drawn) = self.game.drawn_tile {
+                            if let Some(drawn) = drawn_tile {
                                 options.push(drawn);
                             }
                             options
@@ -240,7 +259,10 @@ impl GameSession {
 
         match action {
             TurnAction::Discard(tile) => {
-                if let Err(error) = self.game.execute_action(EngineTurnAction::Discard(tile)) {
+                if let Err(error) = self
+                    .game
+                    .execute_action_event_sourced(EngineTurnAction::Discard(tile))
+                {
                     self.send_to(player, SessionEvent::Error(error.to_string()))
                         .await;
                     return;
@@ -249,7 +271,10 @@ impl GameSession {
                 self.handle_after_turn().await;
             }
             TurnAction::Tsumo => {
-                if let Err(error) = self.game.execute_action(EngineTurnAction::Tsumo) {
+                if let Err(error) = self
+                    .game
+                    .execute_action_event_sourced(EngineTurnAction::Tsumo)
+                {
                     self.send_to(player, SessionEvent::Error(error.to_string()))
                         .await;
                     return;
@@ -260,7 +285,7 @@ impl GameSession {
             TurnAction::RiichiDiscard(tile) => {
                 if let Err(error) = self
                     .game
-                    .execute_action(EngineTurnAction::RiichiDiscard(tile))
+                    .execute_action_event_sourced(EngineTurnAction::RiichiDiscard(tile))
                 {
                     self.send_to(player, SessionEvent::Error(error.to_string()))
                         .await;
@@ -273,7 +298,7 @@ impl GameSession {
                 if let Some(tile) = self.riichi_options(player).first().copied() {
                     if let Err(error) = self
                         .game
-                        .execute_action(EngineTurnAction::RiichiDiscard(tile))
+                        .execute_action_event_sourced(EngineTurnAction::RiichiDiscard(tile))
                     {
                         self.send_to(player, SessionEvent::Error(error.to_string()))
                             .await;
@@ -287,7 +312,10 @@ impl GameSession {
                 }
             }
             TurnAction::Ankan(tile) => {
-                if let Err(error) = self.game.execute_action(EngineTurnAction::Ankan(tile)) {
+                if let Err(error) = self
+                    .game
+                    .execute_action_event_sourced(EngineTurnAction::Ankan(tile))
+                {
                     self.send_to(player, SessionEvent::Error(error.to_string()))
                         .await;
                     return;
@@ -297,7 +325,7 @@ impl GameSession {
             TurnAction::Kakan(index, tile) => {
                 if let Err(error) = self
                     .game
-                    .execute_action(EngineTurnAction::Kakan(index, tile))
+                    .execute_action_event_sourced(EngineTurnAction::Kakan(index, tile))
                 {
                     self.send_to(player, SessionEvent::Error(error.to_string()))
                         .await;
@@ -307,7 +335,10 @@ impl GameSession {
                 self.handle_after_turn().await;
             }
             TurnAction::KyuushuKyuuhai => {
-                if let Err(error) = self.game.execute_action(EngineTurnAction::KyuushuKyuuhai) {
+                if let Err(error) = self
+                    .game
+                    .execute_action_event_sourced(EngineTurnAction::KyuushuKyuuhai)
+                {
                     self.send_to(player, SessionEvent::Error(error.to_string()))
                         .await;
                     return;
@@ -348,7 +379,10 @@ impl GameSession {
             return;
         };
 
-        if let Err(fallback_error) = self.game.execute_action(EngineTurnAction::Discard(tile)) {
+        if let Err(fallback_error) = self
+            .game
+            .execute_action_event_sourced(EngineTurnAction::Discard(tile))
+        {
             self.broadcast(SessionEvent::Error(format!(
                 "安全弃牌执行失败: {}",
                 fallback_error
@@ -364,14 +398,19 @@ impl GameSession {
         loop {
             let phase = self.game.phase.clone();
             match phase {
-                GamePhase::ResponsePhase { discarder, .. }
+                GamePhase::ResponsePhase {
+                    player: discarder, ..
+                }
                 | GamePhase::ChankanResponse {
-                    kakan_player: discarder,
-                    ..
+                    player: discarder, ..
                 } => {
                     self.handle_response_phase_with_discarder(discarder).await;
-                    if matches!(self.game.phase, GamePhase::DrawPhase) {
-                        if self.game.draw().is_err() {
+                    if let GamePhase::DrawPhase { position, .. } = self.game.phase {
+                        let result = match position {
+                            DrawPosition::LiveWall => self.game.draw(),
+                            DrawPosition::Rinshan => self.game.draw_rinshan(),
+                        };
+                        if result.is_err() {
                             self.handle_round_end().await;
                         }
                         self.broadcast_state().await;
@@ -390,8 +429,12 @@ impl GameSession {
     async fn handle_response_phase(&mut self) {
         let phase = self.game.phase.clone();
         let discarder = match phase {
-            GamePhase::ResponsePhase { discarder, .. } => discarder,
-            GamePhase::ChankanResponse { kakan_player, .. } => kakan_player,
+            GamePhase::ResponsePhase {
+                player: discarder, ..
+            }
+            | GamePhase::ChankanResponse {
+                player: discarder, ..
+            } => discarder,
             _ => return,
         };
         self.handle_response_phase_with_discarder(discarder).await;
@@ -444,27 +487,32 @@ impl GameSession {
                 .iter()
                 .any(|o| matches!(o.call_type, CallType::Ron));
 
-            if has_ron && !matches!(response, CallResponse::Ron) {
-                let _ = self.game.record_response_pass(pid);
-            }
-
             match response {
                 CallResponse::Ron if has_ron => {
                     ron_players.push(pid);
                 }
                 CallResponse::Pon { hand_tiles } => {
+                    if has_ron {
+                        let _ = self.game.record_response_pass(pid);
+                    }
                     let candidate = ResponseAction::Pon { hand_tiles };
                     if should_replace_call(accepted_call.as_ref(), pid, &candidate, discarder) {
                         accepted_call = Some((pid, candidate));
                     }
                 }
                 CallResponse::Chi { hand_tiles } => {
+                    if has_ron {
+                        let _ = self.game.record_response_pass(pid);
+                    }
                     let candidate = ResponseAction::Chi { hand_tiles };
                     if should_replace_call(accepted_call.as_ref(), pid, &candidate, discarder) {
                         accepted_call = Some((pid, candidate));
                     }
                 }
                 CallResponse::Minkan { hand_tiles } => {
+                    if has_ron {
+                        let _ = self.game.record_response_pass(pid);
+                    }
                     let candidate = ResponseAction::Minkan { hand_tiles };
                     if should_replace_call(accepted_call.as_ref(), pid, &candidate, discarder) {
                         accepted_call = Some((pid, candidate));
@@ -493,7 +541,10 @@ impl GameSession {
             };
             ordered_winners.truncate(max_winners);
             if ordered_winners.len() > 1 {
-                if let Err(error) = self.game.execute_multiple_ron(&ordered_winners) {
+                if let Err(error) = self
+                    .game
+                    .execute_multiple_ron_event_sourced(&ordered_winners)
+                {
                     for winner in &ordered_winners {
                         self.send_to(*winner, SessionEvent::Error(error.to_string()))
                             .await;
@@ -501,7 +552,10 @@ impl GameSession {
                     return;
                 }
             } else if let Some(&pid) = ordered_winners.first() {
-                if let Err(error) = self.game.execute_call(pid, ResponseAction::Ron) {
+                if let Err(error) = self
+                    .game
+                    .execute_call_event_sourced(pid, ResponseAction::Ron)
+                {
                     self.send_to(pid, SessionEvent::Error(error.to_string()))
                         .await;
                     return;
@@ -515,7 +569,7 @@ impl GameSession {
         }
 
         if let Some((pid, action)) = accepted_call {
-            if let Err(error) = self.game.execute_call(pid, action) {
+            if let Err(error) = self.game.execute_call_event_sourced(pid, action) {
                 self.send_to(pid, SessionEvent::Error(error.to_string()))
                     .await;
                 return;
@@ -533,8 +587,12 @@ impl GameSession {
         }
         self.broadcast_state().await;
 
-        if matches!(self.game.phase, GamePhase::DrawPhase) {
-            if self.game.draw().is_err() {
+        if let GamePhase::DrawPhase { position, .. } = self.game.phase {
+            let result = match position {
+                DrawPosition::LiveWall => self.game.draw(),
+                DrawPosition::Rinshan => self.game.draw_rinshan(),
+            };
+            if result.is_err() {
                 self.handle_round_end().await;
             }
             self.broadcast_state().await;
@@ -566,43 +624,34 @@ impl GameSession {
             .await;
         } else {
             self.game.start_round(&mut self.rng);
+            self.append_current_round_setup();
             self.broadcast_state().await;
         }
     }
 
     fn round_end_reason(&self) -> String {
-        self.game
-            .events
-            .iter()
-            .rev()
-            .find_map(|event| match event {
-                GameEvent::RoundEnded { reason } => Some(match reason {
-                    RoundEndReason::Win { is_tsumo: true, .. } => "自摸".to_string(),
-                    RoundEndReason::Win {
-                        is_tsumo: false, ..
-                    }
-                    | RoundEndReason::MultiWin { .. } => "荣和".to_string(),
-                    RoundEndReason::ExhaustiveDraw => "流局".to_string(),
-                    RoundEndReason::KyuushuKyuuhai
-                    | RoundEndReason::SuufonRenda
-                    | RoundEndReason::SuuchaRiichi
-                    | RoundEndReason::SuuKantsu => "途中流局".to_string(),
-                }),
-                _ => None,
+        match &self.game.round_end_reason {
+            Some(RoundEndReason::Win { is_tsumo: true, .. }) => "自摸".to_string(),
+            Some(RoundEndReason::Win {
+                is_tsumo: false, ..
             })
-            .unwrap_or_else(|| "局结束".to_string())
+            | Some(RoundEndReason::MultiWin { .. }) => "荣和".to_string(),
+            Some(RoundEndReason::ExhaustiveDraw) => "流局".to_string(),
+            Some(
+                RoundEndReason::KyuushuKyuuhai
+                | RoundEndReason::SuufonRenda
+                | RoundEndReason::SuuchaRiichi
+                | RoundEndReason::SuuKantsu,
+            ) => "途中流局".to_string(),
+            None => "局结束".to_string(),
+        }
     }
 
     fn round_win_details(&self) -> Vec<String> {
-        self.game
-            .events
-            .iter()
-            .filter_map(|event| match event {
-                GameEvent::PlayerWon { yaku_names, .. } => Some(yaku_names.clone()),
-                _ => None,
-            })
-            .flatten()
-            .collect()
+        // Win events intentionally contain only the winning action.  Yaku
+        // and point details are derived from the resulting state instead of
+        // being duplicated in the authoritative event log.
+        Vec::new()
     }
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnAction> {
@@ -615,7 +664,7 @@ impl GameSession {
                         command = self.action_rx.recv() => command,
                         control = self.control_rx.recv() => {
                             if let Some(control) = control {
-                                self.reconnect_player(control.player, control.event_tx, control.action_rx).await;
+                                self.reconnect_player(control.player, control.last_event_id, control.event_tx, control.action_rx).await;
                             } else {
                                 self.control_enabled = false;
                             }
@@ -639,7 +688,7 @@ impl GameSession {
 
         // 超时默认摸切；若状态异常没有摸牌，则选择当前手牌最后一张，
         // 后续仍由规则引擎进行最终合法性校验。
-        self.game.drawn_tile.map(TurnAction::Discard).or_else(|| {
+        self.game.drawn_tile().map(TurnAction::Discard).or_else(|| {
             self.game.players[expected.0]
                 .hand
                 .tiles()
@@ -709,7 +758,7 @@ impl GameSession {
                             command = self.action_rx.recv() => command,
                             control = self.control_rx.recv() => {
                                 if let Some(control) = control {
-                                    self.reconnect_player(control.player, control.event_tx, control.action_rx).await;
+                                    self.reconnect_player(control.player, control.last_event_id, control.event_tx, control.action_rx).await;
                                 } else {
                                     self.control_enabled = false;
                                 }
@@ -768,7 +817,69 @@ impl GameSession {
         self.game.get_riichi_discard_options(player)
     }
 
-    async fn broadcast_state(&self) {
+    fn initialize_hanchan_log(&mut self) {
+        let setup = HanchanSetup {
+            rules_version: "riichi-engine-v1".to_string(),
+            rounds: vec![RoundSetup {
+                round: self.game.round,
+                honba: self.game.honba,
+                riichi_sticks: self.game.riichi_sticks,
+                event_start_id: 1,
+                initial_points: self.game.round_start_points,
+                wall: self.game.wall.tiles().to_vec(),
+            }],
+        };
+        self.hanchan = Some(Hanchan {
+            setup,
+            events: self.game.event_log().to_vec(),
+        });
+    }
+
+    fn sync_hanchan_log(&mut self) {
+        let Some(hanchan) = self.hanchan.as_mut() else {
+            return;
+        };
+        let current_len = hanchan.events.len();
+        hanchan
+            .events
+            .extend(self.game.event_log().iter().skip(current_len).cloned());
+    }
+
+    fn append_current_round_setup(&mut self) {
+        if let Some(hanchan) = self.hanchan.as_mut() {
+            hanchan.setup.rounds.push(RoundSetup {
+                round: self.game.round,
+                honba: self.game.honba,
+                riichi_sticks: self.game.riichi_sticks,
+                event_start_id: hanchan.events.len() as u64 + 1,
+                initial_points: self.game.round_start_points,
+                wall: self.game.wall.tiles().to_vec(),
+            });
+        }
+    }
+
+    async fn broadcast_state(&mut self) {
+        let previous_event_count = self
+            .hanchan
+            .as_ref()
+            .map(|hanchan| hanchan.events.len())
+            .unwrap_or(self.game.event_log().len());
+        self.sync_hanchan_log();
+        let new_events: Vec<_> = self
+            .hanchan
+            .as_ref()
+            .map(|hanchan| {
+                hanchan
+                    .events
+                    .iter()
+                    .skip(previous_event_count)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        for envelope in new_events {
+            self.broadcast(SessionEvent::GameEvent { envelope }).await;
+        }
         let players = &self.game.players;
         let points = [
             players[0].points,
@@ -785,7 +896,7 @@ impl GameSession {
         let pending_discard = match self.game.phase {
             GamePhase::ResponsePhase {
                 discarded_tile,
-                discarder,
+                player: discarder,
             } => Some((discarder, discarded_tile)),
             _ => None,
         };
@@ -825,8 +936,8 @@ impl GameSession {
             let pid = PlayerId(idx);
             let my_hand = {
                 let mut tiles = players[idx].hand.tiles().to_vec();
-                if self.game.current_player == pid {
-                    if let Some(drawn) = self.game.drawn_tile {
+                if self.game.current_player() == Some(pid) {
+                    if let Some(drawn) = self.game.drawn_tile() {
                         tiles.push(drawn);
                     }
                 }
@@ -834,13 +945,7 @@ impl GameSession {
             };
             let event = SessionEvent::StateUpdate {
                 phase: self.game.phase.clone(),
-                current_player: self.game.current_player,
                 pending_discard,
-                drawn_tile: if self.game.current_player == pid {
-                    self.game.drawn_tile
-                } else {
-                    None
-                },
                 hand_tiles: my_hand,
                 hand_count: players[idx].hand.len(),
                 hand_counts,
@@ -908,6 +1013,7 @@ fn call_priority_key(player: PlayerId, action: &ResponseAction, discarder: Playe
 mod tests {
     use super::{call_priority_key, should_replace_call, GameSession};
     use crate::{create_player_pair, SessionEvent};
+    use rand::SeedableRng;
     use riichi_core::game::ResponseAction;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
@@ -943,6 +1049,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconnect_sends_state_and_current_action_prompt() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
         let mut pairs = Vec::new();
         for index in 0..4 {
             pairs.push(create_player_pair(PlayerId(index)));
@@ -950,13 +1057,19 @@ mod tests {
         let event_txs = std::array::from_fn(|index| pairs[index].0.event_tx.clone());
         let (action_tx, action_rx) = mpsc::channel(8);
         let mut session = GameSession::new(event_txs, action_tx, action_rx);
+        session.game.start_round(&mut rng);
+        session.game.draw().unwrap();
         let (replacement_tx, mut replacement_rx) = mpsc::channel(8);
         let (_, replacement_action_rx) = mpsc::channel(8);
 
         session
-            .reconnect_player(PlayerId(0), replacement_tx, replacement_action_rx)
+            .reconnect_player(PlayerId(0), 0, replacement_tx, replacement_action_rx)
             .await;
 
+        assert!(matches!(
+            replacement_rx.recv().await,
+            Some(SessionEvent::GameEvent { .. })
+        ));
         assert!(matches!(
             replacement_rx.recv().await,
             Some(SessionEvent::StateUpdate { .. })

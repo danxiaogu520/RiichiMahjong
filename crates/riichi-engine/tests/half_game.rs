@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use rand::SeedableRng;
-use riichi_core::game::{GameEvent, TurnAction};
+use riichi_core::game::TurnAction;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
@@ -10,7 +10,7 @@ use riichi_logic::shanten::ShantenCalculator;
 
 fn choose_full_efficiency_discard(state: &GameState, player: PlayerId) -> Tile {
     let mut candidates = state.players[player.0].hand.tiles().to_vec();
-    if let Some(drawn) = state.drawn_tile {
+    if let Some(drawn) = state.drawn_tile() {
         candidates.push(drawn);
     }
 
@@ -19,7 +19,7 @@ fn choose_full_efficiency_discard(state: &GameState, player: PlayerId) -> Tile {
         .into_iter()
         .min_by_key(|&discard| {
             let mut after = state.players[player.0].hand.tiles().to_vec();
-            if let Some(drawn) = state.drawn_tile {
+            if let Some(drawn) = state.drawn_tile() {
                 after.push(drawn);
             }
             let index = after
@@ -63,7 +63,7 @@ fn execute_all_closed_ai_responses(state: &mut GameState) {
                 state.record_response_pass(player).unwrap();
             }
             state.complete_response_pass().unwrap();
-            if matches!(state.phase, GamePhase::DrawPhase) {
+            if matches!(state.phase, GamePhase::DrawPhase { .. }) {
                 let _ = state.draw();
             }
         }
@@ -88,12 +88,11 @@ fn local_auto_pass_game_finishes_half_game() {
             assert!(action_count < 200_000, "半庄状态机疑似没有推进");
 
             match state.phase.clone() {
-                GamePhase::ActionPhase => {
-                    let player = state.current_player;
+                GamePhase::ActionPhase { player, drawn_tile } => {
                     if state.check_tsumo(player).is_some() {
                         state.execute_action(TurnAction::Tsumo).unwrap();
                     } else {
-                        let drawn = state.drawn_tile.expect("行动阶段必须存在摸牌");
+                        let drawn = drawn_tile.expect("行动阶段必须存在摸牌");
                         state.execute_action(TurnAction::Discard(drawn)).unwrap();
                     }
                 }
@@ -107,11 +106,11 @@ fn local_auto_pass_game_finishes_half_game() {
                         state.record_response_pass(player).unwrap();
                     }
                     state.complete_response_pass().unwrap();
-                    if matches!(state.phase, GamePhase::DrawPhase) {
+                    if matches!(state.phase, GamePhase::DrawPhase { .. }) {
                         let _ = state.draw();
                     }
                 }
-                GamePhase::DrawPhase => {
+                GamePhase::DrawPhase { .. } => {
                     let _ = state.draw();
                 }
                 GamePhase::RoundOver => break,
@@ -122,10 +121,7 @@ fn local_auto_pass_game_finishes_half_game() {
     }
 
     assert!((8..=13).contains(&state.round));
-    assert!(state
-        .event_history()
-        .iter()
-        .any(|event| matches!(event, GameEvent::RoundEnded { .. })));
+    assert!(state.round_end_reason.is_some());
 }
 
 /// 四个只会门清推进的牌效 AI：
@@ -159,12 +155,11 @@ fn four_closed_efficiency_ai_finishes_and_monitors_half_game() {
             assert!(action_count < 300_000, "四 AI 对局疑似没有推进");
 
             match state.phase.clone() {
-                GamePhase::ActionPhase => {
-                    let player = state.current_player;
+                GamePhase::ActionPhase { player, drawn_tile } => {
                     if state.check_tsumo(player).is_some() {
                         state.execute_action(TurnAction::Tsumo).unwrap();
                     } else if state.players[player.0].is_riichi {
-                        let drawn = state.drawn_tile.expect("立直后行动阶段必须摸牌");
+                        let drawn = drawn_tile.expect("立直后行动阶段必须摸牌");
                         state.execute_action(TurnAction::Discard(drawn)).unwrap();
                     } else if let Some(&discard) = state.get_riichi_discard_options(player).first()
                     {
@@ -179,21 +174,18 @@ fn four_closed_efficiency_ai_finishes_and_monitors_half_game() {
                 GamePhase::ResponsePhase { .. } | GamePhase::ChankanResponse { .. } => {
                     execute_all_closed_ai_responses(&mut state);
                 }
-                GamePhase::DrawPhase => {
+                GamePhase::DrawPhase { .. } => {
                     state.draw().unwrap();
                 }
                 GamePhase::RoundOver => break,
             }
         }
 
-        let round_events = state.event_history()[round_history_start..].to_vec();
-        let ended = round_events
-            .iter()
-            .find_map(|event| match event {
-                GameEvent::RoundEnded { reason } => Some(reason),
-                _ => None,
-            })
-            .expect("每小局必须产生 RoundEnded");
+        let _round_events = state.event_history()[round_history_start..].to_vec();
+        let ended = state
+            .round_end_reason
+            .as_ref()
+            .expect("每小局必须有结束原因");
         match ended {
             riichi_core::game::RoundEndReason::Win { is_tsumo, .. } => {
                 if *is_tsumo {

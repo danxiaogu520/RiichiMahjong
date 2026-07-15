@@ -66,7 +66,10 @@ pub enum ServerMessage {
     },
     StateUpdate(Box<GameStateView>),
     StateSnapshot(Box<GameStateView>),
-    Event(GameEventView),
+    Event {
+        event_id: u64,
+        event: GameEventView,
+    },
     CommandAccepted {
         command_id: u64,
         seq: u64,
@@ -94,8 +97,6 @@ pub struct GameStateView {
     pub round: u32,
     pub honba: u32,
     pub riichi_sticks: u32,
-    pub current_player: PlayerId,
-    pub drawn_tile: Option<Tile>,
     pub dora: Vec<TileType>,
     pub remaining_tiles: usize,
     pub phase: GamePhaseView,
@@ -148,68 +149,87 @@ pub enum MeldKindView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GamePhaseView {
-    DrawPhase,
-    ActionPhase,
-    ResponsePhase,
-    ChankanResponse,
+    DrawPhase {
+        player: PlayerId,
+        position: DrawPositionView,
+    },
+    ActionPhase {
+        player: PlayerId,
+        drawn_tile: Option<Tile>,
+    },
+    ResponsePhase {
+        player: PlayerId,
+        discarded_tile: Tile,
+    },
+    ChankanResponse {
+        player: PlayerId,
+        kan_tile: Tile,
+    },
     RoundOver,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DrawPositionView {
+    LiveWall,
+    Rinshan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GameEventView {
-    GameStarted {
-        dealer: PlayerId,
-    },
-    RoundStarted {
-        round_number: u32,
-        dealer: PlayerId,
-    },
-    PlayerDrew {
+    Draw {
         player: PlayerId,
+        tile: Option<Tile>,
     },
-    PlayerDiscarded {
+    Discard {
         player: PlayerId,
         tile: Tile,
+        kind: DiscardKindView,
     },
-    PlayerCalledPon {
+    Call {
         player: PlayerId,
+        kind: CallKindView,
         tiles: Vec<Tile>,
-        from_player: PlayerId,
+        called_tile: Option<Tile>,
+        from_player: Option<PlayerId>,
+        meld_index: Option<usize>,
     },
-    PlayerCalledChi {
+    Pass {
         player: PlayerId,
-        tiles: Vec<Tile>,
-        from_player: PlayerId,
     },
-    PlayerCalledMinkan {
+    Riichi {
         player: PlayerId,
-        tiles: Vec<Tile>,
-        from_player: PlayerId,
     },
-    PlayerCalledAnkan {
-        player: PlayerId,
-        tiles: Vec<Tile>,
-    },
-    PlayerCalledKakan {
-        player: PlayerId,
+    Win {
+        winners: Vec<PlayerId>,
         tile: Tile,
+        kind: WinKindView,
+        loser: Option<PlayerId>,
     },
-    PlayerDeclaredRiichi {
-        player: PlayerId,
-    },
-    PlayerWon {
-        player: PlayerId,
-        is_tsumo: bool,
-        points: i32,
-        yaku_names: Vec<String>,
-    },
-    RoundEnded {
+    AbortiveDraw {
+        player: Option<PlayerId>,
         reason: RoundEndReasonView,
     },
-    ExhaustiveDrawResult {
-        tenpai: [bool; 4],
-        payments: [i32; 4],
-    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DiscardKindView {
+    Tsumogiri,
+    Tedashi,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CallKindView {
+    Chi,
+    Pon,
+    Minkan,
+    Ankan,
+    Kakan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WinKindView {
+    Ron,
+    Tsumo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
