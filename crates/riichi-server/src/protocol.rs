@@ -1,15 +1,15 @@
 //! Internal channel messages and wire protocol messages are deliberately kept
 //! separate. This module is the single conversion boundary between them.
 
-use riichi_core::game::{CallOption, CallType};
+use riichi_core::game::{CallKind, CallOption, CallType, DiscardKind, GameEvent, WinKind};
 use riichi_core::meld::MeldKind;
 use riichi_core::player::PlayerId;
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
-    ActionRequest, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage,
-    DrawPositionView, GamePhaseView, GameStateView, MeldKindView, MeldView, PlayerView,
-    RoundEndReasonView, ServerEnvelope, ServerMessage, TenpaiInfoView, TurnActionPayload,
-    WaitInfoView, PROTOCOL_VERSION,
+    ActionRequest, CallKindView, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage,
+    DiscardKindView, DrawPositionView, GameEventView, GamePhaseView, GameStateView, MeldKindView,
+    MeldView, PlayerView, RoundEndReasonView, ServerEnvelope, ServerMessage, TenpaiInfoView,
+    TurnActionPayload, WaitInfoView, WinKindView, PROTOCOL_VERSION,
 };
 use std::collections::HashSet;
 
@@ -237,6 +237,10 @@ pub fn call_options_to_wire(player: PlayerId, options: &[CallOption]) -> ServerM
 /// view. This is the only transport-facing conversion for live game events.
 pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option<ServerMessage> {
     match event {
+        SessionEvent::GameEvent { envelope } => Some(ServerMessage::Event {
+            event_id: envelope.event_id,
+            event: game_event_to_wire(&envelope.event, recipient),
+        }),
         SessionEvent::StateUpdate { .. } => state_update_to_wire(event, recipient),
         SessionEvent::ActionRequired {
             can_tsumo,
@@ -272,6 +276,70 @@ pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Optio
             ranking: *ranking,
         }),
         SessionEvent::Error(message) => Some(ServerMessage::Error(message.clone())),
+    }
+}
+
+fn game_event_to_wire(event: &GameEvent, recipient: PlayerId) -> GameEventView {
+    match event {
+        GameEvent::Draw { player, tile } => GameEventView::Draw {
+            player: *player,
+            tile: (*player == recipient).then_some(*tile),
+        },
+        GameEvent::Discard { player, tile, kind } => GameEventView::Discard {
+            player: *player,
+            tile: *tile,
+            kind: match kind {
+                DiscardKind::Tsumogiri => DiscardKindView::Tsumogiri,
+                DiscardKind::Tedashi => DiscardKindView::Tedashi,
+            },
+        },
+        GameEvent::Call {
+            player,
+            kind,
+            tiles,
+            called_tile,
+            from_player,
+            meld_index,
+        } => GameEventView::Call {
+            player: *player,
+            kind: match kind {
+                CallKind::Chi => CallKindView::Chi,
+                CallKind::Pon => CallKindView::Pon,
+                CallKind::Minkan => CallKindView::Minkan,
+                CallKind::Ankan => CallKindView::Ankan,
+                CallKind::Kakan => CallKindView::Kakan,
+            },
+            // Ankan tiles are concealed from opponents.  The caller can see
+            // their own exact tiles; all open-call tiles are public.
+            tiles: if *kind == CallKind::Ankan && *player != recipient {
+                Vec::new()
+            } else {
+                tiles.clone()
+            },
+            called_tile: *called_tile,
+            from_player: *from_player,
+            meld_index: *meld_index,
+        },
+        GameEvent::Pass { player } => GameEventView::Pass { player: *player },
+        GameEvent::Riichi { player } => GameEventView::Riichi { player: *player },
+        GameEvent::Win {
+            winners,
+            tile,
+            kind,
+            loser,
+        } => GameEventView::Win {
+            winners: winners.clone(),
+            tile: *tile,
+            kind: match kind {
+                WinKind::Ron => WinKindView::Ron,
+                WinKind::Tsumo => WinKindView::Tsumo,
+            },
+            loser: *loser,
+        },
+        GameEvent::AbortiveDraw { player, reason } => GameEventView::AbortiveDraw {
+            player: *player,
+            reason: round_end_reason_view(&format!("{:?}", reason)),
+        },
     }
 }
 

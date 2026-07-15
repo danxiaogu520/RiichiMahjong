@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use rand::SeedableRng;
-use riichi_core::game::{GameEvent, TurnAction};
+use riichi_core::game::TurnAction;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
@@ -121,10 +121,7 @@ fn local_auto_pass_game_finishes_half_game() {
     }
 
     assert!((8..=13).contains(&state.round));
-    assert!(state
-        .event_history()
-        .iter()
-        .any(|event| matches!(event, GameEvent::RoundEnded { .. })));
+    assert!(state.round_end_reason.is_some());
 }
 
 /// 四个只会门清推进的牌效 AI：
@@ -184,14 +181,11 @@ fn four_closed_efficiency_ai_finishes_and_monitors_half_game() {
             }
         }
 
-        let round_events = state.event_history()[round_history_start..].to_vec();
-        let ended = round_events
-            .iter()
-            .find_map(|event| match event {
-                GameEvent::RoundEnded { reason } => Some(reason),
-                _ => None,
-            })
-            .expect("每小局必须产生 RoundEnded");
+        let _round_events = state.event_history()[round_history_start..].to_vec();
+        let ended = state
+            .round_end_reason
+            .as_ref()
+            .expect("每小局必须有结束原因");
         match ended {
             riichi_core::game::RoundEndReason::Win { is_tsumo, .. } => {
                 if *is_tsumo {

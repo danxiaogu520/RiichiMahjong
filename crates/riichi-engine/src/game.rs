@@ -1,4 +1,4 @@
-use riichi_core::game::{DrawPosition, GameEvent};
+use riichi_core::game::{DrawPosition, EventEnvelope, GameEvent};
 use riichi_core::player::Player;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -43,6 +43,10 @@ pub struct GameState {
     pub events: Vec<GameEvent>,
     /// 从整场开始累积的事件历史，用于回放和断线恢复；不会随新局清空。
     pub history: Vec<GameEvent>,
+    /// The append-only, sequenced authoritative event stream for this state.
+    /// `events` and `history` remain temporarily for compatibility with the
+    /// existing rule modules while they are migrated to this stream.
+    pub event_log: Vec<EventEnvelope>,
     /// 本局开始时四家的点数，用于生成局末点棒变化。
     pub round_start_points: [i32; 4],
     /// 副露后当前玩家下一次出牌的食替禁牌。
@@ -53,6 +57,14 @@ pub struct GameState {
     pub phase: GamePhase,
     /// 终局时、剩余立直棒加入前确定的最终排名。
     pub ranking_at_game_end: Option<[usize; 4]>,
+    /// Derived reason for the current hand's terminal state.
+    pub round_end_reason: Option<riichi_core::game::RoundEndReason>,
+    /// Suppresses re-emission into the authoritative log while an existing
+    /// event stream is being folded into a state.
+    #[serde(skip)]
+    pub(crate) replaying: bool,
+    #[serde(skip)]
+    pub(crate) replay_passes: std::collections::HashSet<PlayerId>,
 }
 
 #[derive(Debug, Clone, Copy)]
