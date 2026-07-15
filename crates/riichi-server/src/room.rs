@@ -20,6 +20,7 @@ pub enum RoomError {
     Full,
     Started,
     InvalidPlayer,
+    NotAllReady,
     InvalidToken,
     EmptyNickname,
     GameNotStarted,
@@ -32,6 +33,7 @@ impl fmt::Display for RoomError {
             Self::Full => "房间已满",
             Self::Started => "游戏已经开始",
             Self::InvalidPlayer => "玩家座位无效",
+            Self::NotAllReady => "所有玩家准备后才能开始",
             Self::InvalidToken => "连接凭证无效",
             Self::EmptyNickname => "昵称不能为空",
             Self::GameNotStarted => "游戏尚未开始",
@@ -70,11 +72,7 @@ impl Room {
             .position(Option::is_none)
             .ok_or(RoomError::Full)?;
         let player = PlayerId(index);
-        let token = format!(
-            "{}-{}",
-            self.id,
-            NEXT_ROOM_ID.fetch_add(1, Ordering::Relaxed)
-        );
+        let token = new_token();
         self.players[index] = Some(RoomPlayer {
             id: player,
             nickname,
@@ -162,7 +160,7 @@ impl Room {
             return Err(RoomError::Started);
         }
         if !self.all_ready() {
-            return Err(RoomError::InvalidPlayer);
+            return Err(RoomError::NotAllReady);
         }
         self.started = true;
         Ok(())
@@ -178,6 +176,12 @@ impl Room {
         player.connected = true;
         Ok(player.id)
     }
+}
+
+fn new_token() -> String {
+    let mut bytes = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[derive(Default)]
