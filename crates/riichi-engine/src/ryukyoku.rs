@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use riichi_core::game::GameEvent;
+use riichi_core::game::{CallKind, GameEvent};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::TileType;
 
@@ -15,27 +15,22 @@ impl GameState {
     /// 3. 手牌中有九种不同的幺九牌（包括手牌和摸到的牌）
     pub fn can_declare_kyuushu(&self, player: PlayerId) -> bool {
         // 检查当前是否是该玩家的回合
-        if self.current_player.0 != player.0 {
+        if self.current_player() != Some(player) {
             return false;
         }
         // 检查是否有任何鸣牌
-        if self.events.iter().any(|e| {
-            matches!(
-                e,
-                GameEvent::PlayerCalledPon { .. }
-                    | GameEvent::PlayerCalledChi { .. }
-                    | GameEvent::PlayerCalledMinkan { .. }
-                    | GameEvent::PlayerCalledAnkan { .. }
-                    | GameEvent::PlayerCalledKakan { .. }
-            )
-        }) {
+        if self
+            .events
+            .iter()
+            .any(|e| matches!(e, GameEvent::Call { .. }))
+        {
             return false;
         }
         // 检查是否是首巡状态
         if self.events.iter().any(|e| {
             matches!(
                 e,
-                GameEvent::PlayerDiscarded {
+                GameEvent::Discard {
                     player: discarded_player,
                     ..
                 } if *discarded_player == player
@@ -45,7 +40,7 @@ impl GameState {
         }
         // 检查手牌中是否有九种不同的幺九牌
         let hand = &self.players[player.0].hand;
-        let tile_count = hand.len() + if self.drawn_tile.is_some() { 1 } else { 0 };
+        let tile_count = hand.len() + if self.drawn_tile().is_some() { 1 } else { 0 };
         if tile_count != 14 {
             return false;
         }
@@ -55,7 +50,7 @@ impl GameState {
                 types.insert(tile.tile_type());
             }
         }
-        if let Some(drawn) = self.drawn_tile {
+        if let Some(drawn) = self.drawn_tile() {
             if drawn.is_yaochuuhai() {
                 types.insert(drawn.tile_type());
             }
@@ -70,23 +65,18 @@ impl GameState {
     /// 2. 没有任何鸣牌
     pub fn check_suufon_renda(&self) -> bool {
         // 检查是否有任何鸣牌
-        if self.events.iter().any(|e| {
-            matches!(
-                e,
-                GameEvent::PlayerCalledPon { .. }
-                    | GameEvent::PlayerCalledChi { .. }
-                    | GameEvent::PlayerCalledMinkan { .. }
-                    | GameEvent::PlayerCalledAnkan { .. }
-                    | GameEvent::PlayerCalledKakan { .. }
-            )
-        }) {
+        if self
+            .events
+            .iter()
+            .any(|e| matches!(e, GameEvent::Call { .. }))
+        {
             return false;
         }
         // 检查是否是首巡状态
         if self
             .events
             .iter()
-            .filter(|e| matches!(e, GameEvent::PlayerDiscarded { .. }))
+            .filter(|e| matches!(e, GameEvent::Discard { .. }))
             .count()
             != 4
         {
@@ -95,7 +85,7 @@ impl GameState {
         // 检查四位玩家的首巡弃牌是否都是同一风牌
         let mut first = [None::<TileType>; 4];
         for e in &self.events {
-            if let GameEvent::PlayerDiscarded { player, tile } = e {
+            if let GameEvent::Discard { player, tile, .. } = e {
                 if first[player.0].is_none() {
                     first[player.0] = Some(tile.tile_type());
                 }
@@ -118,7 +108,7 @@ impl GameState {
     pub fn check_suucha_riichi(&self) -> bool {
         self.events
             .iter()
-            .filter(|e| matches!(e, GameEvent::PlayerDeclaredRiichi { .. }))
+            .filter(|e| matches!(e, GameEvent::Riichi { .. }))
             .count()
             >= 4
     }
@@ -140,15 +130,18 @@ impl GameState {
             .filter(|e| {
                 matches!(
                     e,
-                    GameEvent::PlayerCalledMinkan { .. }
-                        | GameEvent::PlayerCalledAnkan { .. }
-                        | GameEvent::PlayerCalledKakan { .. }
+                    GameEvent::Call {
+                        kind: CallKind::Minkan | CallKind::Ankan | CallKind::Kakan,
+                        ..
+                    }
                 )
             })
             .map(|e| match e {
-                GameEvent::PlayerCalledMinkan { player, .. }
-                | GameEvent::PlayerCalledAnkan { player, .. }
-                | GameEvent::PlayerCalledKakan { player, .. } => player,
+                GameEvent::Call {
+                    player,
+                    kind: CallKind::Minkan | CallKind::Ankan | CallKind::Kakan,
+                    ..
+                } => player,
                 _ => unreachable!(),
             })
             .collect::<HashSet<&PlayerId>>()
@@ -167,7 +160,10 @@ mod tests {
     #[test]
     fn kyuushu_is_available_before_this_players_first_discard() {
         let mut state = GameState::new();
-        state.current_player = PlayerId(1);
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: None,
+        };
         state.players[1].hand = riichi_core::hand::Hand::from_tiles(&[
             Tile::from_raw(0),
             Tile::from_raw(32),
@@ -183,10 +179,14 @@ mod tests {
             Tile::from_raw(128),
             Tile::from_raw(132),
         ]);
-        state.drawn_tile = Some(Tile::from_raw(4));
-        state.events.push(GameEvent::PlayerDiscarded {
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: Some(Tile::from_raw(4)),
+        };
+        state.events.push(GameEvent::Discard {
             player: PlayerId(0),
             tile: Tile::from_raw(4),
+            kind: riichi_core::game::DiscardKind::Tedashi,
         });
 
         assert!(state.can_declare_kyuushu(PlayerId(1)));
@@ -195,7 +195,10 @@ mod tests {
     #[test]
     fn kyuushu_is_unavailable_after_this_players_first_discard() {
         let mut state = GameState::new();
-        state.current_player = PlayerId(1);
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: None,
+        };
         state.players[1].hand = riichi_core::hand::Hand::from_tiles(&[
             Tile::from_raw(0),
             Tile::from_raw(32),
@@ -211,10 +214,14 @@ mod tests {
             Tile::from_raw(128),
             Tile::from_raw(132),
         ]);
-        state.drawn_tile = Some(Tile::from_raw(4));
-        state.events.push(GameEvent::PlayerDiscarded {
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(1),
+            drawn_tile: Some(Tile::from_raw(4)),
+        };
+        state.events.push(GameEvent::Discard {
             player: PlayerId(1),
             tile: Tile::from_raw(4),
+            kind: riichi_core::game::DiscardKind::Tedashi,
         });
 
         assert!(!state.can_declare_kyuushu(PlayerId(1)));

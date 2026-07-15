@@ -55,7 +55,7 @@ impl GameState {
         }
         let calc = ShantenCalculator::new();
         let mut tiles: Vec<Tile> = self.players[player.0].hand.tiles().to_vec();
-        if let Some(t) = self.drawn_tile {
+        if let Some(t) = self.drawn_tile() {
             tiles.push(t);
         }
         let counts = TileCounts::from_tiles(&tiles);
@@ -76,11 +76,22 @@ impl GameState {
         if !self.can_declare_riichi(player) {
             return Err(GameError::InvalidAction("不满足立直条件".to_string()));
         }
+        self.apply_riichi_event(player)?;
+        self.record_event(GameEvent::Riichi { player });
+        Ok(())
+    }
+
+    pub(crate) fn apply_riichi_event(&mut self, player: PlayerId) -> Result<(), GameError> {
+        if self.players[player.0].is_riichi {
+            return Err(GameError::InvalidAction("玩家已经立直".to_string()));
+        }
+        if self.players[player.0].points < 1000 {
+            return Err(GameError::InvalidAction("立直点数不足".to_string()));
+        }
         let p = &mut self.players[player.0];
         p.points -= 1000;
         p.is_riichi = true;
         self.riichi_sticks += 1;
-        self.record_event(GameEvent::PlayerDeclaredRiichi { player });
         Ok(())
     }
 
@@ -110,13 +121,13 @@ impl GameState {
         let mut options = Vec::new();
         for tt in (0..34u8).map(TileType) {
             let hand_count = hand.count_type(tt);
-            let drawn_count = self.drawn_tile.is_some_and(|tile| tile.tile_type() == tt) as usize;
+            let drawn_count = self.drawn_tile().is_some_and(|tile| tile.tile_type() == tt) as usize;
             if hand_count + drawn_count < 4 {
                 continue;
             }
 
             let mut hand_after = hand.clone();
-            if let Some(drawn) = self.drawn_tile {
+            if let Some(drawn) = self.drawn_tile() {
                 hand_after
                     .add(drawn)
                     .expect("计算立直选项时手牌不应超过容量");
@@ -140,7 +151,8 @@ impl GameState {
             if waits_before == waits_after {
                 if let Some(tile) = hand.tiles().iter().find(|tile| tile.tile_type() == tt) {
                     options.push(*tile);
-                } else if let Some(drawn) = self.drawn_tile.filter(|tile| tile.tile_type() == tt) {
+                } else if let Some(drawn) = self.drawn_tile().filter(|tile| tile.tile_type() == tt)
+                {
                     options.push(drawn);
                 }
             }
@@ -178,8 +190,10 @@ mod tests {
             Tile::from_raw(40),
             Tile::from_raw(44),
         ]);
-        state.current_player = PlayerId(0);
-        state.drawn_tile = Some(Tile::from_raw(104));
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(104)),
+        };
 
         let options = state.get_riichi_discard_options(PlayerId(0));
         assert!(options.contains(&Tile::from_raw(104)));

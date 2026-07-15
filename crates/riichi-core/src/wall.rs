@@ -55,6 +55,17 @@ impl Wall {
         }
     }
 
+    /// Reconstruct a wall from a previously recorded complete arrangement.
+    pub fn from_tiles(tiles: Vec<Tile>) -> Self {
+        assert_eq!(tiles.len(), 136, "a mahjong wall must contain 136 tiles");
+        Self {
+            tiles,
+            draw_index: 0,
+            live_end: DEAD_WALL_START,
+            kan_count: 0,
+        }
+    }
+
     /// 从正常摸牌区摸一张牌。耗尽时返回 None。
     pub fn draw(&mut self) -> Option<Tile> {
         if self.draw_index >= self.live_end || self.draw_index >= self.tiles.len() {
@@ -63,6 +74,11 @@ impl Wall {
         let tile = self.tiles[self.draw_index];
         self.draw_index += 1;
         Some(tile)
+    }
+
+    pub fn peek_draw(&self) -> Option<Tile> {
+        (self.draw_index < self.live_end && self.draw_index < self.tiles.len())
+            .then_some(self.tiles[self.draw_index])
     }
 
     /// 正常摸牌区剩余可摸牌数。
@@ -85,6 +101,14 @@ impl Wall {
         // 洗牌，逻辑上只需收缩 live_end；该牌不再从正常摸牌区取出。
         self.live_end -= 1;
         Some(tile)
+    }
+
+    pub fn peek_rinshan(&self) -> Option<Tile> {
+        if self.kan_count >= 4 {
+            return None;
+        }
+        let index = RINSHAN_START - self.kan_count;
+        (self.draw_index < self.live_end && index < self.tiles.len()).then_some(self.tiles[index])
     }
 
     /// 获取第 i 张宝牌指示牌（0 = 初始 131，1 = 第一次杠后 130，以此类推）。

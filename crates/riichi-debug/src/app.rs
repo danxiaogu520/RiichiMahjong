@@ -70,7 +70,10 @@ impl App {
         Self {
             event_rx: handle.event_rx,
             action_tx: handle.action_tx,
-            phase: GamePhase::ActionPhase,
+            phase: GamePhase::ActionPhase {
+                player: PlayerId(0),
+                drawn_tile: None,
+            },
             current_player: PlayerId(0),
             pending_discard: None,
             hand_tiles: Vec::new(),
@@ -120,9 +123,7 @@ impl App {
             match event {
                 SessionEvent::StateUpdate {
                     phase,
-                    current_player,
                     pending_discard,
-                    drawn_tile,
                     hand_tiles,
                     hand_count,
                     hand_counts,
@@ -139,9 +140,18 @@ impl App {
                     ..
                 } => {
                     self.phase = phase;
-                    self.current_player = current_player;
+                    self.current_player = match self.phase {
+                        GamePhase::DrawPhase { player, .. }
+                        | GamePhase::ActionPhase { player, .. }
+                        | GamePhase::ResponsePhase { player, .. }
+                        | GamePhase::ChankanResponse { player, .. } => player,
+                        GamePhase::RoundOver => PlayerId(0),
+                    };
                     self.pending_discard = pending_discard;
-                    self.drawn_tile = drawn_tile;
+                    self.drawn_tile = match self.phase {
+                        GamePhase::ActionPhase { drawn_tile, .. } => drawn_tile,
+                        _ => None,
+                    };
                     self.hand_tiles = hand_tiles;
                     self.hand_count = hand_count;
                     self.hand_counts = hand_counts;
@@ -233,13 +243,14 @@ impl App {
                 SessionEvent::Error(message) => {
                     self.messages.push(message);
                 }
+                SessionEvent::GameEvent { .. } => {}
             }
         }
     }
 
     pub fn is_human_turn(&self) -> bool {
         self.current_player == PlayerId(0)
-            && matches!(self.phase, GamePhase::ActionPhase)
+            && matches!(self.phase, GamePhase::ActionPhase { .. })
             && self.call_options.is_empty()
             && !self.auto_play
     }
@@ -343,7 +354,7 @@ impl App {
         !self.ai_action_in_flight
             && (!self.call_options.is_empty()
                 || (self.current_player == PlayerId(0)
-                    && matches!(self.phase, GamePhase::ActionPhase)
+                    && matches!(self.phase, GamePhase::ActionPhase { .. })
                     && (!self.discard_options.is_empty() || self.can_tsumo || self.can_riichi)))
     }
 

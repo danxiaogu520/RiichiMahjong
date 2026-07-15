@@ -141,6 +141,7 @@ impl ServerApplication {
         &self,
         room_id: &str,
         player: PlayerId,
+        last_event_id: u64,
     ) -> Result<(mpsc::Sender<riichi_session::PlayerCommand>, EventReceiver), RoomError> {
         let sessions = self.sessions.lock().await;
         let session = sessions.get(room_id).ok_or(RoomError::GameNotStarted)?;
@@ -149,6 +150,7 @@ impl ServerApplication {
             .control_tx
             .send(riichi_session::SessionControl {
                 player,
+                last_event_id,
                 event_tx: player_handle.event_tx,
                 action_rx: player_handle.action_rx,
             })
@@ -261,7 +263,7 @@ mod tests {
             Err(RoomError::NotFound)
         );
         assert!(matches!(
-            app.session_channels(&room.id, riichi_core::player::PlayerId(0))
+            app.session_channels(&room.id, riichi_core::player::PlayerId(0), 0)
                 .await,
             Err(RoomError::GameNotStarted)
         ));

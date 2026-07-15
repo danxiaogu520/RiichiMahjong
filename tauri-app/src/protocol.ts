@@ -61,12 +61,17 @@ export interface GameStateView {
   round: number;
   honba: number;
   riichi_sticks: number;
-  current_player: PlayerId;
-  drawn_tile: number | null;
   dora: [number][];
   remaining_tiles: number;
-  phase: string;
+  phase: GamePhaseView;
 }
+
+export type GamePhaseView =
+  | { DrawPhase: { player: PlayerId; position: "LiveWall" | "Rinshan" } }
+  | { ActionPhase: { player: PlayerId; drawn_tile: number | null } }
+  | { ResponsePhase: { player: PlayerId; discarded_tile: number } }
+  | { ChankanResponse: { player: PlayerId; kan_tile: number } }
+  | "RoundOver";
 
 export interface PlayerView {
   id: PlayerId;

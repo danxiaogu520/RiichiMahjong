@@ -5,6 +5,8 @@ use riichi_core::tile::TileType;
 use riichi_core::wall::Wall;
 
 use crate::game::{GamePhase, GameState};
+use riichi_core::game::DrawPosition;
+use riichi_core::game::RoundSetup;
 
 impl GameState {
     /// 创建新的游戏状态（默认值）
@@ -21,16 +23,21 @@ impl GameState {
                 Player::new(PlayerId(2), wind_from_index(2)),
                 Player::new(PlayerId(3), wind_from_index(3)),
             ],
-            current_player: PlayerId(0),
             wind: TileType::EAST,
             events: Vec::new(),
             history: Vec::new(),
+            event_log: Vec::new(),
             round_start_points: [starting_points; 4],
             kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             pao_targets: [None; 4],
-            phase: GamePhase::ActionPhase,
+            phase: GamePhase::DrawPhase {
+                player: PlayerId(0),
+                position: DrawPosition::LiveWall,
+            },
             ranking_at_game_end: None,
-            drawn_tile: None,
+            round_end_reason: None,
+            replaying: false,
+            replay_passes: std::collections::HashSet::new(),
             round: 1,
             honba: 0,
             riichi_sticks: 0,
@@ -42,6 +49,55 @@ impl GameState {
         for player in &mut state.players {
             player.points = starting_points;
         }
+        state
+    }
+
+    /// Build the deterministic initial state for a recorded hand.
+    ///
+    /// This is the entry point used by replay code: the wall arrangement and
+    /// starting points come from the Hanchan record, not from a live RNG.
+    pub fn from_round_setup(
+        setup: &RoundSetup,
+        round: u32,
+        honba: u32,
+        riichi_sticks: u32,
+    ) -> Self {
+        let mut state = Self::new();
+        state.round = round;
+        state.honba = honba;
+        state.riichi_sticks = riichi_sticks;
+        state.round_start_points = setup.initial_points;
+        state.round_end_reason = None;
+        let dealer = state.get_dealer();
+        for (index, player) in state.players.iter_mut().enumerate() {
+            player.points = setup.initial_points[index];
+            let relative_seat = (index + 4 - dealer.0) % 4;
+            player.wind = wind_from_index(relative_seat);
+        }
+        state.wall = Wall::from_tiles(setup.wall.clone());
+        let indicator = state.wall.dora_indicator(0).tile_type();
+        state.dora_indicators.push(indicator);
+        state.dora.push(Self::dora_from_indicator(indicator));
+        state
+            .ura_dora_indicators
+            .push(state.wall.ura_dora_indicator(0).tile_type());
+
+        for _ in 0..3 {
+            for player in state.players.iter_mut() {
+                for _ in 0..4 {
+                    let tile = state.wall.draw().expect("记录牌山配牌不足");
+                    player.hand.add(tile).expect("配牌时手牌不应超过容量");
+                }
+            }
+        }
+        for player in state.players.iter_mut() {
+            let tile = state.wall.draw().expect("记录牌山配牌不足");
+            player.hand.add(tile).expect("配牌时手牌不应超过容量");
+        }
+        state.phase = GamePhase::DrawPhase {
+            player: dealer,
+            position: DrawPosition::LiveWall,
+        };
         state
     }
 
@@ -130,15 +186,11 @@ mod tests {
         let mut state = GameState::new();
         let mut rng = StdRng::seed_from_u64(19);
         state.start_round(&mut rng);
-        state
-            .events
-            .push(riichi_core::game::GameEvent::GameStarted {
-                dealer: state.get_dealer(),
-            });
+        state.round_end_reason = None;
         state.start_round(&mut rng);
 
-        assert_eq!(state.events.len(), 1);
-        assert_eq!(state.event_history().len(), 2);
+        assert_eq!(state.events.len(), 0);
+        assert_eq!(state.event_history().len(), 0);
         assert_eq!(state.players[0].wind, TileType::EAST);
         assert_eq!(state.players[1].wind, TileType::SOUTH);
         assert_eq!(state.players[2].wind, TileType::WEST);

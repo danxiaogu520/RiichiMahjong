@@ -19,6 +19,7 @@ export class ClientTransport {
   private socket: WebSocket | undefined;
   private commandId = 0;
   private sequence = 0;
+  private lastEventId = 0;
 
   constructor(serverAddress: string) {
     this.httpOrigin = serverAddress.replace(/\/$/, "");
@@ -55,11 +56,19 @@ export class ClientTransport {
     const url = new URL(this.httpOrigin);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/ws";
-    url.search = new URLSearchParams({ room_id: roomId, token }).toString();
+    url.search = new URLSearchParams({
+      room_id: roomId,
+      token,
+      last_event_id: String(this.lastEventId),
+    }).toString();
     this.socket = new WebSocket(url);
     this.socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as ServerEnvelope;
+        const eventBody = (message.body as { Event?: { event_id?: number } }).Event;
+        if (typeof eventBody?.event_id === "number" && eventBody.event_id > this.lastEventId) {
+          this.lastEventId = eventBody.event_id;
+        }
         if (typeof message.seq === "number" && message.seq > this.sequence + 1 && this.sequence !== 0) {
           callbacks.onError("检测到消息序号缺失，正在请求完整快照");
           this.requestSnapshot();

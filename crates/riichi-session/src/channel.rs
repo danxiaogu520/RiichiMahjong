@@ -1,4 +1,5 @@
 use riichi_core::game::CallOption;
+use riichi_core::game::EventEnvelope;
 use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -13,11 +14,12 @@ use tokio::sync::mpsc;
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum SessionEvent {
+    GameEvent {
+        envelope: EventEnvelope,
+    },
     StateUpdate {
         phase: GamePhase,
-        current_player: PlayerId,
         pending_discard: Option<(PlayerId, Tile)>,
-        drawn_tile: Option<Tile>,
         hand_tiles: Vec<Tile>,
         hand_count: usize,
         hand_counts: [usize; 4],
@@ -107,6 +109,7 @@ pub struct PlayerCommand {
 /// 所在线程修改。
 pub struct SessionControl {
     pub player: PlayerId,
+    pub last_event_id: u64,
     pub event_tx: mpsc::Sender<SessionEvent>,
     pub action_rx: mpsc::Receiver<PlayerCommand>,
 }

@@ -27,6 +27,8 @@ pub struct JoinRequest {
 pub struct WebSocketQuery {
     pub room_id: String,
     pub token: String,
+    #[serde(default)]
+    pub last_event_id: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,7 +116,7 @@ async fn websocket(
         .authenticate(&query.room_id, &query.token)
         .map_err(room_error_response)?;
     let (action_tx, event_rx) = application
-        .session_channels(&query.room_id, player)
+        .session_channels(&query.room_id, player, query.last_event_id)
         .await
         .map_err(room_error_response)?;
     Ok(upgrade.on_upgrade(move |socket| {
@@ -198,7 +200,10 @@ async fn websocket_session(
         match result {
             Err(event) => {
                 let message = if !sent_snapshot {
-                    state_snapshot_to_wire(&event, player)
+                    match event {
+                        SessionEvent::GameEvent { .. } => session_event_to_wire(&event, player),
+                        _ => state_snapshot_to_wire(&event, player),
+                    }
                 } else {
                     session_event_to_wire(&event, player)
                 };

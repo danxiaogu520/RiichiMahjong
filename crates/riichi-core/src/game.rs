@@ -4,82 +4,163 @@ use crate::player::PlayerId;
 use crate::tile::{Tile, TileType};
 use serde::{Deserialize, Serialize};
 
+/// The way a discard was made.  This is authoritative game history, not a
+/// client intent: a server timeout can therefore produce an explicit
+/// `Tsumogiri` event as well.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DiscardKind {
+    Tsumogiri,
+    Tedashi,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum WinKind {
+    Ron,
+    Tsumo,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CallKind {
+    Chi,
+    Pon,
+    Minkan,
+    Ankan,
+    Kakan,
+}
+
+/// Immutable information needed to create the initial state of one hand.
+/// The complete wall is stored instead of relying on a particular RNG
+/// implementation, so old logs remain replayable after code changes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoundSetup {
+    pub round: u32,
+    pub honba: u32,
+    pub riichi_sticks: u32,
+    pub event_start_id: u64,
+    pub initial_points: [i32; 4],
+    pub wall: Vec<Tile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HanchanSetup {
+    pub rules_version: String,
+    pub rounds: Vec<RoundSetup>,
+}
+
+/// The authoritative, append-only Hanchan event log.
+///
+/// This type deliberately does not contain a materialized engine state.  The
+/// engine may cache one alongside it, but the log remains the source of truth.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Hanchan {
+    pub setup: HanchanSetup,
+    pub events: Vec<EventEnvelope>,
+}
+
+impl Hanchan {
+    pub fn new(setup: HanchanSetup) -> Self {
+        Self {
+            setup,
+            events: Vec::new(),
+        }
+    }
+
+    pub fn next_event_id(&self) -> u64 {
+        self.events.len() as u64 + 1
+    }
+
+    pub fn append(&mut self, event: GameEvent) -> EventEnvelope {
+        let envelope = EventEnvelope {
+            event_id: self.next_event_id(),
+            event,
+        };
+        self.events.push(envelope.clone());
+        envelope
+    }
+
+    pub fn events_after(&self, event_id: u64) -> impl Iterator<Item = &EventEnvelope> {
+        self.events
+            .iter()
+            .filter(move |envelope| envelope.event_id > event_id)
+    }
+}
+
+/// A stable position in a Hanchan event log.
+///
+/// Transport sequence numbers are intentionally kept separate from this
+/// identifier.  The latter belongs to the game and survives reconnects.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EventEnvelope {
+    pub event_id: u64,
+    pub event: GameEvent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GamePhase {
-    DrawPhase,
-    ActionPhase,
+    DrawPhase {
+        player: PlayerId,
+        position: DrawPosition,
+    },
+    ActionPhase {
+        player: PlayerId,
+        drawn_tile: Option<Tile>,
+    },
     ResponsePhase {
+        player: PlayerId,
         discarded_tile: Tile,
-        discarder: PlayerId,
     },
     ChankanResponse {
-        kakan_tile: Tile,
-        kakan_player: PlayerId,
-        meld_index: usize,
+        player: PlayerId,
+        kan_tile: Tile,
     },
     RoundOver,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DrawPosition {
+    LiveWall,
+    Rinshan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum GameEvent {
-    GameStarted {
-        dealer: PlayerId,
-    },
-    RoundStarted {
-        round_number: u32,
-        dealer: PlayerId,
-    },
-    PlayerDrew {
+    /// Authoritative action-oriented events.
+    Draw {
         player: PlayerId,
         tile: Tile,
     },
-    PlayerDiscarded {
+    Discard {
         player: PlayerId,
         tile: Tile,
+        kind: DiscardKind,
     },
-    PlayerCalledPon {
+    Call {
         player: PlayerId,
+        kind: CallKind,
         tiles: Vec<Tile>,
-        from_player: PlayerId,
+        called_tile: Option<Tile>,
+        from_player: Option<PlayerId>,
+        meld_index: Option<usize>,
     },
-    PlayerCalledChi {
+    Pass {
         player: PlayerId,
-        tiles: Vec<Tile>,
-        from_player: PlayerId,
     },
-    PlayerCalledMinkan {
+    Riichi {
         player: PlayerId,
-        tiles: Vec<Tile>,
-        from_player: PlayerId,
     },
-    PlayerCalledAnkan {
-        player: PlayerId,
-        tiles: Vec<Tile>,
-    },
-    PlayerCalledKakan {
-        player: PlayerId,
+    Win {
+        winners: Vec<PlayerId>,
         tile: Tile,
-        original_pon: Vec<Tile>,
+        kind: WinKind,
+        loser: Option<PlayerId>,
     },
-    PlayerDeclaredRiichi {
-        player: PlayerId,
-    },
-    PlayerWon {
-        player: PlayerId,
-        is_tsumo: bool,
-        points: i32,
-        yaku_names: Vec<String>,
-    },
-    RoundEnded {
+    AbortiveDraw {
+        player: Option<PlayerId>,
         reason: RoundEndReason,
-    },
-    ExhaustiveDrawResult {
-        tenpai: [bool; 4],
-        payments: [i32; 4],
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RoundEndReason {
     ExhaustiveDraw,
     Win { winner: PlayerId, is_tsumo: bool },
