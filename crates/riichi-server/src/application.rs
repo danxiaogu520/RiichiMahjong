@@ -231,10 +231,7 @@ mod tests {
         let room = app.create_room();
         let joined = app.join_room(&room.id, "玩家").unwrap();
 
-        assert_eq!(
-            app.launch_game(&room.id).await,
-            Err(RoomError::InvalidPlayer)
-        );
+        assert_eq!(app.launch_game(&room.id).await, Err(RoomError::NotAllReady));
         app.set_ready(&room.id, &joined.token, true).unwrap();
         assert!(
             !app.set_ready(&room.id, &joined.token, true)
