@@ -1,3 +1,5 @@
+//! Domain model shared by shape analysis, evaluation, and settlement.
+
 use riichi_core::meld::Meld;
 use riichi_core::tile::{Tile, TileType};
 use serde::{Deserialize, Serialize};
@@ -90,10 +92,9 @@ impl YakuResult {
 //  判和上下文
 // ═══════════════════════════════════════════════════════════════
 
-/// 判和上下文：包含判形、判役、算翻、算符所需的全部信息
+/// 和牌发生时的场况。项目只实现一套固定规则，因此这里不包含规则开关。
 #[derive(Debug, Clone)]
-pub struct WinContext {
-    // 基本条件
+pub struct WinSituation {
     pub is_tsumo: bool,
     pub is_riichi: bool,
     pub is_double_riichi: bool,
@@ -106,23 +107,13 @@ pub struct WinContext {
     pub is_tenhou: bool,
     /// 闲家第一巡、本人尚未打出任何牌且未发生鸣牌时自摸。
     pub is_chiihou: bool,
-    /// 万、筒、索三种赤五的数量。
-    pub red_fives: [u8; 3],
-    /// 是否允许副露断幺九（食断）。
-    pub kuitan: bool,
-    /// 兼容旧配置字段。当前按具体和了牌逐张判役，偏听由该判定自然产生。
-    pub atozuke: bool,
-    /// 是否启用国士十三面、四暗刻单骑、纯正九莲、大四喜双倍役满。
-    pub allow_double_yakuman: bool,
-    // 风位
     pub seat_wind: TileType,
     pub field_wind: TileType,
-    // 宝牌指示牌
-    pub dora_indicators: Vec<TileType>,
-    pub ura_dora_indicators: Vec<TileType>,
-    // 副露
-    pub melds: Vec<Meld>,
-    // 计分参数
+}
+
+/// 一次和牌的结算席位与场棒信息。
+#[derive(Debug, Clone, Copy)]
+pub struct SettlementContext {
     pub dealer: usize,
     pub winner: usize,
     pub loser: Option<usize>,
@@ -130,6 +121,20 @@ pub struct WinContext {
     pub pao_target: Option<usize>,
     pub honba: u32,
     pub riichi_sticks: u32,
+}
+
+/// 判和的唯一输入。门清牌不包含和了牌；和了牌由 `winning_tile` 单独给出。
+/// 所有派生表示（牌种计数、完整牌集合、门清状态）均在 logic 内构造。
+#[derive(Debug, Clone, Copy)]
+pub struct WinInput<'a> {
+    pub concealed_tiles: &'a [Tile],
+    pub melds: &'a [Meld],
+    pub winning_tile: Tile,
+    pub dora_indicators: &'a [TileType],
+    pub ura_dora_indicators: &'a [TileType],
+    pub situation: &'a WinSituation,
+    pub settlement: SettlementContext,
+    pub is_furiten: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -143,56 +148,131 @@ pub enum MentsuKind {
     Koutsu,
 }
 
-/// 一组面子
+/// 门清部分分解出的一组面子。副露使用 `riichi_core::Meld` 表示，二者不混用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Mentsu {
+pub struct ClosedGroup {
     pub kind: MentsuKind,
     pub tile_type: TileType,
-    pub is_open: bool,
 }
 
-/// 和了手牌类型
+impl ClosedGroup {
+    pub fn contains(&self, tile_type: TileType) -> bool {
+        match self.kind {
+            MentsuKind::Shuntsu => {
+                self.tile_type.suit() == tile_type.suit()
+                    && (self.tile_type.0..=self.tile_type.0 + 2).contains(&tile_type.0)
+            }
+            MentsuKind::Koutsu => self.tile_type == tile_type,
+        }
+    }
+}
+
+/// 和了牌在某个完整牌组分解中的归属。
+///
+/// 高点法不仅要枚举面子拆法，还要枚举和了牌究竟补成雀头还是哪一组面子；
+/// 判役和计符必须使用同一个归属，不能各自从最终牌型猜测。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HandType {
-    Standard,
-    SevenPairs,
-    Kokushi,
+pub enum WinningTilePlacement {
+    Pair,
+    Group(usize),
+    Special,
 }
 
-/// 和了手牌分解结果
-#[derive(Debug, Clone)]
-pub struct WinningHand {
-    pub hand_type: HandType,
-    pub jantai: TileType,
-    pub mentsu: Vec<Mentsu>,
+/// 和了手牌的真实形态。特殊牌型不再伪装成标准面子。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WinningHand {
+    Standard {
+        pair: TileType,
+        groups: Vec<ClosedGroup>,
+    },
+    SevenPairs {
+        pairs: [TileType; 7],
+    },
+    Kokushi {
+        pair: TileType,
+    },
 }
 
 impl WinningHand {
-    /// 收集所有牌类型（含雀头和面子中的每张牌）
-    pub fn all_tiles(&self) -> Vec<TileType> {
-        let mut tiles = Vec::new();
-        tiles.push(self.jantai);
-        tiles.push(self.jantai);
-        for m in &self.mentsu {
-            match m.kind {
-                MentsuKind::Shuntsu => {
-                    tiles.push(m.tile_type);
-                    tiles.push(TileType(m.tile_type.0 + 1));
-                    tiles.push(TileType(m.tile_type.0 + 2));
+    pub fn pair(&self) -> TileType {
+        match self {
+            Self::Standard { pair, .. } | Self::Kokushi { pair } => *pair,
+            Self::SevenPairs { pairs } => pairs[0],
+        }
+    }
+
+    pub fn groups(&self) -> &[ClosedGroup] {
+        match self {
+            Self::Standard { groups, .. } => groups,
+            Self::SevenPairs { .. } | Self::Kokushi { .. } => &[],
+        }
+    }
+
+    /// 枚举当前牌组分解下所有可能的和了牌归属。
+    ///
+    /// 同一种牌可能同时出现在刻子和顺子中。此时每种归属都必须独立判役、
+    /// 计符和计点，再由评估层选择得点最高者。
+    pub fn winning_tile_placements(&self, winning_tile: TileType) -> Vec<WinningTilePlacement> {
+        match self {
+            Self::Standard { pair, groups } => {
+                let mut placements = Vec::new();
+                if *pair == winning_tile {
+                    placements.push(WinningTilePlacement::Pair);
                 }
-                MentsuKind::Koutsu => {
-                    if self.hand_type == HandType::SevenPairs {
-                        tiles.push(m.tile_type);
-                        tiles.push(m.tile_type);
-                    } else {
-                        tiles.push(m.tile_type);
-                        tiles.push(m.tile_type);
-                        tiles.push(m.tile_type);
-                    }
+                placements.extend(
+                    groups
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, group)| group.contains(winning_tile))
+                        .map(|(index, _)| WinningTilePlacement::Group(index)),
+                );
+                placements
+            }
+            Self::SevenPairs { pairs } => {
+                if pairs.contains(&winning_tile) {
+                    vec![WinningTilePlacement::Pair]
+                } else {
+                    Vec::new()
+                }
+            }
+            Self::Kokushi { pair } => {
+                if *pair == winning_tile {
+                    vec![WinningTilePlacement::Pair]
+                } else if winning_tile.is_yaochuuhai() {
+                    vec![WinningTilePlacement::Special]
+                } else {
+                    Vec::new()
                 }
             }
         }
-        tiles
+    }
+
+    /// 收集所有牌类型（含雀头和面子中的每张牌）
+    pub fn all_tiles(&self) -> Vec<TileType> {
+        match self {
+            Self::Standard { pair, groups } => {
+                let mut tiles = vec![*pair; 2];
+                for group in groups {
+                    match group.kind {
+                        MentsuKind::Shuntsu => {
+                            tiles.extend([
+                                group.tile_type,
+                                TileType(group.tile_type.0 + 1),
+                                TileType(group.tile_type.0 + 2),
+                            ]);
+                        }
+                        MentsuKind::Koutsu => tiles.extend([group.tile_type; 3]),
+                    }
+                }
+                tiles
+            }
+            Self::SevenPairs { pairs } => pairs.iter().flat_map(|&pair| [pair; 2]).collect(),
+            Self::Kokushi { pair } => {
+                let mut tiles = TileType::YAOCHUUHAI.to_vec();
+                tiles.push(*pair);
+                tiles
+            }
+        }
     }
 }
 
@@ -232,7 +312,7 @@ pub struct WinResult {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  听牌类型（analysis.rs 使用）
+//  听牌类型（shape.rs 使用）
 // ═══════════════════════════════════════════════════════════════
 
 /// 听牌类型

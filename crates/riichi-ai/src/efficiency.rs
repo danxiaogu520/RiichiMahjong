@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
-use crate::types::TileCounts;
 use riichi_core::tile::{Tile, TileType};
+use riichi_logic::model::TileCounts;
+use riichi_logic::visibility::{remaining_copies_for, VisibleTiles};
 
-use crate::shanten::ShantenCalculator;
+use riichi_logic::shanten::ShantenCalculator;
 
 #[derive(Debug, Clone)]
 pub struct DiscardOption {
@@ -16,7 +17,7 @@ pub struct DiscardOption {
 }
 
 pub fn analyze_discard(
-    calculator: &mut ShantenCalculator,
+    calculator: &ShantenCalculator,
     hand: &[Tile],
     visible: &VisibleTiles,
 ) -> Vec<DiscardOption> {
@@ -121,7 +122,7 @@ pub struct AcceptanceInfo {
 }
 
 pub fn analyze_acceptance(
-    calculator: &mut ShantenCalculator,
+    calculator: &ShantenCalculator,
     hand: &[Tile],
     visible: &VisibleTiles,
 ) -> (Vec<AcceptanceInfo>, Vec<AcceptanceInfo>, i8) {
@@ -193,7 +194,7 @@ pub fn analyze_acceptance(
 }
 
 fn count_acceptance_copies(
-    calculator: &mut ShantenCalculator,
+    calculator: &ShantenCalculator,
     counts: &TileCounts,
     visible: &VisibleTiles,
     shanten: i8,
@@ -214,7 +215,7 @@ fn count_acceptance_copies(
 }
 
 fn count_acceptance_copies_with_extra(
-    calculator: &mut ShantenCalculator,
+    calculator: &ShantenCalculator,
     counts: &TileCounts,
     visible: &VisibleTiles,
     shanten: i8,
@@ -240,7 +241,7 @@ fn count_acceptance_copies_with_extra(
 }
 
 fn find_acceptance(
-    calculator: &mut ShantenCalculator,
+    calculator: &ShantenCalculator,
     counts: &TileCounts,
     current_shanten: i8,
 ) -> Vec<TileType> {
@@ -259,76 +260,6 @@ fn find_acceptance(
     result
 }
 
-pub fn remaining_copies_for(
-    tt: TileType,
-    hand_counts: &TileCounts,
-    visible: &VisibleTiles,
-) -> usize {
-    let total = 4usize;
-    let used = hand_counts.get(tt) as usize
-        + visible.hand_melds.get(tt) as usize
-        + visible.all_discards.get(tt) as usize
-        + visible.all_melds.get(tt) as usize
-        + visible.dora_indicators.get(tt) as usize;
-    total.saturating_sub(used)
-}
-
 fn remaining_copies(tt: TileType, hand_counts: &TileCounts, visible: &VisibleTiles) -> usize {
     remaining_copies_for(tt, hand_counts, visible)
-}
-
-pub struct VisibleTiles {
-    pub hand_melds: TileCounts,
-    pub all_discards: TileCounts,
-    pub all_melds: TileCounts,
-    pub dora_indicators: TileCounts,
-}
-
-impl Default for VisibleTiles {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl VisibleTiles {
-    pub fn new() -> Self {
-        Self {
-            hand_melds: TileCounts::new(),
-            all_discards: TileCounts::new(),
-            all_melds: TileCounts::new(),
-            dora_indicators: TileCounts::new(),
-        }
-    }
-
-    /// 从玩家副露/舍牌/宝牌指示牌数据构建 VisibleTiles。
-    ///
-    /// - `player_melds`: 当前玩家的副露
-    /// - `all_melds`: 其他玩家的副露
-    /// - `all_discards`: 所有玩家的舍牌
-    /// - `dora_indicator_types`: 宝牌指示牌类型列表
-    pub fn from_data(
-        player_melds: &[Vec<riichi_core::tile::Tile>],
-        other_melds: &[Vec<riichi_core::tile::Tile>],
-        all_discards: &[riichi_core::tile::Tile],
-        dora_indicator_types: &[riichi_core::tile::TileType],
-    ) -> Self {
-        let mut visible = Self::new();
-        for tiles in player_melds {
-            for t in tiles {
-                visible.hand_melds.inc(t.tile_type());
-            }
-        }
-        for tiles in other_melds {
-            for t in tiles {
-                visible.all_melds.inc(t.tile_type());
-            }
-        }
-        for t in all_discards {
-            visible.all_discards.inc(t.tile_type());
-        }
-        for &tt in dora_indicator_types {
-            visible.dora_indicators.inc(tt);
-        }
-        visible
-    }
 }

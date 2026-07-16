@@ -1,12 +1,12 @@
 use riichi_core::tile::Tile;
-use riichi_logic::acceptance::VisibleTiles;
 use riichi_logic::shanten::ShantenCalculator;
+use riichi_logic::visibility::VisibleTiles;
 
 use crate::discard::choose_riichi_discard;
 
 /// AI 决策：在合法立直宣言牌中按牌效选择一张。
 pub fn decide_riichi(
-    calc: &mut ShantenCalculator,
+    calc: &ShantenCalculator,
     hand: &[Tile],
     visible: &VisibleTiles,
     tenpai_discards: &[Tile],

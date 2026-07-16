@@ -4,8 +4,8 @@ use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::GamePhase;
-use riichi_logic::acceptance::VisibleTiles;
 use riichi_logic::shanten::ShantenCalculator;
+use riichi_logic::visibility::VisibleTiles;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -107,7 +107,7 @@ fn decide_turn(
     }
     if state.can_riichi {
         if let Some(tile) = decide_riichi(
-            &mut state.calculator,
+            &state.calculator,
             &state.hand_tiles,
             &state.visible,
             riichi_options,
@@ -128,7 +128,7 @@ fn decide_turn(
     let tile = if discard_options.len() == 1 {
         discard_options[0]
     } else {
-        choose_discard(&mut state.calculator, &state.hand_tiles, &state.visible)
+        choose_discard(&state.calculator, &state.hand_tiles, &state.visible)
             .map(|option| option.tile)
             .and_then(|tile| {
                 discard_options
