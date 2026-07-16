@@ -32,10 +32,8 @@ pub fn detect_calls(
         let mut hand_tile_types: Vec<TileType> =
             hand.tiles().iter().map(|tile| tile.tile_type()).collect();
         hand_tile_types.push(discarded_tile.tile_type());
-        if riichi_logic::win_check::is_win_shape_with_open_melds(
-            &hand_tile_types,
-            player.melds.len(),
-        ) && !player.furiten.is_furiten()
+        if riichi_logic::shape::is_win_shape_with_open_melds(&hand_tile_types, player.melds.len())
+            && !player.furiten.is_furiten()
         {
             options.push(CallOption {
                 player: pid,

@@ -1,8 +1,61 @@
 use riichi_core::tile::TileType;
 
-use crate::types::{
-    HandType, Mentsu, MentsuKind, TileCounts, WaitInfo, WaitTileInfo, WaitType, WinningHand,
+use crate::model::{
+    ClosedGroup, MentsuKind, TileCounts, WaitInfo, WaitTileInfo, WaitType, WinningHand,
 };
+
+// 和牌形、分解与等待分析。这里不处理役、符或点数。
+
+/// 检查门清牌（含和了牌）是否构成完整和牌。
+pub fn is_win_shape(tiles: &[TileType]) -> bool {
+    is_win_shape_with_open_melds(tiles, 0)
+}
+
+/// 检查带有固定副露数量的门清牌是否构成完整和牌。
+pub fn is_win_shape_with_open_melds(tiles: &[TileType], open_meld_count: usize) -> bool {
+    if open_meld_count > 4 {
+        return false;
+    }
+    let mut counts = TileCounts::new();
+    for &tile_type in tiles {
+        counts.inc(tile_type);
+    }
+    if open_meld_count == 0 {
+        is_winning(&mut counts)
+    } else {
+        is_standard_win_with_mentsu(&mut counts, 4 - open_meld_count)
+    }
+}
+
+/// 返回门清牌的所有有效分解。
+pub fn decompose_hand(hand_tiles: &[TileType]) -> Vec<WinningHand> {
+    decompose_hand_with_open_melds(hand_tiles, 0)
+}
+
+/// 返回带有固定副露数量的门清牌的所有有效分解。
+pub fn decompose_hand_with_open_melds(
+    hand_tiles: &[TileType],
+    open_meld_count: usize,
+) -> Vec<WinningHand> {
+    if open_meld_count > 4 {
+        return Vec::new();
+    }
+    let mut counts = TileCounts::new();
+    for &tile_type in hand_tiles {
+        counts.inc(tile_type);
+    }
+
+    let mut results = decompose_all_standard_with_mentsu(&mut counts, 4 - open_meld_count);
+    if open_meld_count == 0 {
+        if let Some(seven_pairs) = decompose_seven_pairs(&counts) {
+            results.push(seven_pairs);
+        }
+        if let Some(kokushi) = decompose_kokushi(&counts) {
+            results.push(kokushi);
+        }
+    }
+    results
+}
 
 // ─── 和了判定 ──────────────────────────────────────────────
 
@@ -165,10 +218,9 @@ pub fn decompose_all_standard_with_mentsu(
             counts.inc(tt);
             for mut mentsu in all_mentsu {
                 mentsu.sort_by_key(|m| (m.tile_type.0, m.kind as u8));
-                results.push(WinningHand {
-                    hand_type: HandType::Standard,
-                    jantai: tt,
-                    mentsu,
+                results.push(WinningHand::Standard {
+                    pair: tt,
+                    groups: mentsu,
                 });
             }
         }
@@ -177,7 +229,7 @@ pub fn decompose_all_standard_with_mentsu(
 }
 
 /// 递归枚举所有可能的面子组合
-fn decompose_all_mentsu(counts: &mut TileCounts, num: usize) -> Vec<Vec<Mentsu>> {
+fn decompose_all_mentsu(counts: &mut TileCounts, num: usize) -> Vec<Vec<ClosedGroup>> {
     let idx = match counts.inner().iter().position(|&c| c > 0) {
         None => {
             return if num == 0 { vec![Vec::new()] } else { vec![] };
@@ -195,10 +247,9 @@ fn decompose_all_mentsu(counts: &mut TileCounts, num: usize) -> Vec<Vec<Mentsu>>
         counts.dec(tt);
         counts.dec(tt);
         for mut rest in decompose_all_mentsu(counts, num - 1) {
-            rest.push(Mentsu {
+            rest.push(ClosedGroup {
                 kind: MentsuKind::Koutsu,
                 tile_type: tt,
-                is_open: false,
             });
             results.push(rest);
         }
@@ -220,10 +271,9 @@ fn decompose_all_mentsu(counts: &mut TileCounts, num: usize) -> Vec<Vec<Mentsu>>
             counts.dec(tt2);
             counts.dec(tt3);
             for mut rest in decompose_all_mentsu(counts, num - 1) {
-                rest.push(Mentsu {
+                rest.push(ClosedGroup {
                     kind: MentsuKind::Shuntsu,
                     tile_type: tt,
-                    is_open: false,
                 });
                 results.push(rest);
             }
@@ -246,22 +296,8 @@ pub fn decompose_seven_pairs(counts: &TileCounts) -> Option<WinningHand> {
         .collect();
     let valid = inner.iter().all(|&c| c == 0 || c == 2);
     if valid && pairs.len() == 7 {
-        // 七对子：用第一对作为雀头，剩余 6 对以 Koutsu(count=2) 表示
-        // 符数固定 25 符，具体哪个做雀头不影响计分
-        let jantai = pairs[0];
-        let mentsu: Vec<Mentsu> = pairs[1..]
-            .iter()
-            .map(|&tt| Mentsu {
-                kind: MentsuKind::Koutsu,
-                tile_type: tt,
-                is_open: false,
-            })
-            .collect();
-        Some(WinningHand {
-            hand_type: HandType::SevenPairs,
-            jantai,
-            mentsu,
-        })
+        let pairs = <[TileType; 7]>::try_from(pairs).ok()?;
+        Some(WinningHand::SevenPairs { pairs })
     } else {
         None
     }
@@ -295,11 +331,7 @@ pub fn decompose_kokushi(counts: &TileCounts) -> Option<WinningHand> {
     if !has_pair {
         return None;
     }
-    Some(WinningHand {
-        hand_type: HandType::Kokushi,
-        jantai,
-        mentsu: vec![],
-    })
+    Some(WinningHand::Kokushi { pair: jantai })
 }
 
 /// 将 WaitInfo 合并到已有的 wait_map 中（去重）
@@ -396,8 +428,8 @@ pub fn analyze_wait_tiles_with_open_melds(
 
 /// 七对子听牌分析（13 张手牌）
 ///
-/// 七对子听牌条件：恰好有 6 种牌各 2 张 + 1 种牌 1 张（听该牌），
-/// 或 5 种牌各 2 张 + 1 种牌 3 张（听该牌凑成第 6 对）。
+/// 七对子听牌条件：恰好有 6 种牌各 2 张 + 1 种牌 1 张（听该牌）。
+/// 固定规则要求七个不同的对子，因此刻子不能通过摸成四张来完成七对子。
 fn analyze_seven_pairs_tenpai(base: &TileCounts) -> Option<WaitInfo> {
     let total: u8 = base.inner().iter().sum();
     if total != 13 {
@@ -419,14 +451,7 @@ fn analyze_seven_pairs_tenpai(base: &TileCounts) -> Option<WaitInfo> {
                 incomplete_count += 1;
             }
             2 => {} // 完整的对子
-            3 => {
-                waits.push(WaitTileInfo {
-                    tile_type: tt,
-                    wait_types: vec![WaitType::Tanki],
-                });
-                incomplete_count += 1;
-            }
-            _ => return None, // 七对子中不可能出现 4 张（未考虑 4 张拆两对的变体规则）
+            _ => return None,
         }
     }
 
@@ -478,19 +503,6 @@ fn analyze_kokushi_tenpai(base: &TileCounts) -> Option<WaitInfo> {
         return Some(waits);
     }
 
-    // 12 种幺九牌 + 1 张非幺九牌 → 听缺少的那张幺九牌
-    if yaochuuhai_types == 12 && non_yaochuuhai_count == 1 {
-        let waits: WaitInfo = TileType::YAOCHUUHAI
-            .iter()
-            .filter(|&&tt| base.get(tt) == 0)
-            .map(|&tt| WaitTileInfo {
-                tile_type: tt,
-                wait_types: vec![WaitType::Tanki],
-            })
-            .collect();
-        return if waits.is_empty() { None } else { Some(waits) };
-    }
-
     // 12 种幺九牌（其中一种有 2 张 = 对子）+ 0 张非幺九牌 → 听缺少的那张
     if yaochuuhai_types == 12 && non_yaochuuhai_count == 0 {
         let has_pair = TileType::YAOCHUUHAI.iter().any(|&tt| base.get(tt) >= 2);
@@ -518,11 +530,11 @@ pub(crate) fn classify_wait(hand: &WinningHand, winning_tile: TileType) -> Vec<W
     let mut result = Vec::new();
 
     // 单骑听：和了牌完成雀头
-    if hand.jantai == winning_tile {
+    if hand.pair() == winning_tile {
         result.push(WaitType::Tanki);
     }
 
-    for mentsu in &hand.mentsu {
+    for mentsu in hand.groups() {
         match mentsu.kind {
             MentsuKind::Koutsu => {
                 if mentsu.tile_type == winning_tile && !result.contains(&WaitType::Shanpon) {
@@ -544,16 +556,16 @@ pub(crate) fn classify_wait(hand: &WinningHand, winning_tile: TileType) -> Vec<W
                     // 中间位置 → 嵌张听
                     WaitType::Kanchan
                 } else if win_rank == base_rank {
-                    // 最低位置 → 两面或边张
-                    if base_rank == 1 {
-                        WaitType::Penchan // 1-2-3 中的 1，边张
+                    // 23 听 1、34 听 2……均为两面；89 听 7 才是边张。
+                    if base_rank == 7 {
+                        WaitType::Penchan
                     } else {
                         WaitType::Ryanmen
                     }
                 } else {
-                    // 最高位置 (win_rank == base_rank + 2) → 两面或边张
-                    if base_rank == 7 {
-                        WaitType::Penchan // 7-8-9 中的 9，边张
+                    // 12 听 3 是边张；其余最高位置为两面。
+                    if base_rank == 1 {
+                        WaitType::Penchan
                     } else {
                         WaitType::Ryanmen
                     }
@@ -573,8 +585,9 @@ pub(crate) fn classify_wait(hand: &WinningHand, winning_tile: TileType) -> Vec<W
 
 #[cfg(test)]
 mod tests {
-    use super::analyze_wait_tiles_with_open_melds;
-    use riichi_core::tile::Tile;
+    use super::{analyze_wait_tiles, analyze_wait_tiles_with_open_melds, classify_wait};
+    use crate::model::{ClosedGroup, MentsuKind, WaitType, WinningHand};
+    use riichi_core::tile::{Tile, TileType};
 
     #[test]
     fn open_hand_wait_uses_remaining_concealed_mentsu() {
@@ -593,5 +606,40 @@ mod tests {
         ];
         let waits = analyze_wait_tiles_with_open_melds(&hand, 1);
         assert!(waits.iter().any(|wait| wait.tile_type.0 == 9));
+    }
+
+    #[test]
+    fn wait_classification_distinguishes_edge_and_two_sided_waits() {
+        let hand = WinningHand::Standard {
+            pair: TileType::EAST,
+            groups: vec![ClosedGroup {
+                kind: MentsuKind::Shuntsu,
+                tile_type: TileType::MAN1,
+            }],
+        };
+        assert!(classify_wait(&hand, TileType::MAN1).contains(&WaitType::Ryanmen));
+        assert!(classify_wait(&hand, TileType(2)).contains(&WaitType::Penchan));
+    }
+
+    #[test]
+    fn kokushi_with_a_simple_tile_is_not_tenpai() {
+        let mut tiles: Vec<_> = TileType::YAOCHUUHAI[..12]
+            .iter()
+            .map(|tile_type| tile_type.with_copy(0))
+            .collect();
+        tiles.push(TileType(4).with_copy(0));
+        assert!(analyze_wait_tiles(&tiles).is_empty());
+    }
+
+    #[test]
+    fn triplet_cannot_wait_for_a_fourth_copy_as_seven_pairs() {
+        let tiles = [0, 0, 1, 1, 9, 9, 10, 10, 18, 18, 27, 27, 27]
+            .into_iter()
+            .enumerate()
+            .map(|(index, tile_type)| TileType(tile_type).with_copy((index % 4) as u8))
+            .collect::<Vec<_>>();
+
+        let waits = analyze_wait_tiles(&tiles);
+        assert!(!waits.iter().any(|wait| wait.tile_type == TileType::EAST));
     }
 }

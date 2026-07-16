@@ -1,7 +1,9 @@
 use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::tile::TileType;
 
-use crate::types::{HandType, MentsuKind, WinningHand, YakuName, YakuResult};
+use crate::model::{
+    MentsuKind, WinSituation, WinningHand, WinningTilePlacement, YakuName, YakuResult,
+};
 
 /// 计算符数
 ///
@@ -25,30 +27,9 @@ pub fn calculate_fu(
     hand: &WinningHand,
     melds: &[Meld],
     yaku_results: &[YakuResult],
-    is_tsumo: bool,
-    seat_wind: TileType,
-    field_wind: TileType,
-) -> u32 {
-    calculate_fu_with_winning_tile(
-        hand,
-        melds,
-        yaku_results,
-        is_tsumo,
-        seat_wind,
-        field_wind,
-        None,
-    )
-}
-
-/// 计算符数，并在提供和了牌时计算单骑、边张、坎张符。
-pub fn calculate_fu_with_winning_tile(
-    hand: &WinningHand,
-    melds: &[Meld],
-    yaku_results: &[YakuResult],
-    is_tsumo: bool,
-    seat_wind: TileType,
-    field_wind: TileType,
-    winning_tile: Option<TileType>,
+    situation: &WinSituation,
+    winning_tile: TileType,
+    placement: WinningTilePlacement,
 ) -> u32 {
     let has_pinfu = yaku_results.iter().any(|y| y.yaku == YakuName::Pinfu);
     let has_chiitoitsu = yaku_results.iter().any(|y| y.yaku == YakuName::Chiitoitsu);
@@ -59,13 +40,13 @@ pub fn calculate_fu_with_winning_tile(
     }
 
     // 国士无双：固定 20 符
-    if hand.hand_type == HandType::Kokushi {
+    if matches!(hand, WinningHand::Kokushi { .. }) {
         return 20;
     }
 
     // 平和
     if has_pinfu {
-        if is_tsumo {
+        if situation.is_tsumo {
             return 20;
         } else {
             return 30;
@@ -76,38 +57,39 @@ pub fn calculate_fu_with_winning_tile(
     let mut fu = 20u32; // 底符
 
     // 自摸 +2（平和除外，已在上面处理）
-    if is_tsumo {
+    if situation.is_tsumo {
         fu += 2;
     }
 
     // 门清荣和 +10
-    if !is_tsumo && melds.iter().all(|m| m.is_concealed()) {
+    if !situation.is_tsumo && melds.iter().all(|m| m.is_concealed()) {
         fu += 10;
     }
 
     // 雀头符
-    let jantai = hand.jantai;
+    let jantai = hand.pair();
     if jantai.is_dragon() {
         fu += 2; // 三元牌雀头
     }
-    if jantai == seat_wind {
+    if jantai == situation.seat_wind {
         fu += 2; // 自风雀头
     }
-    if jantai == field_wind {
+    if jantai == situation.field_wind {
         fu += 2; // 场风雀头；连风牌雀头与自风分别计符，共 4 符
     }
 
     // 面子符（手牌中的面子）
-    for m in &hand.mentsu {
+    for (index, m) in hand.groups().iter().enumerate() {
         let is_yao = m.tile_type.is_yaochuuhai();
         match m.kind {
             MentsuKind::Koutsu => {
                 // 荣和牌正好补成门清刻子时，该分解中的刻子按明刻计符。
-                // 如果同一张牌也能组成顺子，分解器会分别产生候选，取高点法
-                // 时由上层选择得点更高的分解。
-                let winning_tile_makes_minkou =
-                    !is_tsumo && winning_tile == Some(m.tile_type) && !m.is_open;
-                if m.is_open || winning_tile_makes_minkou {
+                // 如果同一张牌也能组成顺子，评估层会为同一分解枚举不同的
+                // 和牌归属，再按高点法选择得点更高的候选。
+                let winning_tile_makes_minkou = !situation.is_tsumo
+                    && placement == WinningTilePlacement::Group(index)
+                    && winning_tile == m.tile_type;
+                if winning_tile_makes_minkou {
                     fu += if is_yao { 4 } else { 2 };
                 } else {
                     fu += if is_yao { 8 } else { 4 };
@@ -135,32 +117,33 @@ pub fn calculate_fu_with_winning_tile(
         }
     }
 
-    // 听牌类型符（单骑/边张/坎张 +2）。
-    // 和了牌可能同时出现在多个候选分解中，取该分解能成立的最高符值。
-    if let Some(winning_tile) = winning_tile {
-        let mut wait_fu = 0;
-        if hand.jantai == winning_tile {
-            wait_fu = 2; // 单骑
-        }
-        for m in &hand.mentsu {
-            if m.kind != MentsuKind::Shuntsu {
-                continue;
-            }
-            let start = m.tile_type.rank().0;
-            let win_rank = winning_tile.rank().0;
-            if m.tile_type.suit() != winning_tile.suit() {
-                continue;
-            }
-            // 只有 12 听 3、89 听 7 才是边张；
-            // 123 听 1 与 789 听 9 属于两面听，不加边张符。
-            let edge_wait = (start == 1 && win_rank == 3) || (start == 7 && win_rank == 7);
-            let closed_wait = (2..=7).contains(&start) && win_rank == start + 1;
-            if edge_wait || closed_wait {
-                wait_fu = 2;
-            }
-        }
-        fu += wait_fu;
-    }
+    // 听牌类型符（单骑/边张/坎张 +2）。判役与计符共用同一个和牌归属，
+    // 避免把“荣和补刻子”和“顺子坎张”两种互斥解释拼在一起。
+    let wait_fu = match placement {
+        WinningTilePlacement::Pair => 2,
+        WinningTilePlacement::Group(index) => hand
+            .groups()
+            .get(index)
+            .filter(|group| group.kind == MentsuKind::Shuntsu)
+            .map_or(0, |m| {
+                let start = m.tile_type.rank().0;
+                let win_rank = winning_tile.rank().0;
+                if m.tile_type.suit() != winning_tile.suit() {
+                    return 0;
+                }
+                // 只有 12 听 3、89 听 7 才是边张；
+                // 123 听 1 与 789 听 9 属于两面听，不加边张符。
+                let edge_wait = (start == 1 && win_rank == 3) || (start == 7 && win_rank == 7);
+                let closed_wait = (2..=7).contains(&start) && win_rank == start + 1;
+                if edge_wait || closed_wait {
+                    2
+                } else {
+                    0
+                }
+            }),
+        WinningTilePlacement::Special => 0,
+    };
+    fu += wait_fu;
 
     // 向上取整到 10
     if fu > 0 && !fu.is_multiple_of(10) {
@@ -177,48 +160,61 @@ pub fn calculate_fu_with_winning_tile(
 
 #[cfg(test)]
 mod tests {
-    use super::calculate_fu_with_winning_tile;
-    use crate::types::{HandType, Mentsu, MentsuKind, WinningHand};
+    use super::calculate_fu;
+    use crate::model::{ClosedGroup, MentsuKind, WinSituation, WinningHand, WinningTilePlacement};
     use riichi_core::meld::Meld;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::TileType;
 
-    fn sequence(tile_type: TileType) -> Mentsu {
-        Mentsu {
+    fn sequence(tile_type: TileType) -> ClosedGroup {
+        ClosedGroup {
             kind: MentsuKind::Shuntsu,
             tile_type,
-            is_open: false,
         }
     }
 
-    fn triplet(tile_type: TileType) -> Mentsu {
-        Mentsu {
+    fn triplet(tile_type: TileType) -> ClosedGroup {
+        ClosedGroup {
             kind: MentsuKind::Koutsu,
             tile_type,
-            is_open: false,
+        }
+    }
+
+    fn situation(is_tsumo: bool) -> WinSituation {
+        WinSituation {
+            is_tsumo,
+            is_riichi: false,
+            is_double_riichi: false,
+            is_ippatsu: false,
+            is_rinshan: false,
+            is_chankan: false,
+            is_haitei: false,
+            is_houtei: false,
+            is_tenhou: false,
+            is_chiihou: false,
+            seat_wind: TileType::EAST,
+            field_wind: TileType::EAST,
         }
     }
 
     #[test]
     fn ron_completed_triplet_uses_minkou_fu() {
-        let hand = WinningHand {
-            hand_type: HandType::Standard,
-            jantai: TileType::EAST,
-            mentsu: vec![
+        let hand = WinningHand::Standard {
+            pair: TileType::EAST,
+            groups: vec![
                 triplet(TileType(4)),
                 triplet(TileType(14)),
                 sequence(TileType(18)),
                 sequence(TileType(21)),
             ],
         };
-        let fu = calculate_fu_with_winning_tile(
+        let fu = calculate_fu(
             &hand,
             &[],
             &[],
-            false,
-            TileType::EAST,
-            TileType::EAST,
-            Some(TileType(4)),
+            &situation(false),
+            TileType(4),
+            WinningTilePlacement::Group(0),
         );
         // 底符20 + 门清荣和10 + 连风雀头4 + 明刻2 + 暗刻4 = 40符。
         assert_eq!(fu, 40);
@@ -226,10 +222,9 @@ mod tests {
 
     #[test]
     fn edge_wait_fu_only_applies_to_the_edge_side() {
-        let hand = WinningHand {
-            hand_type: HandType::Standard,
-            jantai: TileType(10),
-            mentsu: vec![
+        let hand = WinningHand::Standard {
+            pair: TileType(10),
+            groups: vec![
                 sequence(TileType(0)),
                 sequence(TileType(3)),
                 sequence(TileType(6)),
@@ -237,23 +232,21 @@ mod tests {
             ],
         };
 
-        let two_sided = calculate_fu_with_winning_tile(
+        let two_sided = calculate_fu(
             &hand,
             &[],
             &[],
-            false,
-            TileType::EAST,
-            TileType::EAST,
-            Some(TileType(0)),
+            &situation(false),
+            TileType(0),
+            WinningTilePlacement::Group(0),
         );
-        let edge = calculate_fu_with_winning_tile(
+        let edge = calculate_fu(
             &hand,
             &[],
             &[],
-            false,
-            TileType::EAST,
-            TileType::EAST,
-            Some(TileType(2)),
+            &situation(false),
+            TileType(2),
+            WinningTilePlacement::Group(0),
         );
 
         assert_eq!(two_sided, 30);
@@ -262,10 +255,9 @@ mod tests {
 
     #[test]
     fn open_pon_contributes_two_or_four_fu() {
-        let hand = WinningHand {
-            hand_type: HandType::Standard,
-            jantai: TileType(10),
-            mentsu: vec![
+        let hand = WinningHand::Standard {
+            pair: TileType(10),
+            groups: vec![
                 triplet(TileType(1)),
                 triplet(TileType(2)),
                 sequence(TileType(12)),
@@ -290,23 +282,21 @@ mod tests {
             PlayerId(1),
         );
 
-        let simple_fu = calculate_fu_with_winning_tile(
+        let simple_fu = calculate_fu(
             &hand,
             &[simple_pon],
             &[],
-            false,
-            TileType::EAST,
-            TileType::EAST,
-            Some(TileType(12)),
+            &situation(false),
+            TileType(12),
+            WinningTilePlacement::Group(2),
         );
-        let terminal_fu = calculate_fu_with_winning_tile(
+        let terminal_fu = calculate_fu(
             &hand,
             &[terminal_pon],
             &[],
-            false,
-            TileType::EAST,
-            TileType::EAST,
-            Some(TileType(12)),
+            &situation(false),
+            TileType(12),
+            WinningTilePlacement::Group(2),
         );
 
         assert_eq!(simple_fu, 30);

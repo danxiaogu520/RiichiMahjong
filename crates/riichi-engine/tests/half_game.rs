@@ -5,8 +5,8 @@ use riichi_core::game::TurnAction;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
-use riichi_logic::analysis::analyze_wait_tiles;
 use riichi_logic::shanten::ShantenCalculator;
+use riichi_logic::shape::analyze_wait_tiles;
 
 fn choose_full_efficiency_discard(state: &GameState, player: PlayerId) -> Tile {
     let mut candidates = state.players[player.0].hand.tiles().to_vec();

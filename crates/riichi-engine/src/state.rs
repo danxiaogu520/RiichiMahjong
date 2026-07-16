@@ -4,9 +4,9 @@ use crate::game::{TenpaiInfo, WaitInfo};
 use riichi_core::game::{CallKind, EventEnvelope, GameEvent, ResponseAction, TurnAction, WinKind};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::acceptance::remaining_copies_for;
-use riichi_logic::analysis::analyze_wait_tiles_with_open_melds;
-use riichi_logic::types::TileCounts;
+use riichi_logic::model::TileCounts;
+use riichi_logic::shape::analyze_wait_tiles_with_open_melds;
+use riichi_logic::visibility::remaining_copies_for;
 
 use crate::game::{GamePhase, GameState};
 
@@ -320,8 +320,8 @@ impl GameState {
     /// - 其他玩家的副露牌
     /// - 所有玩家的舍牌
     /// - 宝牌指示牌
-    pub fn build_visible_tiles(&self, player: PlayerId) -> riichi_logic::acceptance::VisibleTiles {
-        let mut visible = riichi_logic::acceptance::VisibleTiles::new();
+    pub fn build_visible_tiles(&self, player: PlayerId) -> riichi_logic::visibility::VisibleTiles {
+        let mut visible = riichi_logic::visibility::VisibleTiles::new();
 
         // 当前玩家的副露牌
         for meld in &self.players[player.0].melds {
@@ -370,8 +370,7 @@ impl HanchanReplay for riichi_core::game::Hanchan {
             .setup
             .rounds
             .iter()
-            .filter(|setup| setup.event_start_id <= event_id.saturating_add(1))
-            .last()
+            .rfind(|setup| setup.event_start_id <= event_id.saturating_add(1))
             .ok_or_else(|| "半庄缺少对应局的初始状态".to_string())?;
         let mut state =
             GameState::from_round_setup(setup, setup.round, setup.honba, setup.riichi_sticks);

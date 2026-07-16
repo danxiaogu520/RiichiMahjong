@@ -2,8 +2,8 @@ use riichi_core::game::GameEvent;
 use riichi_core::hand::Hand;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::types::WinContext;
-use riichi_logic::win_check;
+use riichi_logic::evaluation;
+use riichi_logic::model::{SettlementContext, WinInput, WinSituation};
 
 use crate::game::GameState;
 
@@ -56,20 +56,21 @@ impl GameState {
     pub fn wait_has_yaku(&self, player: PlayerId, tile_type: TileType) -> bool {
         let p = &self.players[player.0];
         let winning_tile = Tile::from_type_index(tile_type.0, 0);
-        let mut all_tiles = p.hand.tiles().to_vec();
-        for meld in &p.melds {
-            all_tiles.extend_from_slice(&meld.tiles);
-        }
-        all_tiles.push(winning_tile);
-        let mut hand_tile_types: Vec<TileType> =
-            p.hand.tiles().iter().map(|t| t.tile_type()).collect();
-        hand_tile_types.push(tile_type);
-
         for is_tsumo in [true, false] {
-            let mut ctx = self.make_win_context(player, is_tsumo, winning_tile, false);
-            ctx.loser = (!is_tsumo).then_some((player.0 + 1) % 4);
-            if win_check::check_win(&all_tiles, &hand_tile_types, &ctx, false, winning_tile)
-                .is_some()
+            let situation = self.make_win_situation(player, is_tsumo, winning_tile, false);
+            let settlement = self
+                .settlement_context(player, (!is_tsumo).then_some(PlayerId((player.0 + 1) % 4)));
+            if evaluation::evaluate_win(WinInput {
+                concealed_tiles: p.hand.tiles(),
+                melds: &p.melds,
+                winning_tile,
+                dora_indicators: &self.dora_indicators,
+                ura_dora_indicators: &self.ura_dora_indicators,
+                situation: &situation,
+                settlement,
+                is_furiten: false,
+            })
+            .is_some()
             {
                 return true;
             }
@@ -98,13 +99,13 @@ impl GameState {
     /// - 宝牌信息
     /// - 副露信息
     /// - 本场/立直棒
-    fn make_win_context(
+    fn make_win_situation(
         &self,
         player: PlayerId,
         is_tsumo: bool,
         _winning_tile: Tile,
         is_chankan: bool,
-    ) -> WinContext {
+    ) -> WinSituation {
         let p = &self.players[player.0];
         let no_tiles_left = self.remaining_tiles() == 0;
 
@@ -133,7 +134,7 @@ impl GameState {
 
         let is_rinshan = is_tsumo && self.is_rinshan_tile(_winning_tile);
 
-        WinContext {
+        WinSituation {
             is_tsumo,
             is_riichi: p.is_riichi,
             is_double_riichi,
@@ -144,18 +145,16 @@ impl GameState {
             is_houtei: no_tiles_left && !is_tsumo,
             is_tenhou: is_tsumo && player == self.get_dealer() && !has_any_discard && !has_call,
             is_chiihou: is_tsumo && player != self.get_dealer() && !has_player_discard && !has_call,
-            red_fives: crate::rules::RED_FIVES,
-            kuitan: crate::rules::KUITAN,
-            atozuke: true,
-            allow_double_yakuman: crate::rules::ALLOW_DOUBLE_YAKUMAN,
             seat_wind: p.wind,
             field_wind: self.wind,
-            dora_indicators: self.dora_indicators.clone(),
-            ura_dora_indicators: self.ura_dora_indicators.clone(),
-            melds: p.melds.clone(),
+        }
+    }
+
+    fn settlement_context(&self, player: PlayerId, loser: Option<PlayerId>) -> SettlementContext {
+        SettlementContext {
             dealer: self.get_dealer().0,
             winner: player.0,
-            loser: None,
+            loser: loser.map(|id| id.0),
             pao_target: self.pao_targets[player.0],
             honba: self.honba,
             riichi_sticks: self.riichi_sticks,
@@ -192,27 +191,22 @@ impl GameState {
         hand: &Hand,
         is_chankan: bool,
     ) -> Option<([i32; 4], Vec<String>)> {
-        // 构建 all_tiles = 手牌 + 副露 + 和了牌（用于宝牌/赤宝牌计算）
-        let mut all_tiles: Vec<Tile> = hand.tiles().to_vec();
-        for meld in &self.players[player.0].melds {
-            all_tiles.extend_from_slice(&meld.tiles);
-        }
-        all_tiles.push(winning_tile);
-
-        // 门清部分 TileType（手牌 + 和了牌，用于判形和拆解）
-        let mut hand_tile_types: Vec<TileType> =
-            hand.tiles().iter().map(|t| t.tile_type()).collect();
-        hand_tile_types.push(winning_tile.tile_type());
-
-        // 构建上下文
-        let mut ctx = self.make_win_context(player, is_tsumo, winning_tile, is_chankan);
-        ctx.loser = loser.map(|id| id.0);
-        ctx.is_rinshan = is_tsumo && self.is_rinshan_tile(winning_tile);
+        let mut situation = self.make_win_situation(player, is_tsumo, winning_tile, is_chankan);
+        situation.is_rinshan = is_tsumo && self.is_rinshan_tile(winning_tile);
 
         // 检查和了
         let is_furiten = self.players[player.0].furiten.is_furiten();
-        let result =
-            win_check::check_win(&all_tiles, &hand_tile_types, &ctx, is_furiten, winning_tile)?;
+        let p = &self.players[player.0];
+        let result = evaluation::evaluate_win(WinInput {
+            concealed_tiles: hand.tiles(),
+            melds: &p.melds,
+            winning_tile,
+            dora_indicators: &self.dora_indicators,
+            ura_dora_indicators: &self.ura_dora_indicators,
+            situation: &situation,
+            settlement: self.settlement_context(player, loser),
+            is_furiten,
+        })?;
         let mut yaku_names: Vec<String> = result
             .yaku_results
             .iter()
