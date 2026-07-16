@@ -1,5 +1,7 @@
-use crate::types::TileCounts;
+use crate::model::TileCounts;
 use riichi_core::tile::Tile;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 /// 数牌（9种）查找表：每条目10字节，存储0~4面子无雀头/有雀头的部分置换数
 static SUIT_TABLE: &[u8] = include_bytes!("../data/index_s.bin");
@@ -107,7 +109,9 @@ fn calc_thirteen_orphans(counts: &[u8; 34]) -> i8 {
     14 - kinds - if has_pair { 1 } else { 0 } - 1
 }
 
-pub struct ShantenCalculator;
+pub struct ShantenCalculator {
+    cache: RefCell<HashMap<TileCounts, i8>>,
+}
 
 impl Default for ShantenCalculator {
     fn default() -> Self {
@@ -117,7 +121,9 @@ impl Default for ShantenCalculator {
 
 impl ShantenCalculator {
     pub fn new() -> Self {
-        Self
+        Self {
+            cache: RefCell::new(HashMap::new()),
+        }
     }
 
     pub fn calculate(&self, hand: &[Tile]) -> i8 {
@@ -126,6 +132,9 @@ impl ShantenCalculator {
     }
 
     pub fn lookup(&self, counts: &TileCounts) -> i8 {
+        if let Some(&value) = self.cache.borrow().get(counts) {
+            return value;
+        }
         let c = counts.inner();
         let num_melds = c.iter().sum::<u8>() as usize / 3;
 
@@ -141,6 +150,8 @@ impl ShantenCalculator {
             i8::MAX
         };
 
-        standard.min(seven_pairs).min(thirteen_orphans)
+        let result = standard.min(seven_pairs).min(thirteen_orphans);
+        self.cache.borrow_mut().insert(*counts, result);
+        result
     }
 }

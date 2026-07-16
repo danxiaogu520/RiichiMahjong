@@ -8,9 +8,7 @@ use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
 use riichi_engine::game::{GamePhase, GameState};
 use riichi_engine::legal::LegalAction;
-use riichi_engine::rules::{
-    ALLOW_DOUBLE_RON, ALLOW_TRIPLE_RON, RESPONSE_TIMEOUT_MS, TURN_TIMEOUT_MS,
-};
+use riichi_engine::rules::{RESPONSE_TIMEOUT_MS, TURN_TIMEOUT_MS};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use tokio::sync::mpsc;
@@ -532,14 +530,7 @@ impl GameSession {
                     ordered_winners.push(candidate);
                 }
             }
-            let max_winners = if ALLOW_TRIPLE_RON {
-                3
-            } else if ALLOW_DOUBLE_RON {
-                2
-            } else {
-                1
-            };
-            ordered_winners.truncate(max_winners);
+            ordered_winners.truncate(3);
             if ordered_winners.len() > 1 {
                 if let Err(error) = self
                     .game

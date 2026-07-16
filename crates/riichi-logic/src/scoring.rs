@@ -1,3 +1,5 @@
+use crate::model::SettlementContext;
+
 // ═══════════════════════════════════════════════════════════════
 //  算点：计算点棒变化
 // ═══════════════════════════════════════════════════════════════
@@ -16,77 +18,22 @@
 ///
 /// # 返回
 /// `[i32; 4]` — 4 家的点数变化
-#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+#[allow(clippy::needless_range_loop)]
 pub fn calculate_points(
     total_han: u8,
     total_fu: u32,
     yakuman_count: u8,
-    winner: usize,
-    dealer: usize,
-    riichi_sticks: u32,
-    honba: u32,
+    settlement: SettlementContext,
     is_tsumo: bool,
 ) -> [i32; 4] {
-    calculate_points_with_loser(
-        total_han,
-        total_fu,
-        yakuman_count,
-        winner,
-        None,
-        dealer,
-        riichi_sticks,
-        honba,
-        is_tsumo,
-    )
-}
-
-/// 计算和了后的点数变化，并在荣和时扣除指定放铳者。
-///
-/// `loser` 为 `Some` 时仅用于荣和；自摸时必须为 `None`。
-#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
-pub fn calculate_points_with_loser(
-    total_han: u8,
-    total_fu: u32,
-    yakuman_count: u8,
-    winner: usize,
-    loser: Option<usize>,
-    dealer: usize,
-    riichi_sticks: u32,
-    honba: u32,
-    is_tsumo: bool,
-) -> [i32; 4] {
-    calculate_points_with_loser_and_pao(
-        total_han,
-        total_fu,
-        yakuman_count,
+    let SettlementContext {
         winner,
         loser,
         dealer,
-        riichi_sticks,
+        pao_target,
         honba,
-        is_tsumo,
-        None,
-    )
-}
-
-/// 计算和了后的点数变化，并处理役满责任支付（包牌）。
-///
-/// 包牌时，荣和由放铳者与责任支付者各承担一半役满点数；自摸由责任
-/// 支付者承担完整的荣和点数。立直棒仍由和了者取得，本场棒由责任支付者
-/// 承担，符合 Mortal 使用的 Tenhou 规则口径。
-#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
-pub fn calculate_points_with_loser_and_pao(
-    total_han: u8,
-    total_fu: u32,
-    yakuman_count: u8,
-    winner: usize,
-    loser: Option<usize>,
-    dealer: usize,
-    riichi_sticks: u32,
-    honba: u32,
-    is_tsumo: bool,
-    pao_target: Option<usize>,
-) -> [i32; 4] {
+        riichi_sticks,
+    } = settlement;
     // 一本场总计增加 300 点：荣和由放铳者支付，自摸由三家各支付 100 点。
     let honba_val = (honba * 100) as i32;
     let riichi_bonus = (riichi_sticks * 1000) as i32;
@@ -189,7 +136,65 @@ fn round_up_100(n: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_points_with_loser, calculate_points_with_loser_and_pao};
+    use super::calculate_points;
+    use crate::model::SettlementContext;
+
+    #[allow(clippy::too_many_arguments)]
+    fn calculate_points_with_loser(
+        han: u8,
+        fu: u32,
+        yakuman: u8,
+        winner: usize,
+        loser: Option<usize>,
+        dealer: usize,
+        sticks: u32,
+        honba: u32,
+        is_tsumo: bool,
+    ) -> [i32; 4] {
+        calculate_points(
+            han,
+            fu,
+            yakuman,
+            SettlementContext {
+                winner,
+                loser,
+                dealer,
+                pao_target: None,
+                honba,
+                riichi_sticks: sticks,
+            },
+            is_tsumo,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn calculate_points_with_loser_and_pao(
+        han: u8,
+        fu: u32,
+        yakuman: u8,
+        winner: usize,
+        loser: Option<usize>,
+        dealer: usize,
+        sticks: u32,
+        honba: u32,
+        is_tsumo: bool,
+        pao_target: Option<usize>,
+    ) -> [i32; 4] {
+        calculate_points(
+            han,
+            fu,
+            yakuman,
+            SettlementContext {
+                winner,
+                loser,
+                dealer,
+                pao_target,
+                honba,
+                riichi_sticks: sticks,
+            },
+            is_tsumo,
+        )
+    }
 
     #[test]
     fn ron_transfers_points_from_loser() {

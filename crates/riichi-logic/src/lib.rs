@@ -1,9 +1,10 @@
-pub mod acceptance;
-pub mod analysis;
 pub mod dora;
+pub mod evaluation;
 pub mod fu;
+pub mod model;
 pub mod scoring;
 pub mod shanten;
-pub mod types;
-pub mod win_check;
-pub mod yaku;
+pub mod shape;
+pub mod visibility;
+
+mod yaku;

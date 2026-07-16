@@ -1,11 +1,12 @@
 use rand::Rng;
+use riichi_ai::DiscardOption;
 use riichi_core::game::CallOption;
 use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
 use riichi_engine::{game::GamePhase, TenpaiInfo};
-use riichi_logic::acceptance::{DiscardOption, VisibleTiles};
 use riichi_logic::shanten::ShantenCalculator;
+use riichi_logic::visibility::VisibleTiles;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -321,7 +322,7 @@ impl App {
         }
         if self.can_riichi {
             if let Some(tile) = decide_riichi(
-                &mut self.ai_calculator,
+                &self.ai_calculator,
                 &self.hand_tiles,
                 &visible,
                 &self.riichi_options,
@@ -336,7 +337,7 @@ impl App {
         let tile = if self.discard_options.len() == 1 {
             self.discard_options[0]
         } else {
-            choose_discard(&mut self.ai_calculator, &self.hand_tiles, &visible)
+            choose_discard(&self.ai_calculator, &self.hand_tiles, &visible)
                 .and_then(|option| {
                     self.discard_options
                         .iter()
