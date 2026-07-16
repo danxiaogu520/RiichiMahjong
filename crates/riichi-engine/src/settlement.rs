@@ -19,11 +19,7 @@ impl GameState {
     /// - 2 人听牌：2 人不听各付 3000，听牌者各收 1500
     /// - 3 人听牌：1 人不听付 3000，听牌者各收 1000
     pub fn resolve_exhaustive_draw(&mut self) {
-        let nagashi_winners = if crate::rules::NAGASHI_MANGAN {
-            self.get_nagashi_mangan_candidates()
-        } else {
-            Vec::new()
-        };
+        let nagashi_winners = self.get_nagashi_mangan_candidates();
         let tenpai: [bool; 4] = [
             !self
                 .get_waiting_tiles(riichi_core::player::PlayerId(0))

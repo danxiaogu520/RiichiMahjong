@@ -1,9 +1,9 @@
 use riichi_core::game::GameEvent;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::analysis::analyze_wait_tiles_with_open_melds;
+use riichi_logic::model::TileCounts;
 use riichi_logic::shanten::ShantenCalculator;
-use riichi_logic::types::TileCounts;
+use riichi_logic::shape::analyze_wait_tiles_with_open_melds;
 
 use crate::game::{GameError, GameState};
 

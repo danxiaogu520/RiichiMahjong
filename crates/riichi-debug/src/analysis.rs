@@ -1,7 +1,8 @@
+use riichi_ai::{analyze_discard, DiscardOption};
 use riichi_core::meld::Meld;
 use riichi_core::tile::{Tile, TileType};
-use riichi_logic::acceptance::{analyze_discard, DiscardOption, VisibleTiles};
 use riichi_logic::shanten::ShantenCalculator;
+use riichi_logic::visibility::VisibleTiles;
 
 pub type DiscardAnalysis = DiscardOption;
 
@@ -29,8 +30,8 @@ pub fn analyze_discards(
         all_discards.push(tile);
     }
     let visible = VisibleTiles::from_data(&player_melds, &other_melds, &all_discards, dora);
-    let mut calculator = ShantenCalculator::new();
-    analyze_discard(&mut calculator, hand_tiles, &visible)
+    let calculator = ShantenCalculator::new();
+    analyze_discard(&calculator, hand_tiles, &visible)
 }
 
 #[cfg(test)]

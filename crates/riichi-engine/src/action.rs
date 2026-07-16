@@ -5,7 +5,7 @@ use riichi_core::game::{
 use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
-use riichi_logic::analysis::analyze_wait_tiles;
+use riichi_logic::shape::analyze_wait_tiles;
 
 use crate::game::{GameError, GamePhase, GameState};
 
