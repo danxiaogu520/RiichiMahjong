@@ -133,12 +133,14 @@ impl Room {
         }
         if player.controller == SeatController::AiTakeover {
             player.controller = SeatController::Human;
+            self.connection_generations[player.id.0] =
+                self.connection_generations[player.id.0].wrapping_add(1);
         }
         player.connected = true;
         Ok(player.id)
     }
 
-    pub fn disconnect_by_token(&mut self, token: &str) -> Result<PlayerId, RoomError> {
+    pub fn disconnect_by_token(&mut self, token: &str) -> Result<(PlayerId, u64), RoomError> {
         let player = self
             .players
             .iter_mut()
@@ -151,7 +153,7 @@ impl Room {
         player.connected = false;
         self.connection_generations[player.id.0] =
             self.connection_generations[player.id.0].wrapping_add(1);
-        Ok(player.id)
+        Ok((player.id, self.connection_generations[player.id.0]))
     }
 
     pub fn set_ready(&mut self, player: PlayerId, ready: bool) -> Result<(), RoomError> {

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 riichi-core = { path = "../riichi-core" }
+riichi-ai = { path = "../riichi-ai" }
 riichi-engine = { path = "../riichi-engine" }
 riichi-proto = { path = "../riichi-proto" }
 riichi-session = { path = "../riichi-session" }

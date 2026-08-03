@@ -1,10 +1,12 @@
 use crate::room::{RoomError, RoomManager, RoomPlayer};
+use riichi_ai::BasicAiAgent;
 use riichi_core::player::PlayerId;
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 
-type EventReceiver = Arc<Mutex<mpsc::Receiver<riichi_session::SessionEvent>>>;
+pub type SessionEventReceiver = Arc<Mutex<mpsc::Receiver<riichi_session::SessionEvent>>>;
 
 struct ActiveSession {
     control_tx: mpsc::Sender<riichi_session::SessionControl>,
@@ -39,15 +41,30 @@ pub struct JoinInfo {
 ///
 /// 它只负责房间命令和状态广播所需的编排，不处理 HTTP/WebSocket 细节；
 /// 这样终端、WebSocket 和未来的测试客户端可以共享同一套身份校验。
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ServerApplication {
     rooms: Arc<RwLock<RoomManager>>,
     sessions: Arc<Mutex<std::collections::HashMap<String, ActiveSession>>>,
+    ai_takeover_delay: Duration,
+}
+
+impl Default for ServerApplication {
+    fn default() -> Self {
+        Self::new_with_ai_takeover_delay(Duration::from_secs(30))
+    }
 }
 
 impl ServerApplication {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn new_with_ai_takeover_delay(delay: Duration) -> Self {
+        Self {
+            rooms: Arc::new(RwLock::new(RoomManager::new())),
+            sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            ai_takeover_delay: delay,
+        }
     }
 
     pub fn create_room(&self) -> RoomInfo {
@@ -113,17 +130,48 @@ impl ServerApplication {
         rooms.room_mut(room_id)?.connect_by_token(token)
     }
 
-    pub fn disconnect_player(&self, room_id: &str, token: &str) -> Result<PlayerId, RoomError> {
-        let mut rooms = self.rooms.write().expect("room manager lock poisoned");
-        rooms.room_mut(room_id)?.disconnect_by_token(token)
+    pub async fn disconnect_player(
+        &self,
+        room_id: &str,
+        token: &str,
+    ) -> Result<PlayerId, RoomError> {
+        let (player, generation) = {
+            let mut rooms = self.rooms.write().expect("room manager lock poisoned");
+            rooms.room_mut(room_id)?.disconnect_by_token(token)?
+        };
+        let has_session = self.sessions.lock().await.contains_key(room_id);
+        if has_session {
+            let application = self.clone();
+            let room_id = room_id.to_string();
+            tokio::spawn(async move {
+                tokio::time::sleep(application.ai_takeover_delay).await;
+                if application.can_take_over(&room_id, player, generation) {
+                    let _ = application
+                        .install_ai_takeover(&room_id, player, generation)
+                        .await;
+                }
+            });
+        }
+        Ok(player)
     }
 
     pub async fn launch_game(&self, room_id: &str, token: &str) -> Result<RoomInfo, RoomError> {
-        let room = {
+        let (room, initial_agents) = {
             let mut rooms = self.rooms.write().expect("room manager lock poisoned");
             let requester = rooms.room(room_id)?.player_by_token(token)?;
             rooms.room_mut(room_id)?.start(requester)?;
-            room_info(rooms.room(room_id)?)
+            let room = rooms.room(room_id)?;
+            let initial_agents = room
+                .ai_players()
+                .into_iter()
+                .map(|player| {
+                    (
+                        player,
+                        Box::new(BasicAiAgent::new(player)) as Box<dyn riichi_session::PlayerAgent>,
+                    )
+                })
+                .collect();
+            (room_info(room), initial_agents)
         };
 
         let mut pairs = Vec::new();
@@ -137,11 +185,12 @@ impl ServerApplication {
         drop(pairs);
 
         let (control_tx, control_rx) = mpsc::channel(32);
-        let session = riichi_session::GameSession::new_with_control(
+        let session = riichi_session::GameSession::new_with_control_and_agents(
             event_txs,
             action_tx.clone(),
             action_rx,
             control_rx,
+            initial_agents,
         );
         tokio::spawn(async move {
             let mut session = session;
@@ -159,7 +208,13 @@ impl ServerApplication {
         room_id: &str,
         player: PlayerId,
         last_event_id: u64,
-    ) -> Result<(mpsc::Sender<riichi_session::PlayerCommand>, EventReceiver), RoomError> {
+    ) -> Result<
+        (
+            mpsc::Sender<riichi_session::PlayerCommand>,
+            SessionEventReceiver,
+        ),
+        RoomError,
+    > {
         let sessions = self.sessions.lock().await;
         let session = sessions.get(room_id).ok_or(RoomError::GameNotStarted)?;
         let (player_handle, client_handle) = riichi_session::create_player_pair(player);
@@ -177,6 +232,70 @@ impl ServerApplication {
             client_handle.action_tx,
             Arc::new(Mutex::new(client_handle.event_rx)),
         ))
+    }
+
+    pub fn room_info(&self, room_id: &str) -> Result<RoomInfo, RoomError> {
+        let rooms = self.rooms.read().expect("room manager lock poisoned");
+        Ok(room_info(rooms.room(room_id)?))
+    }
+
+    pub fn can_take_over(&self, room_id: &str, player: PlayerId, generation: u64) -> bool {
+        let rooms = self.rooms.read().expect("room manager lock poisoned");
+        let Ok(room) = rooms.room(room_id) else {
+            return false;
+        };
+        let Ok(room_player) = room.player(player) else {
+            return false;
+        };
+        room.connection_generation(player).ok() == Some(generation)
+            && room.started
+            && room_player.controller == crate::room::SeatController::Human
+            && !room_player.connected
+    }
+
+    pub async fn install_ai_takeover(
+        &self,
+        room_id: &str,
+        player: PlayerId,
+        generation: u64,
+    ) -> Result<(), RoomError> {
+        let control_tx = {
+            let sessions = self.sessions.lock().await;
+            sessions
+                .get(room_id)
+                .map(|session| session.control_tx.clone())
+                .ok_or(RoomError::GameNotStarted)?
+        };
+        {
+            let mut rooms = self.rooms.write().expect("room manager lock poisoned");
+            let room = rooms.room_mut(room_id)?;
+            if room.connection_generation(player)? != generation
+                || room.player(player)?.controller != crate::room::SeatController::Human
+                || room.player(player)?.connected
+            {
+                return Ok(());
+            }
+            room.mark_ai_takeover(player)?;
+        }
+        let still_taken_over = {
+            let rooms = self.rooms.read().expect("room manager lock poisoned");
+            rooms.room(room_id).ok().is_some_and(|room| {
+                room.player(player).ok().is_some_and(|room_player| {
+                    room_player.controller == crate::room::SeatController::AiTakeover
+                        && room.connection_generation(player).ok() == Some(generation)
+                })
+            })
+        };
+        if !still_taken_over {
+            return Ok(());
+        }
+        control_tx
+            .send(riichi_session::SessionControl::InstallAgent {
+                player,
+                agent: Box::new(BasicAiAgent::new(player)),
+            })
+            .await
+            .map_err(|_| RoomError::GameNotStarted)
     }
 
     /// 对局结束后释放会话和房间，避免内存房间及控制通道永久保留。
@@ -219,6 +338,7 @@ fn room_player_view(player: &RoomPlayer) -> RoomPlayerView {
 mod tests {
     use super::ServerApplication;
     use crate::room::RoomError;
+    use std::time::Duration;
 
     #[test]
     fn application_checks_token_before_changing_ready_state() {
@@ -287,5 +407,64 @@ mod tests {
                 .await,
             Err(RoomError::GameNotStarted)
         ));
+    }
+
+    #[tokio::test]
+    async fn owner_can_start_one_human_three_ai_game() {
+        let app = ServerApplication::new();
+        let room = app.create_room();
+        let owner = app.join_room(&room.id, "房主").unwrap();
+
+        app.set_ai_count(&room.id, &owner.token, 3).unwrap();
+        app.set_ready(&room.id, &owner.token, true).unwrap();
+        let started = app.launch_game(&room.id, &owner.token).await.unwrap();
+
+        assert!(started.started);
+        assert_eq!(
+            started.players.iter().filter(|player| player.is_ai).count(),
+            3
+        );
+        app.finish_game(&room.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn disconnected_human_is_taken_over_only_after_injected_delay() {
+        let app = ServerApplication::new_with_ai_takeover_delay(Duration::from_millis(10));
+        let room = app.create_room();
+        let owner = app.join_room(&room.id, "房主").unwrap();
+        app.set_ai_count(&room.id, &owner.token, 3).unwrap();
+        app.set_ready(&room.id, &owner.token, true).unwrap();
+        app.launch_game(&room.id, &owner.token).await.unwrap();
+
+        app.disconnect_player(&room.id, &owner.token).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let room_after = app.room_info(&room.id).unwrap();
+        assert!(room_after.players.iter().any(|player| player.ai_takeover));
+        app.finish_game(&room.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn reconnect_before_takeover_cancels_generation_checked_timer() {
+        let app = ServerApplication::new_with_ai_takeover_delay(Duration::from_millis(30));
+        let room = app.create_room();
+        let owner = app.join_room(&room.id, "房主").unwrap();
+        app.set_ai_count(&room.id, &owner.token, 3).unwrap();
+        app.set_ready(&room.id, &owner.token, true).unwrap();
+        app.launch_game(&room.id, &owner.token).await.unwrap();
+
+        app.disconnect_player(&room.id, &owner.token).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        app.connect_player(&room.id, &owner.token).unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let room_after = app.room_info(&room.id).unwrap();
+        let owner_view = room_after
+            .players
+            .iter()
+            .find(|player| player.id == owner.player)
+            .unwrap();
+        assert!(!owner_view.is_ai);
+        assert!(!owner_view.ai_takeover);
+        app.finish_game(&room.id).await.unwrap();
     }
 }

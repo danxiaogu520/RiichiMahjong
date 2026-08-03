@@ -42,12 +42,19 @@ pub struct StartRequest {
     pub token: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AiRequest {
+    pub token: String,
+    pub count: usize,
+}
+
 pub fn router(application: ServerApplication) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/rooms", post(create_room))
         .route("/rooms/:room_id/join", post(join_room))
         .route("/rooms/:room_id/ready", post(set_ready))
+        .route("/rooms/:room_id/ai", post(set_ai_count))
         .route("/rooms/:room_id/start", post(start_room))
         .route("/ws", get(websocket))
         .layer(cors_layer())
@@ -104,11 +111,19 @@ async fn start_room(
     Json(request): Json<StartRequest>,
 ) -> Result<Json<RoomInfo>, (StatusCode, String)> {
     application
-        .authenticate(&room_id, &request.token)
-        .map_err(room_error_response)?;
-    application
         .launch_game(&room_id, &request.token)
         .await
+        .map(Json)
+        .map_err(room_error_response)
+}
+
+async fn set_ai_count(
+    State(application): State<ServerApplication>,
+    Path(room_id): Path<String>,
+    Json(request): Json<AiRequest>,
+) -> Result<Json<RoomInfo>, (StatusCode, String)> {
+    application
+        .set_ai_count(&room_id, &request.token, request.count)
         .map(Json)
         .map_err(room_error_response)
 }
@@ -128,6 +143,9 @@ async fn websocket(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let player = application
         .authenticate(&query.room_id, &query.token)
+        .map_err(room_error_response)?;
+    application
+        .connect_player(&query.room_id, &query.token)
         .map_err(room_error_response)?;
     let (action_tx, event_rx) = application
         .session_channels(&query.room_id, player, query.last_event_id)
@@ -160,9 +178,6 @@ async fn websocket_session(
     action_tx: tokio::sync::mpsc::Sender<riichi_session::PlayerCommand>,
     event_rx: std::sync::Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<SessionEvent>>>,
 ) {
-    if application.connect_player(&room_id, &token).is_err() {
-        return;
-    }
     let (mut socket_sender, mut socket_receiver) = socket.split();
     let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::channel(64);
     let writer = tokio::spawn(async move {
@@ -334,7 +349,7 @@ async fn websocket_session(
     }
     reader.abort();
     writer.abort();
-    let _ = application.disconnect_player(&room_id, &token);
+    let _ = application.disconnect_player(&room_id, &token).await;
 }
 
 async fn send_server_message(

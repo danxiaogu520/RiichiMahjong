@@ -701,7 +701,10 @@ version = "0.1.0"
 dependencies = [
  "rand",
  "riichi-core",
+ "riichi-engine",
  "riichi-logic",
+ "riichi-session",
+ "tokio",
 ]
 
 [[package]]
@@ -761,6 +764,7 @@ dependencies = [
  "axum",
  "futures-util",
  "rand",
+ "riichi-ai",
  "riichi-core",
  "riichi-engine",
  "riichi-proto",
