@@ -13,6 +13,7 @@ struct ActiveSession {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RoomInfo {
     pub id: String,
+    pub owner: Option<PlayerId>,
     pub players: Vec<RoomPlayerView>,
     pub started: bool,
 }
@@ -23,6 +24,8 @@ pub struct RoomPlayerView {
     pub nickname: String,
     pub ready: bool,
     pub connected: bool,
+    pub is_ai: bool,
+    pub ai_takeover: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -81,9 +84,22 @@ impl ServerApplication {
         Ok(room_info(rooms.room(room_id)?))
     }
 
-    pub fn start_room(&self, room_id: &str) -> Result<RoomInfo, RoomError> {
+    pub fn set_ai_count(
+        &self,
+        room_id: &str,
+        token: &str,
+        ai_count: usize,
+    ) -> Result<RoomInfo, RoomError> {
         let mut rooms = self.rooms.write().expect("room manager lock poisoned");
-        rooms.room_mut(room_id)?.start()?;
+        let requester = rooms.room(room_id)?.player_by_token(token)?;
+        rooms.room_mut(room_id)?.set_ai_count(requester, ai_count)?;
+        Ok(room_info(rooms.room(room_id)?))
+    }
+
+    pub fn start_room(&self, room_id: &str, token: &str) -> Result<RoomInfo, RoomError> {
+        let mut rooms = self.rooms.write().expect("room manager lock poisoned");
+        let requester = rooms.room(room_id)?.player_by_token(token)?;
+        rooms.room_mut(room_id)?.start(requester)?;
         Ok(room_info(rooms.room(room_id)?))
     }
 
@@ -102,10 +118,11 @@ impl ServerApplication {
         rooms.room_mut(room_id)?.disconnect_by_token(token)
     }
 
-    pub async fn launch_game(&self, room_id: &str) -> Result<RoomInfo, RoomError> {
+    pub async fn launch_game(&self, room_id: &str, token: &str) -> Result<RoomInfo, RoomError> {
         let room = {
             let mut rooms = self.rooms.write().expect("room manager lock poisoned");
-            rooms.room_mut(room_id)?.start()?;
+            let requester = rooms.room(room_id)?.player_by_token(token)?;
+            rooms.room_mut(room_id)?.start(requester)?;
             room_info(rooms.room(room_id)?)
         };
 
@@ -176,6 +193,7 @@ impl ServerApplication {
 fn room_info(room: &crate::room::Room) -> RoomInfo {
     RoomInfo {
         id: room.id.clone(),
+        owner: room.owner,
         players: room
             .players
             .iter()
@@ -192,6 +210,8 @@ fn room_player_view(player: &RoomPlayer) -> RoomPlayerView {
         nickname: player.nickname.clone(),
         ready: player.ready,
         connected: player.connected,
+        is_ai: !matches!(player.controller, crate::room::SeatController::Human),
+        ai_takeover: matches!(player.controller, crate::room::SeatController::AiTakeover),
     }
 }
 
@@ -231,7 +251,10 @@ mod tests {
         let room = app.create_room();
         let joined = app.join_room(&room.id, "玩家").unwrap();
 
-        assert_eq!(app.launch_game(&room.id).await, Err(RoomError::NotAllReady));
+        assert_eq!(
+            app.launch_game(&room.id, &joined.token).await,
+            Err(RoomError::NotAllReady)
+        );
         app.set_ready(&room.id, &joined.token, true).unwrap();
         assert!(
             !app.set_ready(&room.id, &joined.token, true)
@@ -252,7 +275,7 @@ mod tests {
             app.set_ready(&room.id, &player.token, true).unwrap();
         }
 
-        app.launch_game(&room.id).await.unwrap();
+        app.launch_game(&room.id, &joined[0].token).await.unwrap();
         app.finish_game(&room.id).await.unwrap();
 
         assert_eq!(

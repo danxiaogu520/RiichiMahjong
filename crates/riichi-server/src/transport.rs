@@ -107,7 +107,7 @@ async fn start_room(
         .authenticate(&room_id, &request.token)
         .map_err(room_error_response)?;
     application
-        .launch_game(&room_id)
+        .launch_game(&room_id, &request.token)
         .await
         .map(Json)
         .map_err(room_error_response)
