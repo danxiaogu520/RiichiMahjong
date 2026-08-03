@@ -77,21 +77,32 @@ async function joinRoom(event: SubmitEvent): Promise<void> {
 function renderLobby(): void {
   if (!session || !room) return;
   const ownPlayer = playerIndex(session.player);
+  const isOwner = room.owner === ownPlayer;
+  const humanPlayers = room.players.filter((player) => !player.is_ai);
+  const aiCount = room.players.filter((player) => player.is_ai).length;
+  const canStart = isOwner
+    && room.players.length === 4
+    && humanPlayers.length > 0
+    && humanPlayers.every((player) => player.ready);
   appRoot.innerHTML = `
     <section class="shell lobby-shell">
       <div class="lobby-topline"><span class="eyebrow">WAITING ROOM</span><button class="text-button" id="leave-button">退出</button></div>
       <h1 class="lobby-title">房间 <span>${escapeHtml(room.id)}</span></h1>
       <p class="intro">把房间码发给朋友，四人准备后即可开始。</p>
       <div class="player-list" id="player-list">${renderPlayers(ownPlayer)}</div>
+      ${isOwner && !room.started ? `<div class="ai-controls"><span>AI 补位 <strong>${aiCount}/3</strong></span><div><button class="small-button" data-ai-delta="-1" ${aiCount === 0 ? "disabled" : ""}>−</button><button class="small-button" data-ai-delta="1" ${aiCount === 3 ? "disabled" : ""}>＋</button></div></div>` : ""}
       <div class="lobby-actions">
         <button id="ready-button">${room.players.find((player) => player.id === ownPlayer)?.ready ? "取消准备" : "准备"}</button>
-        <button class="secondary-button" id="start-button" ${room.players.length < 4 || !room.players.every((player) => player.ready) ? "disabled" : ""}>开始半庄</button>
+        <button class="secondary-button" id="start-button" ${canStart ? "" : "disabled"}>开始半庄</button>
       </div>
       <p class="status" id="status" aria-live="polite">${escapeHtml(statusMessage)}</p>
     </section>
   `;
   document.querySelector<HTMLButtonElement>("#ready-button")?.addEventListener("click", toggleReady);
   document.querySelector<HTMLButtonElement>("#start-button")?.addEventListener("click", startGame);
+  document.querySelectorAll<HTMLButtonElement>("[data-ai-delta]").forEach((button) => {
+    button.addEventListener("click", () => setAiCount(Number(button.dataset.aiDelta)));
+  });
   document.querySelector<HTMLButtonElement>("#leave-button")?.addEventListener("click", () => {
     transport?.close();
     session = undefined;
@@ -105,9 +116,24 @@ function renderPlayers(ownPlayer: number): string {
     <div class="player-row ${player.id === ownPlayer ? "own-player" : ""}">
       <span class="seat">${["东", "南", "西", "北"][player.id] ?? "?"}</span>
       <span class="player-name">${escapeHtml(player.nickname)}</span>
-      <span class="ready-state ${player.ready ? "is-ready" : ""}">${player.ready ? "已准备" : "等待中"}</span>
+      <span class="ready-state ${player.ready || player.is_ai ? "is-ready" : ""}">${player.ai_takeover ? "AI 托管" : player.is_ai ? "AI" : !player.connected ? "等待重连" : player.ready ? "已准备" : "等待中"}</span>
     </div>
   `).join("") || `<div class="empty-state">等待玩家加入…</div>`;
+}
+
+async function setAiCount(delta: number): Promise<void> {
+  if (!transport || !session || !room || room.owner !== playerIndex(session.player)) return;
+  const current = room.players.filter((player) => player.is_ai).length;
+  const target = Math.max(0, Math.min(3, current + delta));
+  if (target === current) return;
+  try {
+    room = await transport.setAiCount(room.id, session.token, target);
+    statusMessage = `AI 补位已设置为 ${target} 个`;
+    renderLobby();
+  } catch (error) {
+    statusMessage = error instanceof Error ? error.message : "AI 设置失败";
+    renderLobby();
+  }
 }
 
 async function toggleReady(): Promise<void> {
@@ -115,7 +141,8 @@ async function toggleReady(): Promise<void> {
   const current = room.players.find((player) => player.id === playerIndex(session!.player));
   try {
     room = await transport.setReady(room.id, session.token, !current?.ready);
-    statusMessage = room.players.every((player) => player.ready) ? "四人已准备，可以开始" : "准备状态已更新";
+    const humansReady = room.players.filter((player) => !player.is_ai).every((player) => player.ready);
+    statusMessage = humansReady ? "真人玩家已准备，可以开始" : "准备状态已更新";
     renderLobby();
   } catch (error) {
     statusMessage = error instanceof Error ? error.message : "准备失败";
@@ -142,7 +169,12 @@ function renderTable(): void {
   const ownIndex = session ? playerIndex(session.player) : 0;
   const ownPlayer = gameState?.players[ownIndex];
   const names = room?.players ?? [];
-  const playerName = (index: number) => escapeHtml(names.find((p) => p.id === index)?.nickname ?? ["东家", "南家", "西家", "北家"][index]);
+  const playerName = (index: number) => {
+    const player = names.find((candidate) => candidate.id === index);
+    if (!player) return ["东家", "南家", "西家", "北家"][index];
+    if (player.ai_takeover) return `${escapeHtml(player.nickname)}（AI托管）`;
+    return player.is_ai ? "AI" : escapeHtml(player.nickname);
+  };
   appRoot.innerHTML = `
     <section class="table-shell">
       <header class="table-header"><span class="eyebrow">RIICHI MAHJONG</span><span class="connection-dot">● ${escapeHtml(statusMessage)}</span><button class="text-button" id="table-leave">退出</button></header>
@@ -261,6 +293,18 @@ function handleServerMessage(message: ServerEnvelope): void {
     callRequest = body.CallRequired as CallRequest;
     actionRequest = undefined;
     actionDeadline = Date.now() + 15_000;
+  } else if ("PlayerControllerChanged" in body) {
+    const change = body.PlayerControllerChanged as { player_id: number; is_ai: boolean; ai_takeover: boolean };
+    if (room) {
+      room = {
+        ...room,
+        players: room.players.map((player) => player.id === change.player_id
+          ? { ...player, is_ai: change.is_ai, ai_takeover: change.ai_takeover, connected: true }
+          : player),
+      };
+    }
+    latestMessage = change.ai_takeover ? "AI 已接管断线座位" : "已恢复真人控制";
+    statusMessage = latestMessage;
   } else if ("GameOver" in body) {
     latestMessage = "本局已结束";
   } else if ("Error" in body) {
@@ -272,6 +316,7 @@ function handleServerMessage(message: ServerEnvelope): void {
   const status = document.querySelector<HTMLParagraphElement>("#game-status");
   if (status) status.textContent = latestMessage;
   if (document.querySelector(".table-shell")) renderTable();
+  else if (document.querySelector(".lobby-shell")) renderLobby();
 }
 
 function tileLabel(raw: number): string {

@@ -87,6 +87,11 @@ pub enum ServerMessage {
         scores: [i32; 4],
         ranking: [usize; 4],
     },
+    PlayerControllerChanged {
+        player_id: PlayerId,
+        is_ai: bool,
+        ai_takeover: bool,
+    },
     Error(String),
 }
 

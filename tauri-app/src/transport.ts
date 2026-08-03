@@ -50,6 +50,13 @@ export class ClientTransport {
     });
   }
 
+  async setAiCount(roomId: string, token: string, count: number): Promise<RoomInfo> {
+    return this.request<RoomInfo>(`/rooms/${encodeURIComponent(roomId)}/ai`, {
+      method: "POST",
+      body: JSON.stringify({ token, count }),
+    });
+  }
+
   connect(roomId: string, token: string, callbacks: TransportCallbacks): void {
     // 每条 WebSocket 连接都有自己的服务端序号；重连必须从快照重新建立序列。
     this.sequence = 0;

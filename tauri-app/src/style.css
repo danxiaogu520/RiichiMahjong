@@ -104,6 +104,11 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 .player-name { flex: 1; font-weight: 650; }
 .ready-state { color: #758b94; font-size: 12px; }
 .ready-state.is-ready { color: #8fe2bd; }
+.ai-controls { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; padding: 14px 16px; border: 1px solid #35535e; border-radius: 12px; color: #b7c6cb; font-size: 13px; }
+.ai-controls strong { color: #f2c879; }
+.ai-controls div { display: flex; gap: 8px; }
+.small-button { width: 38px; height: 34px; margin: 0; padding: 0; color: #102018; background: #8fe2bd; }
+.small-button:disabled { cursor: not-allowed; opacity: .4; }
 .lobby-actions { display: flex; gap: 12px; margin-top: 20px; }
 .lobby-actions button { flex: 1; }
 .secondary-button { color: #e9d49c; background: #3a3630; }

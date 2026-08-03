@@ -5,10 +5,13 @@ export interface RoomPlayerView {
   nickname: string;
   ready: boolean;
   connected: boolean;
+  is_ai: boolean;
+  ai_takeover: boolean;
 }
 
 export interface RoomInfo {
   id: string;
+  owner: PlayerId | null;
   players: RoomPlayerView[];
   started: boolean;
 }
@@ -53,6 +56,12 @@ export interface ServerEnvelope {
   protocol_version: number;
   seq: number;
   body: Record<string, unknown>;
+}
+
+export interface PlayerControllerChanged {
+  player_id: PlayerId;
+  is_ai: boolean;
+  ai_takeover: boolean;
 }
 
 export interface GameStateView {

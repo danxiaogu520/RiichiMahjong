@@ -277,7 +277,15 @@ pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Optio
             scores: *scores,
             ranking: *ranking,
         }),
-        SessionEvent::PlayerControllerChanged { .. } => None,
+        SessionEvent::PlayerControllerChanged {
+            player,
+            is_ai,
+            ai_takeover,
+        } => Some(ServerMessage::PlayerControllerChanged {
+            player_id: *player,
+            is_ai: *is_ai,
+            ai_takeover: *ai_takeover,
+        }),
         SessionEvent::Error(message) => Some(ServerMessage::Error(message.clone())),
     }
 }
@@ -570,6 +578,26 @@ mod tests {
         };
         assert_eq!(request.player, PlayerId(2));
         assert_eq!(request.discard_options, vec![Tile::from_raw(4)]);
+    }
+
+    #[test]
+    fn controller_change_event_is_serialized_without_hidden_game_state() {
+        let event = SessionEvent::PlayerControllerChanged {
+            player: PlayerId(2),
+            is_ai: true,
+            ai_takeover: true,
+        };
+        let message = session_event_to_wire(&event, PlayerId(0)).unwrap();
+        assert!(matches!(
+            message,
+            ServerMessage::PlayerControllerChanged {
+                player_id: PlayerId(2),
+                is_ai: true,
+                ai_takeover: true
+            }
+        ));
+        let encoded = serde_json::to_string(&message).unwrap();
+        assert!(!encoded.contains("hand"));
     }
 
     #[test]
