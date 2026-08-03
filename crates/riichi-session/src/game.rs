@@ -32,7 +32,7 @@ pub struct GameSession {
     control_enabled: bool,
     action_forwarders: [Option<tokio::task::JoinHandle<()>>; 4],
     agent_tasks: [Option<tokio::task::JoinHandle<()>>; 4],
-    initial_agents: Vec<(PlayerId, Box<dyn PlayerAgent>)>,
+    initial_agents: Option<std::sync::Mutex<Vec<(PlayerId, Box<dyn PlayerAgent>)>>>,
 }
 
 enum SessionInput {
@@ -85,14 +85,19 @@ impl GameSession {
             control_enabled: true,
             action_forwarders: std::array::from_fn(|_| None),
             agent_tasks: std::array::from_fn(|_| None),
-            initial_agents,
+            initial_agents: Some(std::sync::Mutex::new(initial_agents)),
         }
     }
 
     pub async fn run(&mut self) {
         self.game.start_round(&mut self.rng);
         self.initialize_hanchan_log();
-        let initial_agents = std::mem::take(&mut self.initial_agents);
+        let initial_agents = self
+            .initial_agents
+            .take()
+            .expect("initial agents can only be consumed once")
+            .into_inner()
+            .expect("initial agents lock poisoned");
         for (player, agent) in initial_agents {
             self.install_agent_with_mode(player, agent, false).await;
         }

@@ -109,7 +109,8 @@ impl PlayerAgent for BasicAiAgent {
                 SessionEvent::GameOver { .. } => None,
                 SessionEvent::RoundResult { .. }
                 | SessionEvent::Error(_)
-                | SessionEvent::GameEvent { .. } => None,
+                | SessionEvent::GameEvent { .. }
+                | SessionEvent::PlayerControllerChanged { .. } => None,
             }
         })
     }
