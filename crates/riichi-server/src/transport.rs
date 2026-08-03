@@ -230,7 +230,10 @@ async fn websocket_session(
             Err(event) => {
                 let message = if !sent_snapshot {
                     match event {
-                        SessionEvent::GameEvent { .. } => session_event_to_wire(&event, player),
+                        SessionEvent::GameEvent { .. }
+                        | SessionEvent::PlayerControllerChanged { .. } => {
+                            session_event_to_wire(&event, player)
+                        }
                         _ => state_snapshot_to_wire(&event, player),
                     }
                 } else {

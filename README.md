@@ -2,7 +2,7 @@
 
 一个以 Rust 编写的四人立直麻将引擎，包含规则状态机、和牌/计分算法、AI 决策、服务端回路和 ratatui 终端客户端。
 
-项目目前面向本地实验与规则验证。规则口径和已知实现缺口见 [`docs/RULES.md`](docs/RULES.md)，不要把尚未完成的行为当作线上稳定协议。
+项目已支持浏览器/Tauri 预览下的熟人房间联机：房主可以配置 0–3 个固定基础 AI，至少一名真人即可开局；真人断线 30 秒后由 AI 临时接管，重连后恢复真人控制。房间和连接状态目前保存在服务端内存中。规则口径和已知实现缺口见 [`docs/RULES.md`](docs/RULES.md)。
 
 ## 快速开始
 
@@ -12,6 +12,7 @@
 cargo build                 # 构建默认客户端及其依赖
 cargo test --workspace      # 运行整个 workspace 的测试
 cargo run -p riichi-debug   # 启动终端调试客户端
+cd tauri-app && npm run build # 构建浏览器/Tauri 前端预览
 ```
 
 客户端默认启动一桌由 AI 控制的本地对局；终端交互需要可用的 TTY。纯算法和规则状态机也可以单独作为 crate 使用。
@@ -22,7 +23,7 @@ cargo run -p riichi-debug   # 启动终端调试客户端
 | --- | --- |
 | `riichi-core` | 牌、手牌、副露、牌山和玩家基础数据 |
 | `riichi-logic` | 向听、牌型分解、役种、符数、点数和牌效分析 |
-| `riichi-ai` | 打牌、鸣牌和立直决策 |
+| `riichi-ai` | 固定基础 AI 的打牌、鸣牌和立直决策 |
 | `riichi-engine` | 局面状态、行动合法性、回合流程和结算 |
 | `riichi-proto` | 客户端与服务端之间的序列化消息 |
 | `riichi-session` | 游戏会话、玩家命令和事件通道 |

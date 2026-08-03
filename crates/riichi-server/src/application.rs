@@ -46,6 +46,7 @@ pub struct ServerApplication {
     rooms: Arc<RwLock<RoomManager>>,
     sessions: Arc<Mutex<std::collections::HashMap<String, ActiveSession>>>,
     ai_takeover_delay: Duration,
+    round_result_delay: Duration,
 }
 
 impl Default for ServerApplication {
@@ -60,10 +61,15 @@ impl ServerApplication {
     }
 
     pub fn new_with_ai_takeover_delay(delay: Duration) -> Self {
+        Self::new_with_delays(delay, Duration::from_secs(5))
+    }
+
+    pub fn new_with_delays(ai_takeover_delay: Duration, round_result_delay: Duration) -> Self {
         Self {
             rooms: Arc::new(RwLock::new(RoomManager::new())),
             sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            ai_takeover_delay: delay,
+            ai_takeover_delay,
+            round_result_delay,
         }
     }
 
@@ -185,12 +191,13 @@ impl ServerApplication {
         drop(pairs);
 
         let (control_tx, control_rx) = mpsc::channel(32);
-        let session = riichi_session::GameSession::new_with_control_and_agents(
+        let session = riichi_session::GameSession::new_with_control_and_agents_and_round_delay(
             event_txs,
             action_tx.clone(),
             action_rx,
             control_rx,
             initial_agents,
+            self.round_result_delay,
         );
         tokio::spawn(async move {
             let mut session = session;

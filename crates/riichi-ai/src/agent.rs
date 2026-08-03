@@ -1,5 +1,4 @@
 use crate::{choose_discard, decide_call, decide_riichi};
-use rand::Rng;
 use riichi_core::game::ResponseAction;
 use riichi_core::meld::Meld;
 use riichi_core::player::PlayerId;
@@ -117,8 +116,7 @@ impl PlayerAgent for BasicAiAgent {
 }
 
 async fn wait_before_decision() {
-    let delay_ms = rand::thread_rng().gen_range(1_000..=2_000);
-    sleep(Duration::from_millis(delay_ms)).await;
+    sleep(Duration::from_millis(5)).await;
 }
 
 fn decide_turn(state: &AiState, riichi_options: &[Tile], discard_options: &[Tile]) -> PlayerAction {

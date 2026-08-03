@@ -699,7 +699,6 @@ dependencies = [
 name = "riichi-ai"
 version = "0.1.0"
 dependencies = [
- "rand",
  "riichi-core",
  "riichi-engine",
  "riichi-logic",

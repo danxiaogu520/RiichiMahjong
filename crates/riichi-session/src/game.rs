@@ -33,6 +33,7 @@ pub struct GameSession {
     action_forwarders: [Option<tokio::task::JoinHandle<()>>; 4],
     agent_tasks: [Option<tokio::task::JoinHandle<()>>; 4],
     initial_agents: Option<std::sync::Mutex<Vec<(PlayerId, Box<dyn PlayerAgent>)>>>,
+    round_result_delay: Duration,
 }
 
 enum SessionInput {
@@ -47,12 +48,13 @@ impl GameSession {
         action_rx: mpsc::Receiver<PlayerCommand>,
     ) -> Self {
         let (_, control_rx) = mpsc::channel(1);
-        let mut session = Self::new_with_control_and_agents(
+        let mut session = Self::new_with_control_and_agents_and_round_delay(
             event_txs,
             action_tx,
             action_rx,
             control_rx,
             Vec::new(),
+            Duration::from_secs(5),
         );
         session.control_enabled = false;
         session
@@ -64,7 +66,14 @@ impl GameSession {
         action_rx: mpsc::Receiver<PlayerCommand>,
         control_rx: mpsc::Receiver<SessionControl>,
     ) -> Self {
-        Self::new_with_control_and_agents(event_txs, action_tx, action_rx, control_rx, Vec::new())
+        Self::new_with_control_and_agents_and_round_delay(
+            event_txs,
+            action_tx,
+            action_rx,
+            control_rx,
+            Vec::new(),
+            Duration::from_secs(5),
+        )
     }
 
     pub fn new_with_control_and_agents(
@@ -73,6 +82,24 @@ impl GameSession {
         action_rx: mpsc::Receiver<PlayerCommand>,
         control_rx: mpsc::Receiver<SessionControl>,
         initial_agents: Vec<(PlayerId, Box<dyn PlayerAgent>)>,
+    ) -> Self {
+        Self::new_with_control_and_agents_and_round_delay(
+            event_txs,
+            action_tx,
+            action_rx,
+            control_rx,
+            initial_agents,
+            Duration::from_secs(5),
+        )
+    }
+
+    pub fn new_with_control_and_agents_and_round_delay(
+        event_txs: [mpsc::Sender<SessionEvent>; 4],
+        action_tx: mpsc::Sender<PlayerCommand>,
+        action_rx: mpsc::Receiver<PlayerCommand>,
+        control_rx: mpsc::Receiver<SessionControl>,
+        initial_agents: Vec<(PlayerId, Box<dyn PlayerAgent>)>,
+        round_result_delay: Duration,
     ) -> Self {
         Self {
             game: GameState::new(),
@@ -86,6 +113,7 @@ impl GameSession {
             action_forwarders: std::array::from_fn(|_| None),
             agent_tasks: std::array::from_fn(|_| None),
             initial_agents: Some(std::sync::Mutex::new(initial_agents)),
+            round_result_delay,
         }
     }
 
@@ -686,7 +714,7 @@ impl GameSession {
             scores: self.scores(),
         })
         .await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(self.round_result_delay).await;
 
         if self.game.is_game_over() {
             self.broadcast(SessionEvent::GameOver {
