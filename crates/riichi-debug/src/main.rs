@@ -1,4 +1,3 @@
-mod ai_client;
 mod analysis;
 mod app;
 mod input;
@@ -15,10 +14,10 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc;
 
-use crate::ai_client::run_ai_client;
 use crate::app::App;
+use riichi_ai::BasicAiAgent;
 use riichi_core::player::PlayerId;
-use riichi_session::{create_player_pair, GameSession, PlayerCommand};
+use riichi_session::{create_player_pair, run_player_agent, GameSession, PlayerCommand};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -67,9 +66,21 @@ async fn main() -> io::Result<()> {
         }
     });
 
-    tokio::spawn(run_ai_client(p1_client));
-    tokio::spawn(run_ai_client(p2_client));
-    tokio::spawn(run_ai_client(p3_client));
+    tokio::spawn(run_player_agent(
+        p1_client.event_rx,
+        p1_client.action_tx,
+        Box::new(BasicAiAgent::new(PlayerId(1))),
+    ));
+    tokio::spawn(run_player_agent(
+        p2_client.event_rx,
+        p2_client.action_tx,
+        Box::new(BasicAiAgent::new(PlayerId(2))),
+    ));
+    tokio::spawn(run_player_agent(
+        p3_client.event_rx,
+        p3_client.action_tx,
+        Box::new(BasicAiAgent::new(PlayerId(3))),
+    ));
 
     let mut game_loop = GameSession::new(event_txs, merged_tx, merged_rx);
     tokio::spawn(async move {

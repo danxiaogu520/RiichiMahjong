@@ -8,7 +8,7 @@ pub mod agent;
 pub mod channel;
 pub mod game;
 
-pub use agent::{AgentFuture, PlayerAgent};
+pub use agent::{run_player_agent, AgentFuture, PlayerAgent};
 pub use channel::{
     create_player_pair, CallResponse, ClientHandle, PlayerAction, PlayerCommand, PlayerHandle,
     SessionControl, SessionEvent, TurnAction,
