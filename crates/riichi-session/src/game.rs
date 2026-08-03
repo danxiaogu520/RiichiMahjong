@@ -14,6 +14,7 @@ use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration, Instant};
 
+use crate::agent::{run_player_agent, PlayerAgent};
 use crate::channel::{
     CallResponse, PlayerAction, PlayerCommand, SessionControl, SessionEvent, TurnAction,
 };
@@ -30,6 +31,13 @@ pub struct GameSession {
     control_rx: mpsc::Receiver<SessionControl>,
     control_enabled: bool,
     action_forwarders: [Option<tokio::task::JoinHandle<()>>; 4],
+    agent_tasks: [Option<tokio::task::JoinHandle<()>>; 4],
+    initial_agents: Vec<(PlayerId, Box<dyn PlayerAgent>)>,
+}
+
+enum SessionInput {
+    Command(Option<PlayerCommand>),
+    Control(Option<SessionControl>),
 }
 
 impl GameSession {
@@ -39,17 +47,15 @@ impl GameSession {
         action_rx: mpsc::Receiver<PlayerCommand>,
     ) -> Self {
         let (_, control_rx) = mpsc::channel(1);
-        Self {
-            game: GameState::new(),
-            hanchan: None,
-            rng: StdRng::from_entropy(),
+        let mut session = Self::new_with_control_and_agents(
             event_txs,
             action_tx,
             action_rx,
             control_rx,
-            control_enabled: false,
-            action_forwarders: std::array::from_fn(|_| None),
-        }
+            Vec::new(),
+        );
+        session.control_enabled = false;
+        session
     }
 
     pub fn new_with_control(
@@ -57,6 +63,16 @@ impl GameSession {
         action_tx: mpsc::Sender<PlayerCommand>,
         action_rx: mpsc::Receiver<PlayerCommand>,
         control_rx: mpsc::Receiver<SessionControl>,
+    ) -> Self {
+        Self::new_with_control_and_agents(event_txs, action_tx, action_rx, control_rx, Vec::new())
+    }
+
+    pub fn new_with_control_and_agents(
+        event_txs: [mpsc::Sender<SessionEvent>; 4],
+        action_tx: mpsc::Sender<PlayerCommand>,
+        action_rx: mpsc::Receiver<PlayerCommand>,
+        control_rx: mpsc::Receiver<SessionControl>,
+        initial_agents: Vec<(PlayerId, Box<dyn PlayerAgent>)>,
     ) -> Self {
         Self {
             game: GameState::new(),
@@ -68,12 +84,18 @@ impl GameSession {
             control_rx,
             control_enabled: true,
             action_forwarders: std::array::from_fn(|_| None),
+            agent_tasks: std::array::from_fn(|_| None),
+            initial_agents,
         }
     }
 
     pub async fn run(&mut self) {
         self.game.start_round(&mut self.rng);
         self.initialize_hanchan_log();
+        let initial_agents = std::mem::take(&mut self.initial_agents);
+        for (player, agent) in initial_agents {
+            self.install_agent_with_mode(player, agent, false).await;
+        }
         self.broadcast_state().await;
 
         loop {
@@ -160,6 +182,9 @@ impl GameSession {
         event_tx: mpsc::Sender<SessionEvent>,
         mut action_rx: mpsc::Receiver<PlayerCommand>,
     ) {
+        if let Some(agent) = self.agent_tasks[player.0].take() {
+            agent.abort();
+        }
         self.event_txs[player.0] = event_tx;
         if let Some(forwarder) = self.action_forwarders[player.0].take() {
             forwarder.abort();
@@ -172,6 +197,12 @@ impl GameSession {
                 }
             }
         }));
+        self.broadcast(SessionEvent::PlayerControllerChanged {
+            player,
+            is_ai: false,
+            ai_takeover: false,
+        })
+        .await;
         for envelope in self.game.events_after(last_event_id).cloned() {
             let _ = self.event_txs[player.0]
                 .send(SessionEvent::GameEvent { envelope })
@@ -179,6 +210,54 @@ impl GameSession {
         }
         self.broadcast_state().await;
         self.send_current_action_prompt(player).await;
+    }
+
+    pub async fn install_agent(&mut self, player: PlayerId, agent: Box<dyn PlayerAgent>) {
+        self.install_agent_with_mode(player, agent, true).await;
+    }
+
+    async fn install_agent_with_mode(
+        &mut self,
+        player: PlayerId,
+        agent: Box<dyn PlayerAgent>,
+        ai_takeover: bool,
+    ) {
+        if let Some(existing) = self.agent_tasks[player.0].take() {
+            existing.abort();
+        }
+        if let Some(forwarder) = self.action_forwarders[player.0].take() {
+            forwarder.abort();
+        }
+        let (event_tx, event_rx) = mpsc::channel(64);
+        self.event_txs[player.0] = event_tx;
+        let action_tx = self.action_tx.clone();
+        self.agent_tasks[player.0] =
+            Some(tokio::spawn(run_player_agent(event_rx, action_tx, agent)));
+        self.broadcast(SessionEvent::PlayerControllerChanged {
+            player,
+            is_ai: true,
+            ai_takeover,
+        })
+        .await;
+        self.broadcast_state().await;
+        self.send_current_action_prompt(player).await;
+    }
+
+    async fn handle_control(&mut self, control: SessionControl) {
+        match control {
+            SessionControl::Reconnect {
+                player,
+                last_event_id,
+                event_tx,
+                action_rx,
+            } => {
+                self.reconnect_player(player, last_event_id, event_tx, action_rx)
+                    .await;
+            }
+            SessionControl::InstallAgent { player, agent } => {
+                self.install_agent(player, agent).await;
+            }
+        }
     }
 
     /// 向重连玩家重新发送当前阶段的操作提示。
@@ -652,28 +731,29 @@ impl GameSession {
             let received = timeout(remaining, async {
                 if self.control_enabled {
                     tokio::select! {
-                        command = self.action_rx.recv() => command,
-                        control = self.control_rx.recv() => {
-                            if let Some(control) = control {
-                                self.reconnect_player(control.player, control.last_event_id, control.event_tx, control.action_rx).await;
-                            } else {
-                                self.control_enabled = false;
-                            }
-                            None
-                        }
+                        command = self.action_rx.recv() => SessionInput::Command(command),
+                        control = self.control_rx.recv() => SessionInput::Control(control),
                     }
                 } else {
-                    self.action_rx.recv().await
+                    SessionInput::Command(self.action_rx.recv().await)
                 }
             })
             .await;
             match received {
-                Ok(Some(PlayerCommand {
+                Ok(SessionInput::Control(Some(control))) => {
+                    self.handle_control(control).await;
+                    continue;
+                }
+                Ok(SessionInput::Control(None)) => {
+                    self.control_enabled = false;
+                    continue;
+                }
+                Ok(SessionInput::Command(Some(PlayerCommand {
                     player: pid,
                     action: PlayerAction::TurnAction(action),
-                })) if pid == expected => return Some(action),
-                Ok(Some(_)) => continue,
-                Ok(None) | Err(_) => break,
+                }))) if pid == expected => return Some(action),
+                Ok(SessionInput::Command(Some(_))) => continue,
+                Ok(SessionInput::Command(None)) | Err(_) => break,
             }
         }
 
@@ -746,29 +826,31 @@ impl GameSession {
                 let received = timeout(remaining, async {
                     if self.control_enabled {
                         tokio::select! {
-                            command = self.action_rx.recv() => command,
-                            control = self.control_rx.recv() => {
-                                if let Some(control) = control {
-                                    self.reconnect_player(control.player, control.last_event_id, control.event_tx, control.action_rx).await;
-                                } else {
-                                    self.control_enabled = false;
-                                }
-                                None
-                            }
+                            command = self.action_rx.recv() => SessionInput::Command(command),
+                            control = self.control_rx.recv() => SessionInput::Control(control),
                         }
                     } else {
-                        self.action_rx.recv().await
+                        SessionInput::Command(self.action_rx.recv().await)
                     }
-                }).await;
+                })
+                .await;
                 match received {
-                    Ok(Some(PlayerCommand {
+                    Ok(SessionInput::Control(Some(control))) => {
+                        self.handle_control(control).await;
+                        continue;
+                    }
+                    Ok(SessionInput::Control(None)) => {
+                        self.control_enabled = false;
+                        continue;
+                    }
+                    Ok(SessionInput::Command(Some(PlayerCommand {
                         player: pid,
                         action: PlayerAction::CallResponse(response),
-                    })) if eligible_set.contains(&pid) && !responses.contains_key(&pid) => {
+                    }))) if eligible_set.contains(&pid) && !responses.contains_key(&pid) => {
                         responses.insert(pid, response);
                     }
-                    Ok(Some(_)) => continue,
-                    Ok(None) | Err(_) => break,
+                    Ok(SessionInput::Command(Some(_))) => continue,
+                    Ok(SessionInput::Command(None)) | Err(_) => break,
                 }
             }
 
@@ -1003,12 +1085,42 @@ fn call_priority_key(player: PlayerId, action: &ResponseAction, discarder: Playe
 #[cfg(test)]
 mod tests {
     use super::{call_priority_key, should_replace_call, GameSession};
-    use crate::{create_player_pair, SessionEvent};
+    use crate::{
+        create_player_pair, AgentFuture, PlayerAction, PlayerAgent, SessionEvent, TurnAction,
+    };
     use rand::SeedableRng;
     use riichi_core::game::ResponseAction;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
     use tokio::sync::mpsc;
+
+    struct TestAgent {
+        player: PlayerId,
+    }
+
+    impl TestAgent {
+        fn new(player: PlayerId) -> Self {
+            Self { player }
+        }
+    }
+
+    impl PlayerAgent for TestAgent {
+        fn player_id(&self) -> PlayerId {
+            self.player
+        }
+
+        fn decide<'a>(&'a mut self, event: SessionEvent) -> AgentFuture<'a> {
+            Box::pin(async move {
+                if matches!(event, SessionEvent::ActionRequired { .. }) {
+                    Some(PlayerAction::TurnAction(TurnAction::Discard(
+                        Tile::from_raw(0),
+                    )))
+                } else {
+                    None
+                }
+            })
+        }
+    }
 
     #[test]
     fn pon_beats_chi_and_nearer_call_wins_same_priority() {
@@ -1059,6 +1171,14 @@ mod tests {
 
         assert!(matches!(
             replacement_rx.recv().await,
+            Some(SessionEvent::PlayerControllerChanged {
+                player: PlayerId(0),
+                is_ai: false,
+                ai_takeover: false
+            })
+        ));
+        assert!(matches!(
+            replacement_rx.recv().await,
             Some(SessionEvent::GameEvent { .. })
         ));
         assert!(matches!(
@@ -1068,6 +1188,48 @@ mod tests {
         assert!(matches!(
             replacement_rx.recv().await,
             Some(SessionEvent::ActionRequired { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn install_agent_broadcasts_controller_change_and_reconnect_restores_human() {
+        let (event_tx, mut event_rx) = mpsc::channel(32);
+        let event_txs = [
+            event_tx.clone(),
+            event_tx.clone(),
+            event_tx.clone(),
+            event_tx,
+        ];
+        let (action_tx, action_rx) = mpsc::channel(32);
+        let (_, control_rx) = mpsc::channel(8);
+        let mut session =
+            GameSession::new_with_control(event_txs, action_tx, action_rx, control_rx);
+
+        session
+            .install_agent(PlayerId(0), Box::new(TestAgent::new(PlayerId(0))))
+            .await;
+
+        assert!(matches!(
+            event_rx.recv().await,
+            Some(SessionEvent::PlayerControllerChanged {
+                player: PlayerId(0),
+                is_ai: true,
+                ai_takeover: true
+            })
+        ));
+
+        let (replacement_tx, mut replacement_rx) = mpsc::channel(8);
+        let (_, replacement_action_rx) = mpsc::channel(8);
+        session
+            .reconnect_player(PlayerId(0), 0, replacement_tx, replacement_action_rx)
+            .await;
+        assert!(matches!(
+            replacement_rx.recv().await,
+            Some(SessionEvent::PlayerControllerChanged {
+                player: PlayerId(0),
+                is_ai: false,
+                ai_takeover: false
+            })
         ));
     }
 }

@@ -165,7 +165,7 @@ impl ServerApplication {
         let (player_handle, client_handle) = riichi_session::create_player_pair(player);
         session
             .control_tx
-            .send(riichi_session::SessionControl {
+            .send(riichi_session::SessionControl::Reconnect {
                 player,
                 last_event_id,
                 event_tx: player_handle.event_tx,

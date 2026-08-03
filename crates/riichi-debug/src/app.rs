@@ -245,6 +245,7 @@ impl App {
                     self.messages.push(message);
                 }
                 SessionEvent::GameEvent { .. } => {}
+                SessionEvent::PlayerControllerChanged { .. } => {}
             }
         }
     }

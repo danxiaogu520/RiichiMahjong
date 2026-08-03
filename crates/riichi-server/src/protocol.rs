@@ -277,6 +277,7 @@ pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Optio
             scores: *scores,
             ranking: *ranking,
         }),
+        SessionEvent::PlayerControllerChanged { .. } => None,
         SessionEvent::Error(message) => Some(ServerMessage::Error(message.clone())),
     }
 }

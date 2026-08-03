@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 
 pub type AgentFuture<'a> = Pin<Box<dyn Future<Output = Option<PlayerAction>> + Send + 'a>>;
 
-pub trait PlayerAgent: Send + 'static {
+pub trait PlayerAgent: Send + Sync + 'static {
     fn player_id(&self) -> PlayerId;
 
     fn decide<'a>(&'a mut self, observation: SessionEvent) -> AgentFuture<'a>;
