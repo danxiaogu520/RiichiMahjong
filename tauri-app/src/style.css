@@ -124,42 +124,63 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 .connection-dot { color: #8fe2bd; font-size: 12px; }
 .sound-toggle { font-size: 16px; }
 
-.mahjong-table { position: relative; width: min(100%, 900px); aspect-ratio: 1.5; margin: 5vh auto 0; border: 18px solid #684b34; border-radius: 28px; background: #28604f; box-shadow: inset 0 0 0 3px #8b6845, 0 30px 80px #070c0f; }
-.table-center { position: absolute; inset: 30% 33%; display: grid; place-content: center; gap: 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; color: #d7eee2; text-align: center; }
-.table-center span { color: #98c3b0; font-size: 11px; }
-.table-meta { color: #f2c879 !important; font-weight: 700; }
+/* ─── 牌桌（参考 Mortal log-viewer：正方形桌面 + 四边旋转座位） ── */
 
-.table-player { position: absolute; display: grid; gap: 3px; color: #d7eee2; font-size: 13px; font-weight: 700; text-align: center; max-width: 240px; }
-.table-player small { color: #9fc4b5; font-size: 11px; font-weight: 500; }
-.table-player.active-seat { color: #f2c879; text-shadow: 0 0 16px rgba(242, 200, 121, .5); }
-.player-top { top: 5%; left: 50%; transform: translateX(-50%); }
-.player-left { top: 44%; left: 3%; transform: translateY(-50%); }
-.player-right { top: 44%; right: 3%; transform: translateY(-50%); }
-.player-bottom { bottom: 6%; left: 50%; transform: translateX(-50%); color: #f2c879; }
-.seat-label { display: inline-block; background: rgba(0,0,0,.28); border-radius: 8px; padding: 2px 10px; }
+.mahjong-table { position: relative; width: min(100%, 800px); aspect-ratio: 1; margin: 4vh auto 0; border-radius: 28px; background: #28604f; box-shadow: inset 0 0 0 18px #684b34, inset 0 0 0 21px #8b6845, 0 30px 80px #070c0f; }
+
+/* 四个座位区域：整宽容器，按座位旋转，内部布局统一 */
+.table-player { position: absolute; width: 100%; height: 25%; display: grid; align-content: start; gap: 4px; }
+.player-bottom { left: 0; top: 75%; }
+.player-top { left: 0; top: 0; transform: rotate(180deg); }
+.player-right { left: 37.5%; top: 37.5%; transform: rotate(90deg); }
+.player-left { left: -37.5%; top: 37.5%; transform: rotate(90deg); }
+.table-player.active-seat .seat-bar { color: #f2c879; text-shadow: 0 0 14px rgba(242, 200, 121, .45); }
+
+.seat-bar { display: flex; align-items: center; gap: 8px; padding: 3px 12px; border-radius: 8px; background: rgba(0,0,0,.28); color: #d7eee2; font-size: 12px; font-weight: 700; }
+.seat-bar b { white-space: nowrap; }
+.seat-points { color: #9fc4b5; font-size: 11px; font-weight: 500; }
+.seat-count { margin-left: auto; color: #98c3b0; font-size: 11px; font-weight: 500; }
 .riichi-badge { color: #ff9d9d; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
-.meld-row { display: flex; justify-content: center; gap: 6px; }
 .meld-chip { display: inline-flex; align-items: center; gap: 1px; padding: 2px 4px; border: 1px solid rgba(255,255,255,.22); border-radius: 6px; background: rgba(0,0,0,.3); }
-.meld-chip i { color: #d7eee2; font-size: 10px; font-style: normal; font-weight: 700; }
-.meld-dir { color: #f2c879; font-size: 11px; font-style: normal; font-weight: 800; }
-.meld-tile { width: 14px; height: 19px; }
 
-.dora-row { position: absolute; top: 50%; right: 6%; display: grid; gap: 2px; color: #b7d8ca; font-size: 11px; text-align: center; }
-.dora-row img { width: 20px; height: 27px; margin: 1px; }
-.dora-row span { font-weight: 700; }
+.seat-body { display: flex; align-items: flex-start; padding: 0 10px; }
+/* 牌河向中央让位，给宝牌区留出空间 */
+.seat-river { margin-left: 26%; display: grid; gap: 3px; }
+.river-row { display: flex; gap: 3px; min-height: 54px; align-items: flex-start; }
+.river-tile { width: 30px; height: 54px; }
+.river-empty { color: rgba(215, 238, 226, .35); font-size: 11px; padding: 8px 0; }
+/* 副露：牌河右侧，最新在上 */
+.seat-furos { margin-left: auto; display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+.seat-furos .meld-chip { padding: 1px 3px; }
+.meld-tile { width: 22px; height: 40px; }
+.laid-tile img { transform: rotate(90deg); }
+
+/* 桌面中央：宝牌指示牌（Mortal 风格：一行小牌，2 张牌背 + 翻开的宝牌，与牌河同尺寸） */
+.wanpai-area { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); display: flex; gap: 3px; }
+.wanpai-tile { width: 30px; height: 54px; }
+/* 局信息：宝牌区上方的小横条 */
+.table-status { position: absolute; left: 50%; top: 37%; transform: translate(-50%, -50%); padding: 3px 12px; border-radius: 999px; background: rgba(0,0,0,.28); color: #d7eee2; font-size: 11px; white-space: nowrap; }
 
 /* ─── 牌面 ──────────────────────────────────────────────── */
 
-.tile-img { display: block; width: 100%; height: 100%; object-fit: fill; }
+/* 牌面 = 白色牌身（Front）+ 图案叠加；尺寸类作用在 .tile-face 容器上 */
+.tile-face { position: relative; display: inline-block; }
+.tile-face img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tile-img { display: block; }
 .tile-row { display: flex; flex-wrap: wrap; align-items: end; gap: 3px; min-height: 62px; }
+/* 手牌行：不换行，牌宽自适应均分，保证一行放下 */
+.hand-panel .tile-row { flex-wrap: nowrap; }
+.hand-panel .tile { flex: 1 1 0; min-width: 24px; max-width: 46px; height: auto; aspect-ratio: 3 / 4; }
+.hand-panel .tile .hand-tile { width: 100%; height: 100%; }
+.own-meld-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .tile { width: 46px; height: 62px; margin: 0; padding: 0; border: 1px solid #cbd8d1; border-radius: 6px; background: #fff; overflow: hidden; }
 .tile:hover { transform: translateY(-4px); box-shadow: 0 8px 18px rgba(0,0,0,.4); }
-.tile.disabled-tile { cursor: default; opacity: .82; }
+.tile.disabled-tile { cursor: not-allowed; opacity: .5; filter: grayscale(.85); }
 .tile.disabled-tile:hover { transform: none; box-shadow: none; }
 .tile.legal-tile { box-shadow: 0 0 0 2px #f2c879; }
 .tile.legal-tile:hover { box-shadow: 0 0 0 2px #f2c879, 0 8px 18px rgba(0,0,0,.4); }
 .drawn-tile { margin-left: 12px; }
-.draw-gap { width: 3px; }
+.draw-gap { flex: none; width: 3px; }
 .hand-tile { width: 46px; height: 62px; }
 .hand-meld { margin-right: 6px; }
 .hand-meld .hand-tile { width: 36px; height: 48px; }
@@ -171,13 +192,24 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 /* ─── 主操作区 ──────────────────────────────────────────── */
 
 .game-grid { width: min(100%, 900px); margin: 20px auto; display: grid; grid-template-columns: 1fr 300px; gap: 12px; }
-.hand-panel, .action-panel, .analysis-panel, .discards-panel, .event-panel { padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
+.hand-panel, .action-panel, .analysis-panel, .event-panel { padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
 .panel-heading { display: flex; justify-content: space-between; margin-bottom: 12px; color: #b7c6cb; font-size: 12px; }
 
 .side-panel { display: grid; align-content: start; gap: 12px; }
 .action-panel { display: grid; gap: 12px; }
+.action-row { min-height: 14px; }
+.action-row #countdown { color: #f2c879; font-size: 12px; font-weight: 700; }
 .action-panel button { width: 100%; margin: 0; padding: 10px; font-size: 12px; }
-.action-panel .secondary-button { color: #e9d49c; background: #3a3630; }
+/* 操作按钮按动作类型配色 */
+.btn-tsumo { background: #ff9ec4; color: #5c1430; }        /* 自摸：粉红 */
+.btn-riichi { background: #f2a33c; color: #3d2600; }        /* 立直：橙色 */
+.btn-ron { background: #e05252; color: #fff; }              /* 荣和：红色 */
+.btn-chi { background: #4fae5c; color: #0c2a10; }           /* 吃：绿色 */
+.btn-pon { background: #4a90d9; color: #fff; }              /* 碰：蓝色 */
+.btn-kan { background: #8e5ad9; color: #fff; }              /* 杠：紫色 */
+.btn-ryukyoku { background: #5a3a8a; color: #e8dcff; }      /* 流局：深紫 */
+.btn-pass { background: #565f68; color: #d7dee4; }          /* 跳过：灰色 */
+.riichi-hint { color: #f2a33c; font-size: 12px; font-weight: 700; }
 
 .analysis-panel { display: grid; gap: 8px; min-height: 60px; }
 .tenpai-row, .analysis-row { display: flex; align-items: center; gap: 10px; min-height: 40px; }
@@ -186,10 +218,6 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 .analysis-count { color: #9fc4b5; font-size: 11px; }
 .flag-furiten { color: #ff9d9d; font-weight: 800; }
 .flag-no-yaku { color: #e9d49c; font-size: 11px; font-weight: 700; }
-
-.discards-panel { width: min(100%, 900px); margin: 0 auto; }
-.discard-line { display: grid; grid-template-columns: 150px 1fr; gap: 10px; min-height: 38px; color: #b7c6cb; font-size: 12px; }
-.discard-line > span { display: flex; flex-wrap: wrap; gap: 2px; }
 
 .event-panel { width: min(100%, 900px); margin: 12px auto 0; }
 .event-list { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; }
@@ -230,15 +258,17 @@ button span { float: right; font-size: 20px; line-height: 14px; }
   .shell { width: min(100% - 32px, 560px); padding-top: 8vh; }
   .join-card { padding: 18px; }
   .table-shell { padding: 18px; }
-  .mahjong-table { border-width: 10px; aspect-ratio: 1; }
-  .table-center { inset: 34% 28%; }
-  .dora-row { top: auto; bottom: 4%; right: 50%; transform: translateX(50%); flex-direction: row; gap: 6px; }
-  .dora-row img { width: 16px; height: 22px; }
+  .mahjong-table { box-shadow: inset 0 0 0 10px #684b34, inset 0 0 0 12px #8b6845, 0 30px 80px #070c0f; }
+  .table-player { height: 28%; }
+  .player-bottom { top: 72%; }
+  .player-right { left: 36%; top: 36%; }
+  .player-left { left: -36%; top: 36%; }
+  .seat-bar { font-size: 11px; padding: 2px 8px; }
+  .seat-points, .seat-count { font-size: 10px; }
+  .river-row { min-height: 32px; }
+  .river-tile { width: 18px; height: 32px; }
+  .meld-tile { width: 14px; height: 25px; }
+  .wanpai-tile { width: 22px; height: 40px; }
+  .table-status { font-size: 10px; padding: 2px 8px; }
   .game-grid { grid-template-columns: 1fr; }
-  .discard-line { grid-template-columns: 84px 1fr; }
-  .tile { width: 36px; height: 48px; }
-  .hand-tile { width: 36px; height: 48px; }
-  .hand-meld .hand-tile { width: 28px; height: 38px; }
-  .table-player { font-size: 11px; }
-  .player-left, .player-right { top: 42%; }
 }

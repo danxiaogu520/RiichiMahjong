@@ -40,6 +40,7 @@ const ui: UiState = {
   latestMessage: "",
   events: [],
   actionDeadline: 0,
+  riichiPending: false,
 };
 
 function savedServerAddress(): string {
@@ -118,8 +119,24 @@ const callbacks: UiCallbacks = {
   sendAction: (action) => {
     if (!transport) return;
     try {
+      if (action === "Riichi") {
+        // 进入立直待选状态：等玩家从手牌选牌，模拟立直打 X。
+        ui.riichiPending = true;
+        ui.latestMessage = "已进入立直待选，请选择要打出的牌";
+        renderTable(ui, callbacks);
+        return;
+      }
+      if (action === "RiichiCancel") {
+        ui.riichiPending = false;
+        ui.latestMessage = "已取消立直";
+        renderTable(ui, callbacks);
+        return;
+      }
       if (action.startsWith("discard:")) transport.send({ TurnAction: { action: { Discard: Number(action.slice(8)) } } });
-      else if (action.startsWith("riichi:")) transport.send({ TurnAction: { action: { RiichiDiscard: Number(action.slice(8)) } } });
+      else if (action.startsWith("riichi:")) {
+        transport.send({ TurnAction: { action: { RiichiDiscard: Number(action.slice(7)) } } });
+        ui.riichiPending = false;
+      }
       else if (action === "Tsumo") transport.send({ TurnAction: { action: { Tsumo: null } } });
       else if (action === "KyuushuKyuuhai") transport.send({ TurnAction: { action: { KyuushuKyuuhai: null } } });
       else if (action.startsWith("ankan:")) transport.send({ TurnAction: { action: { Ankan: Number(action.slice(6)) } } });
@@ -175,6 +192,7 @@ function resetTableState(): void {
   ui.roundResult = undefined;
   ui.gameOver = undefined;
   ui.actionDeadline = 0;
+  ui.riichiPending = false;
 }
 
 // ─── WebSocket 连接与消息分发 ─────────────────────────────────
@@ -218,10 +236,15 @@ function handleServerMessage(message: ServerEnvelope): void {
     ui.gameState = (body.StateSnapshot ?? body.StateUpdate) as GameStateView;
     ui.actionRequest = undefined;
     ui.callRequest = undefined;
+    // 立直已成立（is_riichi）或快照刷新后，退出立直待选状态。
+    if (ui.session && ui.gameState.players[playerIndex(ui.session.player)]?.is_riichi) {
+      ui.riichiPending = false;
+    }
   } else if ("ActionRequired" in body) {
     ui.latestMessage = "轮到你行动";
     ui.actionRequest = body.ActionRequired as ActionRequest;
     ui.callRequest = undefined;
+    ui.riichiPending = false;
     ui.actionDeadline = Date.now() + 30_000;
   } else if ("CallRequired" in body) {
     ui.latestMessage = "请响应当前鸣牌或荣和窗口";

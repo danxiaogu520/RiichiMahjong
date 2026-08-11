@@ -1,5 +1,6 @@
 // 牌面 SVG 素材来自 FluffyStuff/riichi-mahjong-tiles（公有领域）。
 // 文件位于 public/tiles/，按牌的 type（raw / 4）映射。
+// 牌面 SVG 只有图案（透明背景），需要叠加 Front.svg（白色牌身）打底。
 
 const HONOR_FILES = ["Ton", "Nan", "Shaa", "Pei", "Haku", "Hatsu", "Chun"];
 
@@ -13,17 +14,22 @@ export function tileSvgFile(type: number): string {
   return `${HONOR_FILES[type - 27] ?? "Blank"}.svg`;
 }
 
-/** 渲染一张牌（raw 编码） */
+function tileFace(svgFile: string, alt: string, className: string): string {
+  return `<span class="tile-face ${className}"><img class="tile-front" src="tiles/Front.svg" alt="" draggable="false" /><img class="tile-print" src="tiles/${svgFile}" alt="${alt}" draggable="false" /></span>`;
+}
+
+/** 渲染一张牌（raw 编码），白色牌身 + 图案叠加 */
 export function tileImage(raw: number, className = ""): string {
-  return `<img class="tile-img ${className}" src="tiles/${tileSvgFile(Math.floor(raw / 4))}" alt="${tileLabel(raw)}" draggable="false" />`;
+  const type = Math.floor(raw / 4);
+  return tileFace(tileSvgFile(type), tileLabel(raw), className);
 }
 
-/** 渲染一张按 type 索引的牌（宝牌指示牌等） */
+/** 渲染一张按 type 索引的牌（宝牌等） */
 export function tileTypeImage(type: number, className = ""): string {
-  return `<img class="tile-img ${className}" src="tiles/${tileSvgFile(type)}" alt="${tileTypeLabel(type)}" draggable="false" />`;
+  return tileFace(tileSvgFile(type), tileTypeLabel(type), className);
 }
 
-/** 牌背 */
+/** 牌背（单图，无需牌身叠加） */
 export function tileBackImage(className = ""): string {
   return `<img class="tile-img ${className}" src="tiles/Back.svg" alt="牌背" draggable="false" />`;
 }

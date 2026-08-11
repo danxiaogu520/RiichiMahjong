@@ -4,12 +4,13 @@ import type {
   GameOverView,
   GameStateView,
   JoinInfo,
+  MeldView,
   PlayerId,
   RoundResultView,
   RoomInfo,
 } from "./protocol";
 import { playerIndex } from "./protocol";
-import { tileImage, tileTypeImage, tileLabel, windName, seatName } from "./tiles";
+import { tileImage, tileTypeImage, tileBackImage, tileLabel, windName, seatName } from "./tiles";
 import {
   escapeHtml,
   MELD_NAMES,
@@ -37,6 +38,8 @@ export interface UiState {
   actionRequest?: ActionRequest;
   callRequest?: CallRequest;
   actionDeadline: number;
+  /** 立直待选状态：点了立直按钮后等待从手牌选牌打出 */
+  riichiPending: boolean;
   events: LogEntry[];
   roundResult?: { view: RoundResultView; nicknames: string[] };
   gameOver?: GameOverView;
@@ -175,21 +178,20 @@ export function renderTable(ui: UiState, callbacks: UiCallbacks): void {
         <button class="text-button" id="table-leave">退出</button>
       </header>
       <div class="mahjong-table">
-        <div class="table-center"><strong>${game ? `${windName(game.wind)}${game.round}局` : "等待牌局"}</strong><span>${game ? `剩余 ${game.remaining_tiles} 张 · ${phaseName(game)}` : "等待服务器状态…"}</span>${honba > 0 || riichiSticks > 0 ? `<span class="table-meta">${honba > 0 ? `${honba} 本场` : ""}${honba > 0 && riichiSticks > 0 ? " · " : ""}${riichiSticks > 0 ? `立直棒 ${riichiSticks}` : ""}</span>` : ""}</div>
-        ${[0, 1, 2, 3].map((index) => renderSeat(ui, index, names[index], own)).join("")}
-        <div class="dora-row"><span>宝牌</span>${game?.dora.map((type) => tileTypeImage(type)).join("") || ""}</div>
+        ${[0, 1, 2, 3].map((index) => renderTableSeat(ui, index, names[index], own)).join("")}
+        <div class="table-status">${game ? `${windName(game.wind)}${game.round}局 · ${honba} 本场 · 剩余 ${game.remaining_tiles} 张${riichiSticks > 0 ? ` · 立直棒 ${riichiSticks}` : ""} · ${phaseName(game)}` : "等待牌局…"}</div>
+        <div class="wanpai-area">${tileBackImage("wanpai-tile")}${tileBackImage("wanpai-tile")}${(game?.dora ?? []).map((type) => tileTypeImage(type, "wanpai-tile")).join("")}</div>
       </div>
       <div class="game-grid">
         <section class="hand-panel">
           <div class="panel-heading"><span>我的手牌</span><span>${game?.players[own]?.points?.toLocaleString() ?? "—"} 点</span></div>
-          <div class="tile-row">${renderOwnHand(ui)}</div>
+          ${renderOwnHand(ui)}
         </section>
         <aside class="side-panel">
-          <section class="action-panel"><p class="status" id="game-status">${escapeHtml(ui.latestMessage)}</p><div id="action-buttons">${renderActions(ui)}</div></section>
+          <section class="action-panel"><p class="status" id="game-status">${escapeHtml(ui.latestMessage)}</p><div class="action-row"><span id="countdown"></span></div><div id="action-buttons">${renderActions(ui)}</div></section>
           <section class="analysis-panel">${renderAnalysis(ui)}</section>
         </aside>
       </div>
-      <section class="discards-panel"><div class="panel-heading"><span>牌河</span><span id="countdown"></span></div>${[0, 1, 2, 3].map((index) => renderDiscardLine(game, index, names[index])).join("")}</section>
       <section class="event-panel">
         <div class="panel-heading"><span>对局记录</span></div>
         <div class="event-list">${ui.events.slice(-60).reverse().map((entry) => `<div class="event-line event-${entry.kind}"><span class="event-id">#${entry.id}</span>${escapeHtml(entry.text)}</div>`).join("") || `<div class="empty-state">等待对局事件…</div>`}</div>
@@ -208,21 +210,76 @@ export function renderTable(ui: UiState, callbacks: UiCallbacks): void {
   document.querySelector<HTMLButtonElement>("#game-over-home")?.addEventListener("click", callbacks.backToHome);
 }
 
-function renderSeat(ui: UiState, index: number, name: string, own: number): string {
+/**
+ * 桌面四边的玩家区域（参考 Mortal log-viewer 布局）：
+ * 区域整体按座位旋转（自己 0° / 右 90° / 对家 180° / 左 90°），
+ * 内部统一为：信息条 + 牌河（3 行 × 6 张，向中央让位）+ 副露（右侧）。
+ */
+function renderTableSeat(ui: UiState, index: number, name: string, own: number): string {
   const game = ui.gameState;
   const player = game?.players[index];
+  // 自己永远在下方，其余按相对座位旋转（Mortal 的 viewpoint 视角）。
+  const pos = ["bottom", "right", "top", "left"][(index - own + 4) % 4];
   const active = phasePlayer(game) === index ? " active-seat" : "";
+  const discards = player?.discards ?? [];
   const melds = player?.melds ?? [];
+  const riichiIndex = player?.is_riichi ? discards.length - 1 : -1;
+  // 牌桌内按真实座风显示（庄家为东），开局前回退到座位号。
+  const windLabel = player ? windName(player.wind) : seatName(index);
   return `
-    <div class="table-player player-${["bottom", "right", "top", "left"][index]}${active}">
-      <span class="seat-label">${seatName(index)}家 · ${name}${index === own ? "（我）" : ""}</span>
-      <small>${player?.points?.toLocaleString() ?? "—"} 点${player ? ` · ${player.hand_count} 枚` : ""}</small>
-      ${player?.is_riichi ? `<span class="riichi-badge">立直</span>` : ""}
-      ${melds.length ? `<span class="meld-row">${melds.map((meld) => {
-        const dir = meld.from_player !== null && meld.from_player !== index ? `<i class="meld-dir">${["", "→", "↑", "←"][(meld.from_player - index + 4) % 4]}</i>` : "";
-        return `<span class="meld-chip">${dir}${meld.tiles.map((tile) => tileImage(tile, "meld-tile")).join("")}</span>`;
-      }).join("")}</span>` : ""}
+    <div class="table-player player-${pos}${active}">
+      <div class="seat-bar">
+        <b>${windLabel} ${name}${index === own ? "（我）" : ""}</b>
+        <span class="seat-points">${player?.points?.toLocaleString() ?? "—"}</span>
+        ${player?.is_riichi ? `<span class="riichi-badge">立直</span>` : ""}
+        <span class="seat-count">${player ? `${player.hand_count} 枚` : ""}</span>
+      </div>
+      <div class="seat-body">
+        <div class="seat-river">${riverRows(discards, riichiIndex) || `<span class="river-empty">—</span>`}</div>
+        ${melds.length ? `<div class="seat-furos">${melds.map((meld) => `<span class="meld-chip">${meldImages(meld, index)}</span>`).join("")}</div>` : ""}
+      </div>
     </div>`;
+}
+
+/** 牌河：每行 6 张，先打的在前，立直宣言牌横置 */
+function riverRows(discards: number[], riichiIndex: number): string {
+  const rows: string[] = [];
+  for (let start = 0; start < discards.length; start += 6) {
+    rows.push(`<div class="river-row">${discards.slice(start, start + 6).map((tile, i) => {
+      const global = start + i;
+      return global === riichiIndex
+        ? `<span class="laid-tile">${tileImage(tile, "river-tile")}</span>`
+        : tileImage(tile, "river-tile");
+    }).join("")}</div>`);
+  }
+  return rows.join("");
+}
+
+/**
+ * 副露渲染（参考 Mortal）：
+ * - 明副露：鸣到的牌横置，按来源方向插入（下家→最右、对家→中间、上家→最左）；
+ * - 暗杠：两端牌背、中间两张翻开。
+ */
+function meldImages(meld: MeldView, index: number): string {
+  const tiles = meld.tiles;
+  if (meld.kind === "Ankan" && tiles.length >= 4) {
+    return `${tileBackImage("meld-tile")}${tileImage(tiles[0], "meld-tile")}${tileImage(tiles[1], "meld-tile")}${tileBackImage("meld-tile")}`;
+  }
+  const dir = meld.from_player !== null && meld.from_player !== index ? (meld.from_player - index + 4) % 4 : 0;
+  const laidPos = [null, 3, 1, 0][dir] as number | null;
+  const taken = tiles[tiles.length - 1];
+  const handTiles = tiles.slice(0, -1);
+  const parts: string[] = [];
+  let handIndex = 0;
+  for (let i = 0; i < tiles.length; i += 1) {
+    if (laidPos !== null && i === laidPos) {
+      parts.push(`<span class="laid-tile">${tileImage(taken, "meld-tile")}</span>`);
+    } else {
+      parts.push(tileImage(handTiles[handIndex] ?? taken, "meld-tile"));
+      handIndex += 1;
+    }
+  }
+  return parts.join("");
 }
 
 function renderOwnHand(ui: UiState): string {
@@ -230,9 +287,9 @@ function renderOwnHand(ui: UiState): string {
   const own = ownIndex(ui);
   const hand = game?.players[own]?.hand ?? [];
   const melds = game?.players[own]?.melds ?? [];
-  const meldHtml = melds.map((meld) => `
-    <span class="meld-chip hand-meld">${meld.tiles.map((tile) => tileImage(tile, "hand-tile")).join("")}<i>${MELD_NAMES[meld.kind] ?? meld.kind}</i></span>`).join("");
-  if (!hand.length) return `${meldHtml}等待快照…`;
+  const meldHtml = melds.length ? `<div class="own-meld-row">${melds.map((meld) => `
+    <span class="meld-chip hand-meld">${meld.tiles.map((tile) => tileImage(tile, "hand-tile")).join("")}<i>${MELD_NAMES[meld.kind] ?? meld.kind}</i></span>`).join("")}</div>` : "";
+  if (!hand.length) return `${meldHtml}<div class="tile-row">等待快照…</div>`;
   // 服务端下发的 hand 已包含当前玩家的摸牌；把那张牌分离出来放行尾高亮，
   // 避免与 phase.drawn_tile 重复渲染导致牌数多一张。
   const drawnRaw = phaseDrawnTile(game);
@@ -246,38 +303,39 @@ function renderOwnHand(ui: UiState): string {
     parts.push(`<span class="draw-gap"></span>`);
     parts.push(handTileButton(ui, hand[drawnIndex], true));
   }
-  return `${meldHtml}${parts.join("")}`;
+  return `${meldHtml}<div class="tile-row">${parts.join("")}</div>`;
 }
 
 function handTileButton(ui: UiState, tile: number, drawn: boolean): string {
-  const legal = ui.actionRequest?.discard_options.includes(tile) ?? false;
+  // 立直待选：只能点立直可打的牌（点击发送 RiichiDiscard）；否则只能点普通可打牌。
+  const legal = ui.riichiPending
+    ? (ui.actionRequest?.riichi_options.includes(tile) ?? false)
+    : (ui.actionRequest?.discard_options.includes(tile) ?? false);
+  const action = ui.riichiPending ? `riichi:${tile}` : `discard:${tile}`;
   const className = `tile ${drawn ? "drawn-tile" : ""} ${legal ? "legal-tile" : "disabled-tile"}`;
-  return `<button class="${className}" ${legal ? `data-action="discard:${tile}"` : "disabled"} title="${tileLabel(tile)}">${tileImage(tile, "hand-tile")}</button>`;
-}
-
-function renderDiscardLine(game: GameStateView | undefined, index: number, name: string): string {
-  const player = game?.players[index];
-  const discards = player?.discards ?? [];
-  const riichiIndex = player?.is_riichi ? (player.discards.length - 1) : -1;
-  return `<div class="discard-line"><b>${seatName(index)} ${name}</b><span>${discards.map((tile, i) => i === riichiIndex
-    ? `<span class="riichi-tile">${tileImage(tile, "discard-tile")}</span>`
-    : tileImage(tile, "discard-tile")).join("") || "—"}</span></div>`;
+  return `<button class="${className}" ${legal ? `data-action="${action}"` : "disabled"} title="${tileLabel(tile)}">${tileImage(tile, "hand-tile")}</button>`;
 }
 
 function renderActions(ui: UiState): string {
   if (ui.callRequest?.player === playerIndex(ui.session!.player)) {
-    return ui.callRequest.options.map((option, index) => Object.entries(option.call_type).map(([kind, payload]) =>
-      `<button data-action="call:${kind}:${index}">${MELD_NAMES[kind] ?? kind}${callTiles(payload)}</button>`).join("")).join("")
-      + `<button class="secondary-button" data-action="call:Pass:-1">跳过</button>`;
+    return ui.callRequest.options.map((option, index) => Object.entries(option.call_type).map(([kind, payload]) => {
+      const cls = kind === "Ron" ? "btn-ron" : kind === "Chi" ? "btn-chi" : kind === "Pon" ? "btn-pon" : "btn-kan";
+      return `<button class="${cls}" data-action="call:${kind}:${index}">${MELD_NAMES[kind] ?? kind}${callTiles(payload)}</button>`;
+    }).join("")).join("")
+      + `<button class="btn-pass" data-action="call:Pass:-1">跳过</button>`;
   }
   if (ui.actionRequest?.player !== playerIndex(ui.session!.player)) return "";
   const request = ui.actionRequest;
-  const buttons = request.discard_options.map((tile) => `<button data-action="discard:${tile}">打 ${tileLabel(tile)}</button>`);
-  if (request.can_tsumo) buttons.unshift(`<button data-action="Tsumo">自摸</button>`);
-  if (request.can_riichi) buttons.push(...request.riichi_options.map((tile) => `<button data-action="riichi:${tile}">立直打 ${tileLabel(tile)}</button>`));
-  buttons.push(...request.ankan_options.map((tile) => `<button data-action="ankan:${tile}">暗杠 ${tileLabel(tile)}</button>`));
-  buttons.push(...request.kakan_options.map(([index, tile]) => `<button data-action="kakan:${index}:${tile}">加杠 ${tileLabel(tile)}</button>`));
-  if (request.can_kyuushu) buttons.push(`<button data-action="KyuushuKyuuhai">九种九牌</button>`);
+  // 立直待选状态：禁止其他操作，只保留提示和取消，打牌方式 = 点手牌。
+  if (ui.riichiPending) {
+    return `<span class="riichi-hint">请点击手牌中要打出的牌（立直宣言）</span><button class="btn-pass" data-action="RiichiCancel">取消立直</button>`;
+  }
+  const buttons: string[] = [];
+  if (request.can_tsumo) buttons.unshift(`<button class="btn-tsumo" data-action="Tsumo">自摸</button>`);
+  if (request.can_riichi) buttons.push(`<button class="btn-riichi" data-action="Riichi">立直</button>`);
+  buttons.push(...request.ankan_options.map((tile) => `<button class="btn-kan" data-action="ankan:${tile}">暗杠 ${tileLabel(tile)}</button>`));
+  buttons.push(...request.kakan_options.map(([index, tile]) => `<button class="btn-kan" data-action="kakan:${index}:${tile}">加杠 ${tileLabel(tile)}</button>`));
+  if (request.can_kyuushu) buttons.push(`<button class="btn-ryukyoku" data-action="KyuushuKyuuhai">九种九牌</button>`);
   return buttons.join("") || `<span class="status">等待操作…</span>`;
 }
 
