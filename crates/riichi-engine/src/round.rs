@@ -81,6 +81,7 @@ impl GameState {
         };
 
         self.round_end_reason = None;
+        self.round_win_details.clear();
     }
 
     /// 获取本局结算后的四家点棒变化。

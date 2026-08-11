@@ -7,6 +7,7 @@ edition = "2021"
 riichi-core = { path = "../riichi-core" }
 riichi-ai = { path = "../riichi-ai" }
 riichi-engine = { path = "../riichi-engine" }
+riichi-logic = { path = "../riichi-logic" }
 riichi-proto = { path = "../riichi-proto" }
 riichi-session = { path = "../riichi-session" }
 axum = { version = "0.7", features = ["ws"] }

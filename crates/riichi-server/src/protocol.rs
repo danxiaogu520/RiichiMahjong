@@ -4,14 +4,16 @@
 use riichi_core::game::{
     CallKind, CallOption, CallType, DiscardKind, GameEvent, RoundEndReason, WinKind,
 };
-use riichi_core::meld::MeldKind;
+use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
+use riichi_core::tile::{Tile, TileType};
 use riichi_engine::game::GamePhase;
 use riichi_proto::messages::{
-    ActionRequest, CallKindView, CallResponsePayload, CallTypeView, ClientEnvelope, ClientMessage,
-    DiscardKindView, DrawPositionView, GameEventView, GamePhaseView, GameStateView, MeldKindView,
-    MeldView, PlayerView, RoundEndReasonView, ServerEnvelope, ServerMessage, TenpaiInfoView,
-    TurnActionPayload, WaitInfoView, WinKindView, PROTOCOL_VERSION,
+    ActionRequest, AnalysisInfo, CallKindView, CallResponsePayload, CallTypeView, ClientEnvelope,
+    ClientMessage, DiscardKindView, DiscardOptionView, DrawPositionView, GameEventView,
+    GamePhaseView, GameStateView, MeldKindView, MeldView, PlayerView, RoundEndReasonView,
+    ServerEnvelope, ServerMessage, TenpaiInfoView, TurnActionPayload, WaitInfoView, WinKindView,
+    PROTOCOL_VERSION,
 };
 use std::collections::HashSet;
 
@@ -124,12 +126,72 @@ pub fn client_message_to_action(message: ClientMessage) -> Option<PlayerAction> 
     }
 }
 
+/// 为收件人计算牌效分析（向听数、各弃牌的进张/改良）。
+///
+/// 分析属于辅助展示数据，只使用收件人可见的信息（自己的手牌和副露、
+/// 全场的弃牌和副露、宝牌指示牌），不改变对局结果。
+fn compute_analysis(
+    recipient: PlayerId,
+    hand_tiles: &[Tile],
+    discards: &[Vec<Tile>; 4],
+    melds: &[Vec<Meld>; 4],
+    dora: &[TileType],
+    pending_discard: Option<(PlayerId, Tile)>,
+) -> Option<AnalysisInfo> {
+    if hand_tiles.len() < 2 {
+        return None;
+    }
+    let index = recipient.0;
+    let player_melds = vec![melds[index]
+        .iter()
+        .flat_map(|meld| meld.tiles.clone())
+        .collect()];
+    let other_melds = melds
+        .iter()
+        .enumerate()
+        .filter(|(player, _)| *player != index)
+        .map(|(_, melds)| melds.iter().flat_map(|meld| meld.tiles.clone()).collect())
+        .collect::<Vec<Vec<Tile>>>();
+    let mut all_discards: Vec<Tile> = discards.iter().flatten().copied().collect();
+    if let Some((_, tile)) = pending_discard {
+        all_discards.push(tile);
+    }
+    let visible = riichi_logic::visibility::VisibleTiles::from_data(
+        &player_melds,
+        &other_melds,
+        &all_discards,
+        dora,
+    );
+    let calculator = riichi_logic::shanten::ShantenCalculator::new();
+    let options = riichi_ai::analyze_discard(&calculator, hand_tiles, &visible);
+    if options.is_empty() {
+        return None;
+    }
+    let current_shanten = options[0].shanten;
+    Some(AnalysisInfo {
+        discard_options: options
+            .into_iter()
+            .map(|option| DiscardOptionView {
+                tile: option.tile,
+                shanten: option.shanten,
+                acceptance_count: option.acceptance_copies,
+                improvement_count: option.improvement_copies,
+            })
+            .collect(),
+        // 进张/改良的具体牌列表暂不下发，客户端只展示总数。
+        acceptance: Vec::new(),
+        improvement: Vec::new(),
+        current_shanten,
+    })
+}
+
 /// Converts one player's internal state event into a player-scoped wire view.
 /// Opponent hands are always omitted, even though the internal event contains
 /// the hand snapshot for the recipient only.
 pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option<ServerMessage> {
     let SessionEvent::StateUpdate {
         phase,
+        pending_discard,
         hand_tiles,
         hand_count,
         hand_counts,
@@ -183,7 +245,14 @@ pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option
         remaining_tiles: *remaining_tiles,
         phase: phase_view(phase, recipient),
         recent_events: Vec::new(),
-        analysis: None,
+        analysis: compute_analysis(
+            recipient,
+            hand_tiles,
+            discards,
+            melds,
+            dora,
+            *pending_discard,
+        ),
         tenpai_info: tenpai_info.as_ref().map(|info| TenpaiInfoView {
             is_furiten: info.is_furiten,
             waits: info
@@ -265,11 +334,13 @@ pub fn session_event_to_wire(event: &SessionEvent, recipient: PlayerId) -> Optio
         SessionEvent::CallRequired { options } => Some(call_options_to_wire(recipient, options)),
         SessionEvent::RoundResult {
             reason,
+            win_details,
             point_changes,
             ..
         } => Some(ServerMessage::RoundResult(
             riichi_proto::messages::RoundResultView {
                 reason: round_end_reason_label_view(reason),
+                win_details: win_details.clone(),
                 point_changes: *point_changes,
             },
         )),

@@ -36,6 +36,7 @@ impl GameState {
             },
             ranking_at_game_end: None,
             round_end_reason: None,
+            round_win_details: Vec::new(),
             replaying: false,
             replay_passes: std::collections::HashSet::new(),
             round: 1,

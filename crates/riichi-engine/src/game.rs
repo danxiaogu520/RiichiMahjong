@@ -59,6 +59,9 @@ pub struct GameState {
     pub ranking_at_game_end: Option<[usize; 4]>,
     /// Derived reason for the current hand's terminal state.
     pub round_end_reason: Option<riichi_core::game::RoundEndReason>,
+    /// 本局和牌的役种明细（多人荣和时包含所有和了者），流局时为空。
+    #[serde(default)]
+    pub round_win_details: Vec<String>,
     /// Suppresses re-emission into the authoritative log while an existing
     /// event stream is being folded into a state.
     #[serde(skip)]

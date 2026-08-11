@@ -766,6 +766,7 @@ dependencies = [
  "riichi-ai",
  "riichi-core",
  "riichi-engine",
+ "riichi-logic",
  "riichi-proto",
  "riichi-session",
  "serde",

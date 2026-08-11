@@ -73,6 +73,8 @@ export interface GameStateView {
   dora: number[];
   remaining_tiles: number;
   phase: GamePhaseView;
+  tenpai_info: TenpaiInfoView | null;
+  analysis: AnalysisInfo | null;
 }
 
 export type GamePhaseView =
@@ -94,7 +96,11 @@ export interface PlayerView {
   riichi_declaration_tile: number | null;
 }
 
-export interface MeldView { kind: string; tiles: number[]; from_player: PlayerId | null; }
+export interface MeldView {
+  kind: string;
+  tiles: number[];
+  from_player: PlayerId | null;
+}
 
 export interface ActionRequest {
   player: PlayerId;
@@ -110,6 +116,91 @@ export interface ActionRequest {
 export interface CallRequest {
   player: PlayerId;
   options: { player: PlayerId; call_type: Record<string, unknown> }[];
+}
+
+// ─── 服务端事件（Event 消息体） ───────────────────────────────
+
+export type GameEventView =
+  | { Draw: { player: PlayerId; tile: number | null } }
+  | { Discard: { player: PlayerId; tile: number; kind: "Tsumogiri" | "Tedashi" } }
+  | {
+      Call: {
+        player: PlayerId;
+        kind: "Chi" | "Pon" | "Minkan" | "Ankan" | "Kakan";
+        tiles: number[];
+        called_tile: number | null;
+        from_player: PlayerId | null;
+        meld_index: number | null;
+      };
+    }
+  | { Pass: { player: PlayerId } }
+  | { Riichi: { player: PlayerId } }
+  | {
+      Win: {
+        winners: PlayerId[];
+        tile: number;
+        kind: "Ron" | "Tsumo";
+        loser: PlayerId | null;
+      };
+    }
+  | { AbortiveDraw: { player: PlayerId | null; reason: RoundEndReasonView } };
+
+export interface GameEventEnvelope {
+  event_id: number;
+  event: GameEventView;
+}
+
+export type RoundEndReasonView =
+  | { ExhaustiveDraw: null }
+  | { Win: { winner: PlayerId; is_tsumo: boolean } }
+  | { MultiWin: { winners: PlayerId[] } }
+  | { KyuushuKyuuhai: null }
+  | { SuufonRenda: null }
+  | { SuuchaRiichi: null }
+  | { SuuKantsu: null }
+  | { Unknown: string };
+
+export interface RoundResultView {
+  reason: RoundEndReasonView;
+  win_details: string[];
+  point_changes: [number, number, number, number];
+}
+
+export interface GameOverView {
+  scores: [number, number, number, number];
+  ranking: [number, number, number, number];
+}
+
+// ─── 听牌与牌效分析 ──────────────────────────────────────────
+
+export interface TenpaiInfoView {
+  waits: WaitInfoView[];
+  is_furiten: boolean;
+}
+
+export interface WaitInfoView {
+  tile_type: number;
+  remaining: number;
+  is_no_yaku: boolean;
+}
+
+export interface AnalysisInfo {
+  discard_options: DiscardOptionView[];
+  acceptance: AcceptanceInfoView[];
+  improvement: AcceptanceInfoView[];
+  current_shanten: number;
+}
+
+export interface DiscardOptionView {
+  tile: number;
+  shanten: number;
+  acceptance_count: number;
+  improvement_count: number;
+}
+
+export interface AcceptanceInfoView {
+  tile_type: number;
+  copies: number;
 }
 
 export function playerIndex(player: PlayerId): number {

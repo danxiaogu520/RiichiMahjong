@@ -751,10 +751,9 @@ impl GameSession {
     }
 
     fn round_win_details(&self) -> Vec<String> {
-        // Win events intentionally contain only the winning action.  Yaku
-        // and point details are derived from the resulting state instead of
-        // being duplicated in the authoritative event log.
-        Vec::new()
+        // 役种明细在 engine 结算时派生（不写入权威事件日志），
+        // 这里直接转发给客户端展示。流局时引擎会清空该列表。
+        self.game.round_win_details.clone()
     }
 
     async fn wait_for_turn_action(&mut self, expected: PlayerId) -> Option<TurnAction> {

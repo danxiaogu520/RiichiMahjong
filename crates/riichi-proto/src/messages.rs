@@ -284,6 +284,8 @@ pub enum CallTypeView {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoundResultView {
     pub reason: RoundEndReasonView,
+    /// 和牌明细（役种、符数、番数等）的人类可读文案，流局时为空。
+    pub win_details: Vec<String>,
     pub point_changes: [i32; 4],
 }
 

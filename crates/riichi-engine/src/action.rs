@@ -217,12 +217,22 @@ impl GameState {
                     GameError::InvalidAction("没有摸到的牌，无法自摸".to_string())
                 })?;
                 let result = self.check_win(current_player, true, winning_tile, None, false);
-                if let Some((changes, _yaku_names)) = result {
+                if let Some((changes, yaku_names)) = result {
                     self.insert_tile(); // 提交自摸牌到手牌
                                         // 应用点数变化
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
+                    self.round_win_details = yaku_names
+                        .into_iter()
+                        .map(|detail| {
+                            format!(
+                                "{}家：{}",
+                                ["东", "南", "西", "北"][current_player.0],
+                                detail
+                            )
+                        })
+                        .collect();
                     self.riichi_sticks = 0;
                     new_events.push(GameEvent::Win {
                         winners: vec![current_player],
@@ -304,7 +314,7 @@ impl GameState {
 
         let riichi_bonus = self.riichi_sticks * 1000;
         let honba_bonus = self.honba * 300;
-        for (index, (winner, (mut changes, _yaku_names))) in results.into_iter().enumerate() {
+        for (index, (winner, (mut changes, yaku_names))) in results.into_iter().enumerate() {
             // Mortal 的多家荣和规则：本场棒和立直棒只在第一位赢家
             // 的这次荣和中结算，后续赢家只取得本身的和牌点数。
             if index > 0 {
@@ -318,6 +328,11 @@ impl GameState {
             for (player_index, change) in changes.iter().enumerate() {
                 self.players[player_index].points += change;
             }
+            self.round_win_details.extend(
+                yaku_names
+                    .into_iter()
+                    .map(|detail| format!("{}家：{}", ["东", "南", "西", "北"][winner.0], detail)),
+            );
             self.players[winner.0]
                 .hand
                 .add(discarded_tile)
@@ -485,7 +500,7 @@ impl GameState {
             // 荣和
             ResponseAction::Ron => {
                 let result = self.check_win(player, false, discarded_tile, Some(discarder), false);
-                if let Some((changes, _yaku_names)) = result {
+                if let Some((changes, yaku_names)) = result {
                     self.players[player.0]
                         .hand
                         .add(discarded_tile)
@@ -494,6 +509,12 @@ impl GameState {
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
+                    self.round_win_details = yaku_names
+                        .into_iter()
+                        .map(|detail| {
+                            format!("{}家：{}", ["东", "南", "西", "北"][player.0], detail)
+                        })
+                        .collect();
                     // 本局和牌后，场上供托由赢家取得；结算结果已经包含供托点数。
                     self.riichi_sticks = 0;
                     new_events.push(GameEvent::Win {
@@ -681,7 +702,7 @@ impl GameState {
                 }
 
                 let result = self.check_win(player, false, kakan_tile, Some(kakan_player), true);
-                if let Some((changes, _yaku_names)) = result {
+                if let Some((changes, yaku_names)) = result {
                     self.players[player.0]
                         .hand
                         .add(kakan_tile)
@@ -690,6 +711,12 @@ impl GameState {
                     for (i, &change) in changes.iter().enumerate() {
                         self.players[i].points += change;
                     }
+                    self.round_win_details = yaku_names
+                        .into_iter()
+                        .map(|detail| {
+                            format!("{}家：{}", ["东", "南", "西", "北"][player.0], detail)
+                        })
+                        .collect();
                     self.riichi_sticks = 0;
                     new_events.push(GameEvent::Win {
                         winners: vec![player],
@@ -1087,5 +1114,48 @@ mod tests {
         assert!(!options.iter().any(|option| {
             option.player == PlayerId(1) && matches!(option.call_type, CallType::Ron)
         }));
+    }
+
+    #[test]
+    fn tsumo_records_win_details_with_seat_prefix() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(77);
+        state.start_round(&mut rng);
+        // 123456789万 + 东东东 + 中，摸中自摸：混一色 + 役牌，必和。
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(108),
+            Tile::from_raw(109),
+            Tile::from_raw(110),
+            Tile::from_raw(132),
+        ]);
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(133)),
+        };
+
+        state.execute_action(TurnAction::Tsumo).unwrap();
+
+        assert!(!state.round_win_details.is_empty(), "自摸应记录役种明细");
+        assert!(
+            state
+                .round_win_details
+                .iter()
+                .all(|detail| detail.contains("家：")),
+            "明细应带座位前缀: {:?}",
+            state.round_win_details
+        );
+        assert!(state
+            .round_win_details
+            .iter()
+            .any(|detail| detail.contains("翻")));
     }
 }

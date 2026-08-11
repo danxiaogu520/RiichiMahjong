@@ -97,6 +97,7 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 .lobby-title { margin-top: 24px; font-size: clamp(42px, 8vw, 64px); }
 .lobby-title span { color: #f2c879; letter-spacing: .08em; }
 .text-button { margin: 0; padding: 0; color: #9eafb7; background: transparent; font-size: 13px; font-weight: 500; }
+.text-button:hover { color: #eef4f7; }
 .player-list { display: grid; gap: 8px; margin-top: 32px; }
 .player-row { display: flex; align-items: center; gap: 14px; min-height: 62px; padding: 12px 14px; border: 1px solid #29434e; border-radius: 12px; background: rgba(20, 34, 43, .72); }
 .player-row.own-player { border-color: #6bc5a2; }
@@ -115,44 +116,129 @@ button span { float: right; font-size: 20px; line-height: 14px; }
 .secondary-button:disabled { cursor: not-allowed; opacity: .45; }
 .empty-state { padding: 28px; border: 1px dashed #35535e; border-radius: 12px; color: #7f969e; text-align: center; }
 
+/* ─── 牌桌整体 ──────────────────────────────────────────── */
+
 .table-shell { min-height: 100vh; padding: 28px; background: #101820; }
 .table-header { display: flex; align-items: center; gap: 18px; max-width: 1200px; margin: 0 auto; }
 .table-header .eyebrow { flex: 1; margin: 0; }
 .connection-dot { color: #8fe2bd; font-size: 12px; }
+.sound-toggle { font-size: 16px; }
+
 .mahjong-table { position: relative; width: min(100%, 900px); aspect-ratio: 1.5; margin: 5vh auto 0; border: 18px solid #684b34; border-radius: 28px; background: #28604f; box-shadow: inset 0 0 0 3px #8b6845, 0 30px 80px #070c0f; }
-.table-center { position: absolute; inset: 35% 35%; display: grid; place-content: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; color: #d7eee2; text-align: center; }
+.table-center { position: absolute; inset: 30% 33%; display: grid; place-content: center; gap: 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; color: #d7eee2; text-align: center; }
 .table-center span { color: #98c3b0; font-size: 11px; }
-.table-player { position: absolute; display: grid; gap: 4px; color: #d7eee2; font-size: 13px; font-weight: 700; text-align: center; }
+.table-meta { color: #f2c879 !important; font-weight: 700; }
+
+.table-player { position: absolute; display: grid; gap: 3px; color: #d7eee2; font-size: 13px; font-weight: 700; text-align: center; max-width: 240px; }
 .table-player small { color: #9fc4b5; font-size: 11px; font-weight: 500; }
 .table-player.active-seat { color: #f2c879; text-shadow: 0 0 16px rgba(242, 200, 121, .5); }
-.player-top { top: 7%; left: 50%; transform: translateX(-50%); }
-.player-left { top: 50%; left: 4%; transform: translateY(-50%); }
-.player-right { top: 50%; right: 4%; transform: translateY(-50%); }
-.player-bottom { bottom: 7%; left: 50%; transform: translateX(-50%); color: #f2c879; }
-.dora-row { position: absolute; top: 50%; right: 7%; color: #b7d8ca; font-size: 11px; }
-.game-grid { width: min(100%, 900px); margin: 20px auto; display: grid; grid-template-columns: 1fr 270px; gap: 12px; }
-.hand-panel, .action-panel, .discards-panel { padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
+.player-top { top: 5%; left: 50%; transform: translateX(-50%); }
+.player-left { top: 44%; left: 3%; transform: translateY(-50%); }
+.player-right { top: 44%; right: 3%; transform: translateY(-50%); }
+.player-bottom { bottom: 6%; left: 50%; transform: translateX(-50%); color: #f2c879; }
+.seat-label { display: inline-block; background: rgba(0,0,0,.28); border-radius: 8px; padding: 2px 10px; }
+.riichi-badge { color: #ff9d9d; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+.meld-row { display: flex; justify-content: center; gap: 6px; }
+.meld-chip { display: inline-flex; align-items: center; gap: 1px; padding: 2px 4px; border: 1px solid rgba(255,255,255,.22); border-radius: 6px; background: rgba(0,0,0,.3); }
+.meld-chip i { color: #d7eee2; font-size: 10px; font-style: normal; font-weight: 700; }
+.meld-dir { color: #f2c879; font-size: 11px; font-style: normal; font-weight: 800; }
+.meld-tile { width: 14px; height: 19px; }
+
+.dora-row { position: absolute; top: 50%; right: 6%; display: grid; gap: 2px; color: #b7d8ca; font-size: 11px; text-align: center; }
+.dora-row img { width: 20px; height: 27px; margin: 1px; }
+.dora-row span { font-weight: 700; }
+
+/* ─── 牌面 ──────────────────────────────────────────────── */
+
+.tile-img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.tile-row { display: flex; flex-wrap: wrap; align-items: end; gap: 3px; min-height: 62px; }
+.tile { width: 46px; height: 62px; margin: 0; padding: 0; border: 1px solid #cbd8d1; border-radius: 6px; background: #fff; overflow: hidden; }
+.tile:hover { transform: translateY(-4px); box-shadow: 0 8px 18px rgba(0,0,0,.4); }
+.tile.disabled-tile { cursor: default; opacity: .82; }
+.tile.disabled-tile:hover { transform: none; box-shadow: none; }
+.tile.legal-tile { box-shadow: 0 0 0 2px #f2c879; }
+.tile.legal-tile:hover { box-shadow: 0 0 0 2px #f2c879, 0 8px 18px rgba(0,0,0,.4); }
+.drawn-tile { margin-left: 12px; }
+.draw-gap { width: 3px; }
+.hand-tile { width: 46px; height: 62px; }
+.hand-meld { margin-right: 6px; }
+.hand-meld .hand-tile { width: 36px; height: 48px; }
+.discard-tile { width: 26px; height: 35px; }
+.riichi-tile img { transform: rotate(90deg); }
+.tenpai-tile { width: 30px; height: 40px; }
+.analysis-tile { width: 26px; height: 35px; }
+
+/* ─── 主操作区 ──────────────────────────────────────────── */
+
+.game-grid { width: min(100%, 900px); margin: 20px auto; display: grid; grid-template-columns: 1fr 300px; gap: 12px; }
+.hand-panel, .action-panel, .analysis-panel, .discards-panel, .event-panel { padding: 16px; border: 1px solid #2c4652; border-radius: 14px; background: #14222b; }
 .panel-heading { display: flex; justify-content: space-between; margin-bottom: 12px; color: #b7c6cb; font-size: 12px; }
-.tile-row { display: flex; flex-wrap: wrap; align-items: end; gap: 4px; min-height: 54px; }
-.tile { min-width: 34px; margin: 0; padding: 9px 6px; border: 1px solid #cbd8d1; border-radius: 5px; color: #26332f; background: #eef5ef; font-size: 12px; font-weight: 800; }
-.tile:hover { transform: translateY(-4px); background: #f2c879; }
-.tile.disabled-tile { cursor: default; opacity: .55; }
-.tile.disabled-tile:hover { transform: none; background: #eef5ef; }
-.drawn-tile { margin-left: 10px; }
-.draw-gap { width: 2px; }
-.action-panel { display: grid; align-content: start; gap: 12px; }
+
+.side-panel { display: grid; align-content: start; gap: 12px; }
+.action-panel { display: grid; gap: 12px; }
 .action-panel button { width: 100%; margin: 0; padding: 10px; font-size: 12px; }
 .action-panel .secondary-button { color: #e9d49c; background: #3a3630; }
+
+.analysis-panel { display: grid; gap: 8px; min-height: 60px; }
+.tenpai-row, .analysis-row { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.tenpai-remaining { color: #b7c6cb; font-size: 12px; }
+.analysis-shanten { color: #d7eee2; font-size: 12px; font-weight: 700; }
+.analysis-count { color: #9fc4b5; font-size: 11px; }
+.flag-furiten { color: #ff9d9d; font-weight: 800; }
+.flag-no-yaku { color: #e9d49c; font-size: 11px; font-weight: 700; }
+
 .discards-panel { width: min(100%, 900px); margin: 0 auto; }
-.discard-line { display: grid; grid-template-columns: 130px 1fr; gap: 10px; min-height: 28px; color: #b7c6cb; font-size: 12px; }
-.discard-line span { color: #d7eee2; word-spacing: 7px; }
+.discard-line { display: grid; grid-template-columns: 150px 1fr; gap: 10px; min-height: 38px; color: #b7c6cb; font-size: 12px; }
+.discard-line > span { display: flex; flex-wrap: wrap; gap: 2px; }
+
+.event-panel { width: min(100%, 900px); margin: 12px auto 0; }
+.event-list { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; }
+.event-line { display: flex; gap: 10px; padding: 6px 8px; border-radius: 8px; color: #d7eee2; font-size: 12px; background: rgba(255,255,255,.03); }
+.event-id { color: #5c7280; font-size: 10px; line-height: 18px; }
+.event-riichi { color: #ffd9d9; background: rgba(255, 100, 100, .08); }
+.event-win { color: #ffe3a6; background: rgba(242, 200, 121, .1); }
+.event-call { color: #c9e8ff; background: rgba(107, 197, 162, .08); }
+.event-draw { color: #b7c6cb; }
+.event-discard { color: #9eafb7; }
+
+/* ─── 结算与终局弹窗 ────────────────────────────────────── */
+
+.overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(8, 12, 16, .72); backdrop-filter: blur(4px); }
+.overlay-card { width: min(100%, 460px); padding: 28px; border: 1px solid #35535e; border-radius: 20px; background: #14222b; box-shadow: 0 30px 90px rgba(0,0,0,.5); }
+.overlay-card .eyebrow { margin: 0 0 10px; }
+.overlay-card h2 { margin: 0 0 18px; color: #eef4f7; font-size: 26px; letter-spacing: -.03em; }
+
+.win-details { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #2c4652; border-radius: 12px; list-style: none; color: #f2c879; font-size: 13px; }
+.win-details li + li { margin-top: 6px; }
+
+.score-table { display: grid; gap: 6px; margin-bottom: 20px; }
+.score-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #29434e; border-radius: 10px; background: rgba(20, 34, 43, .72); }
+.score-delta { margin-left: auto; font-size: 15px; font-weight: 800; }
+.score-plus { color: #8fe2bd; }
+.score-minus { color: #ff9d9d; }
+
+.ranking-list { display: grid; gap: 8px; margin-bottom: 20px; }
+.ranking-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #29434e; border-radius: 12px; background: rgba(20, 34, 43, .72); }
+.ranking-row.own-player { border-color: #6bc5a2; }
+.rank-badge { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: #102018; background: #9eafb7; font-weight: 800; }
+.rank-1 .rank-badge { background: #f2c879; }
+.rank-2 .rank-badge { background: #d9e2e8; }
+.rank-3 .rank-badge { background: #b98a5a; }
+.overlay-card .lobby-actions { margin-top: 4px; }
 
 @media (max-width: 640px) {
   .shell { width: min(100% - 32px, 560px); padding-top: 8vh; }
   .join-card { padding: 18px; }
   .table-shell { padding: 18px; }
-  .mahjong-table { border-width: 10px; }
+  .mahjong-table { border-width: 10px; aspect-ratio: 1; }
+  .table-center { inset: 34% 28%; }
+  .dora-row { top: auto; bottom: 4%; right: 50%; transform: translateX(50%); flex-direction: row; gap: 6px; }
+  .dora-row img { width: 16px; height: 22px; }
   .game-grid { grid-template-columns: 1fr; }
-  .dora-row { top: 63%; right: 50%; transform: translateX(50%); }
-  .discard-line { grid-template-columns: 90px 1fr; }
+  .discard-line { grid-template-columns: 84px 1fr; }
+  .tile { width: 36px; height: 48px; }
+  .hand-tile { width: 36px; height: 48px; }
+  .hand-meld .hand-tile { width: 28px; height: 38px; }
+  .table-player { font-size: 11px; }
+  .player-left, .player-right { top: 42%; }
 }

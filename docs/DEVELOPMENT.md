@@ -11,6 +11,9 @@ cargo fmt --all -- --check
 cargo check --workspace
 cargo test --workspace
 cargo run -p riichi-debug
+cd tauri-app && npm install && npm run build  # 浏览器/Tauri 前端构建
+node tauri-app/scripts/smoke-test.mjs  # 端到端冒烟：自动对局验证协议数据（需服务器端口 3000）
+node tauri-app/scripts/fetch-tiles.mjs  # 重新拉取公有领域牌面 SVG 素材
 ```
 
 提交前至少运行格式检查、workspace 测试和与改动模块对应的测试。规则或结算改动应补充可复现的回归测试，优先放在对应 crate；跨模块流程放在 `crates/riichi-engine/tests/`。
