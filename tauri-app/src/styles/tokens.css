@@ -1,0 +1,86 @@
+/* ─── Design Tokens ──────────────────────────────────────────
+   全局设计变量：色彩、圆角、阴影、间距、动效。
+   视觉体系：深夜牌室 —— 墨青底色 + 麻将绿桌面 + 暖金点缀。 */
+
+:root {
+  /* 基础色 */
+  --c-bg: #0c1319;
+  --c-bg-glow: #1d3a4a;
+  --c-surface: #122029;
+  --c-surface-raised: #182a35;
+  --c-border: #27414d;
+  --c-border-strong: #35535e;
+
+  /* 文字 */
+  --c-text: #eef4f7;
+  --c-text-dim: #9eafb7;
+  --c-text-faint: #7f969e;
+
+  /* 强调色 */
+  --c-accent: #8fe2bd;
+  --c-accent-deep: #6bc5a2;
+  --c-accent-ink: #102018;
+  --c-gold: #f2c879;
+  --c-gold-dim: #e9d49c;
+  --c-danger: #ff9d9d;
+
+  /* 桌面 */
+  --c-felt: #28604f;
+  --c-rail: #684b34;
+  --c-rail-light: #8b6845;
+
+  /* 动作按钮 */
+  --c-tsumo: #ff9ec4;
+  --c-tsumo-ink: #5c1430;
+  --c-riichi: #f2a33c;
+  --c-riichi-ink: #3d2600;
+  --c-ron: #e05252;
+  --c-chi: #4fae5c;
+  --c-chi-ink: #0c2a10;
+  --c-pon: #4a90d9;
+  --c-kan: #8e5ad9;
+  --c-ryukyoku: #5a3a8a;
+  --c-pass: #565f68;
+
+  /* 圆角 */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* 阴影 */
+  --shadow-card: 0 20px 70px rgba(0, 0, 0, 0.24);
+  --shadow-overlay: 0 30px 90px rgba(0, 0, 0, 0.5);
+  --shadow-table: inset 0 0 0 18px var(--c-rail),
+    inset 0 0 0 21px var(--c-rail-light), 0 30px 80px #070c0f;
+  --shadow-table-sm: inset 0 0 0 10px var(--c-rail),
+    inset 0 0 0 12px var(--c-rail-light), 0 30px 80px #070c0f;
+  --shadow-tile-hover: 0 8px 18px rgba(0, 0, 0, 0.4);
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 字号 */
+  --fs-eyebrow: 11px;
+  --fs-caption: 12px;
+  --fs-body: 14px;
+  --fs-title: 16px;
+
+  /* 动效 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 120ms;
+  --dur-med: 220ms;
+
+  color: var(--c-text);
+  background: var(--c-bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}

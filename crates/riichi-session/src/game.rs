@@ -1035,6 +1035,12 @@ impl GameSession {
             players[2].is_riichi,
             players[3].is_riichi,
         ];
+        let riichi_declaration_indices = [
+            players[0].riichi_declaration_index,
+            players[1].riichi_declaration_index,
+            players[2].riichi_declaration_index,
+            players[3].riichi_declaration_index,
+        ];
 
         #[allow(clippy::needless_range_loop)]
         for idx in 0..4 {
@@ -1056,7 +1062,9 @@ impl GameSession {
                 hand_counts,
                 points,
                 winds,
+                field_wind: self.game.wind,
                 is_riichi,
+                riichi_declaration_indices,
                 discards: discards.clone(),
                 melds_count,
                 melds: melds.clone(),

@@ -52,6 +52,7 @@ pub fn router(application: ServerApplication) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/rooms", post(create_room))
+        .route("/rooms/:room_id", get(room_status))
         .route("/rooms/:room_id/join", post(join_room))
         .route("/rooms/:room_id/ready", post(set_ready))
         .route("/rooms/:room_id/ai", post(set_ai_count))
@@ -81,6 +82,18 @@ async fn health() -> impl IntoResponse {
 
 async fn create_room(State(application): State<ServerApplication>) -> Json<RoomInfo> {
     Json(application.create_room())
+}
+
+/// 房间状态查询：供大厅轮询（他人开局、准备状态变化等），
+/// 游戏开始后客户端凭此自动接入牌局 WebSocket。
+async fn room_status(
+    State(application): State<ServerApplication>,
+    Path(room_id): Path<String>,
+) -> Result<Json<RoomInfo>, (StatusCode, String)> {
+    application
+        .room_info(&room_id)
+        .map(Json)
+        .map_err(room_error_response)
 }
 
 async fn join_room(
@@ -392,8 +405,8 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .method("POST")
                     .uri("/rooms")
+                    .method("POST")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -401,11 +414,35 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
+        // 房间状态可查询（大厅轮询 / 断线恢复依据）。
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let room: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let room_id = room["id"].as_str().unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/rooms/{room_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(status["id"], room_id);
+        assert_eq!(status["started"], false);
+
         let response = app
             .oneshot(
                 Request::builder()
+                    .uri("/rooms/999999/join")
                     .method("POST")
-                    .uri("/rooms/000001/join")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"nickname":"玩家"}"#))
                     .unwrap(),

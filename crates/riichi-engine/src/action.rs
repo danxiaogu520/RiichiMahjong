@@ -476,7 +476,14 @@ impl GameState {
         match action {
             // 过：将牌放入舍牌区，更新振听，进入摸牌阶段
             ResponseAction::Pass => {
+                let river_index = self.players[discarder.0].discards.len();
                 self.players[discarder.0].discards.push(discarded_tile);
+                // 立直宣言牌被鸣走时，以立直后第一张入河的牌代替横置标记。
+                if self.players[discarder.0].is_riichi
+                    && self.players[discarder.0].riichi_declaration_index.is_none()
+                {
+                    self.players[discarder.0].riichi_declaration_index = Some(river_index);
+                }
 
                 // 更新其他玩家的振听状态
                 for idx in 0..4 {
@@ -529,7 +536,13 @@ impl GameState {
                     });
                 } else {
                     // 荣和不成立（振听/无役等），将牌放入舍牌区
+                    let river_index = self.players[discarder.0].discards.len();
                     self.players[discarder.0].discards.push(discarded_tile);
+                    if self.players[discarder.0].is_riichi
+                        && self.players[discarder.0].riichi_declaration_index.is_none()
+                    {
+                        self.players[discarder.0].riichi_declaration_index = Some(river_index);
+                    }
                     self.update_all_discard_furiten();
                     self.advance_turn();
                 }
@@ -1048,6 +1061,49 @@ mod tests {
         assert!(matches!(state.phase, GamePhase::ResponsePhase { .. }));
         state.complete_response_pass().unwrap();
         assert!(matches!(state.phase, GamePhase::DrawPhase { .. }));
+    }
+
+    #[test]
+    fn riichi_declaration_index_marks_the_first_post_riichi_river_discard() {
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+        state.start_round(&mut rng);
+        // 摸东(104)后打东能听牌，作为立直宣言牌。
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(37),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+        ]);
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(104)),
+        };
+
+        state
+            .execute_action(TurnAction::RiichiDiscard(Tile::from_raw(104)))
+            .unwrap();
+        assert!(state.players[0].is_riichi);
+        assert_eq!(state.players[0].riichi_declaration_index, None);
+
+        // 宣言牌未被鸣走，进入牌河第 0 位。
+        state.complete_response_pass().unwrap();
+        assert_eq!(state.players[0].riichi_declaration_index, Some(0));
+        assert_eq!(state.players[0].discards[0], Tile::from_raw(104));
+
+        // 立直后的第二张入河牌（被鸣后打出的摸牌）不会覆盖宣言下标。
+        state.players[0].riichi_declaration_index = Some(0);
+        state.players[0].discards.push(Tile::from_raw(0));
+        assert_eq!(state.players[0].riichi_declaration_index, Some(0));
     }
 
     #[test]

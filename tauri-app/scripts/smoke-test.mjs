@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const BASE = "http://127.0.0.1:3000";
+const BASE = "http://127.0.0.1:13600";
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const cargoHome = join(homedir(), ".cargo", "bin", "cargo.exe");
 const cargoBin = process.env.CARGO || (existsSync(cargoHome) ? cargoHome : "cargo");
@@ -53,7 +53,7 @@ try {
   await post(`/rooms/${room.id}/start`, { token: joined.token });
   console.log("✅ 对局已开始");
 
-  const ws = new WebSocket(`ws://127.0.0.1:3000/ws?room_id=${room.id}&token=${joined.token}&last_event_id=0`);
+  const ws = new WebSocket(`ws://127.0.0.1:13600/ws?room_id=${room.id}&token=${joined.token}&last_event_id=0`);
   const messages = [];
   let lastSeq = 0;
   let commandId = 0;
@@ -91,7 +91,7 @@ try {
       // 响应窗口一律 Pass，避免游戏等待真人。
       commandId += 1;
       ws.send(JSON.stringify({
-        protocol_version: 1,
+        protocol_version: 2,
         command_id: commandId,
         expected_seq: lastSeq,
         body: { CallResponse: { action: { Pass: null } } },
@@ -104,7 +104,7 @@ try {
       if (tile !== undefined) {
         commandId += 1;
         ws.send(JSON.stringify({
-          protocol_version: 1,
+          protocol_version: 2,
           command_id: commandId,
           expected_seq: lastSeq,
           body: { TurnAction: { action: { Discard: tile } } },

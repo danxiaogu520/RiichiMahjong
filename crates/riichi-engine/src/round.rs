@@ -25,6 +25,8 @@ impl GameState {
             self.players[2].points,
             self.players[3].points,
         ];
+        // 结转的立直棒属于上一局的点棒变化，本局展示从零开始。
+        self.round_start_sticks = self.riichi_sticks;
         // 事件历史属于单局上下文。跨局保留事件会污染一发、双立直、
         // 四家立直和首巡等状态判断；完整对局回放应由外部日志保存。
         self.events.clear();
@@ -54,6 +56,7 @@ impl GameState {
             player.discards.clear();
             player.melds.clear();
             player.is_riichi = false;
+            player.riichi_declaration_index = None;
             player.furiten = FuritenState::default();
             player.all_discarded_types.clear();
         }
@@ -85,13 +88,29 @@ impl GameState {
     }
 
     /// 获取本局结算后的四家点棒变化。
+    ///
+    /// 展示的是本局内实际发生的收支：本局内的立直押金与收取相互抵消，
+    /// 而开局时结转的立直棒（上一局押下、本局被赢家收走）不属于本局
+    /// 的点棒变化，从赢家收益中剔除，避免放铳者看起来多付了棒钱。
     pub fn round_point_changes(&self) -> [i32; 4] {
-        [
+        let mut changes = [
             self.players[0].points - self.round_start_points[0],
             self.players[1].points - self.round_start_points[1],
             self.players[2].points - self.round_start_points[2],
             self.players[3].points - self.round_start_points[3],
-        ]
+        ];
+        let carried_sticks = self.round_start_sticks as i32 * 1000;
+        if carried_sticks > 0 {
+            match &self.round_end_reason {
+                Some(RoundEndReason::Win { winner, .. }) => changes[winner.0] -= carried_sticks,
+                // 多家荣和时立直棒只归响应顺序中的第一位赢家。
+                Some(RoundEndReason::MultiWin { winners }) => {
+                    changes[winners[0].0] -= carried_sticks;
+                }
+                _ => {}
+            }
+        }
+        changes
     }
 
     /// 从牌山摸一张牌
@@ -292,14 +311,6 @@ impl GameState {
 
         // 更新玩家状态
         let player = &mut self.players[cp];
-        // 检查是否已有立直事件，如果没有则记录立直宣言牌
-        let has_riichi_event = self
-            .events
-            .iter()
-            .any(|e| matches!(e, GameEvent::Riichi { player: pid } if *pid == current_player));
-        if player.is_riichi && !has_riichi_event {
-            // 立直宣言牌通过事件记录，这里不需要额外操作
-        }
         player.all_discarded_types.insert(tile.tile_type()); // 记录舍牌类型
         player.furiten.clear_round(); // 清除本轮振听
         self.kuikae_forbidden[cp].clear();

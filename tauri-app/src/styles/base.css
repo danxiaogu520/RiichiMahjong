@@ -1,0 +1,177 @@
+/* ─── 基础元素 ─────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 10%, var(--c-bg-glow) 0, transparent 35%),
+    var(--c-bg);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(42px, 9vw, 72px);
+  letter-spacing: -0.06em;
+  line-height: 0.98;
+}
+
+h1 .hl {
+  color: var(--c-gold);
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  padding: 13px 14px;
+  outline: none;
+  color: var(--c-text);
+  background: var(--c-surface);
+  font: inherit;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+input:focus {
+  border-color: var(--c-accent-deep);
+  box-shadow: 0 0 0 3px rgba(107, 197, 162, 0.15);
+}
+
+/* ─── 通用小组件 ───────────────────────────────────────────── */
+
+/* 页面顶部分类标签 */
+.eyebrow {
+  margin: 0 0 var(--space-3);
+  color: var(--c-accent);
+  font-size: var(--fs-eyebrow);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* 弱化说明文字 */
+.intro {
+  color: var(--c-text-dim);
+  font-size: var(--fs-title);
+  line-height: 1.6;
+}
+
+/* 状态行 */
+.status-line {
+  margin: 0;
+  color: var(--c-text-faint);
+  font-size: var(--fs-caption);
+}
+
+/* 空状态 */
+.empty-state {
+  padding: 28px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-md);
+  color: var(--c-text-faint);
+  text-align: center;
+}
+
+/* 面板通用容器 */
+.panel {
+  padding: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--c-text-dim);
+  font-size: var(--fs-caption);
+}
+
+/* 按钮：默认主按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  border: 0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  transition: transform var(--dur-fast) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out), opacity var(--dur-fast);
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.btn .btn-arrow {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* 次按钮（暖金暗底） */
+.btn--secondary {
+  color: var(--c-gold-dim);
+  background: #3a3630;
+}
+
+/* 纯文字按钮 */
+.btn--text {
+  padding: 0;
+  color: var(--c-text-dim);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn--text:hover {
+  color: var(--c-text);
+  filter: none;
+}
+
+/* 小方块按钮（±） */
+.btn--square {
+  width: 38px;
+  height: 34px;
+  padding: 0;
+}
+
+/* 对局动作按钮配色 */
+.btn--tsumo { background: var(--c-tsumo); color: var(--c-tsumo-ink); }
+.btn--riichi { background: var(--c-riichi); color: var(--c-riichi-ink); }
+.btn--ron { background: var(--c-ron); color: #fff; }
+.btn--chi { background: var(--c-chi); color: var(--c-chi-ink); }
+.btn--pon { background: var(--c-pon); color: #fff; }
+.btn--kan { background: var(--c-kan); color: #fff; }
+.btn--ryukyoku { background: var(--c-ryukyoku); color: #e8dcff; }
+.btn--pass { background: var(--c-pass); color: #d7dee4; }
+
+/* 表单字段 */
+.field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--c-text-dim);
+  font-size: 13px;
+}

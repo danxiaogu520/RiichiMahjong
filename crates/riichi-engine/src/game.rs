@@ -49,6 +49,11 @@ pub struct GameState {
     pub event_log: Vec<EventEnvelope>,
     /// 本局开始时四家的点数，用于生成局末点棒变化。
     pub round_start_points: [i32; 4],
+    /// 本局开始时场上已存在的立直棒数（上一局结转而来）。
+    ///
+    /// 局末点棒变化展示的是本局内实际发生的收支，跨局结转的
+    /// 立直棒不应计入赢家本局收益，否则放铳者看起来多付了。
+    pub round_start_sticks: u32,
     /// 副露后当前玩家下一次出牌的食替禁牌。
     pub kuikae_forbidden: [Vec<TileType>; 4],
     /// 大三元/大四喜的责任支付者，按和了者座位记录。

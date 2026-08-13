@@ -3,7 +3,7 @@ use riichi_core::tile::{Tile, TileType};
 use serde::{Deserialize, Serialize};
 
 /// 当前客户端与服务端共同支持的线协议版本。
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 /// 客户端发送给服务端的统一消息外壳。
 ///
@@ -133,7 +133,8 @@ pub struct PlayerView {
     pub discards: Vec<Tile>,
     pub melds: Vec<MeldView>,
     pub is_riichi: bool,
-    pub riichi_declaration_tile: Option<Tile>,
+    /// 立直宣言牌在 `discards` 中的下标（宣言牌被鸣走时为立直后第一张入河的牌）。
+    pub riichi_declaration_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

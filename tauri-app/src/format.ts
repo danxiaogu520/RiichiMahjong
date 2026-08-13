@@ -63,12 +63,23 @@ export function eventText(event: GameEventView, nicknames: string[]): string {
   }
 }
 
+/**
+ * 将线协议中的带标签枚举归一为对象形式。
+ *
+ * serde 对单元变体（如 `ExhaustiveDraw`、`KyuushuKyuuhai`）序列化为
+ * 裸字符串 `"ExhaustiveDraw"`，结构体变体才是 `{"Win": {...}}` 对象；
+ * 这里把字符串形式补成 `{"ExhaustiveDraw": null}` 再统一读取。
+ */
+export function normalizeVariant<T>(value: T | string): Record<string, unknown> {
+  return typeof value === "string" ? { [value]: null } : (value as Record<string, unknown>);
+}
+
 /** RoundEndReasonView → 中文文案 */
 export function roundEndReasonText(reason: RoundEndReasonView): string {
-  const key = Object.keys(reason)[0];
+  const key = Object.keys(normalizeVariant(reason))[0];
   switch (key) {
     case "ExhaustiveDraw":
-      return "流局";
+      return "荒牌流局";
     case "Win": {
       const payload = (reason as { Win: { winner: number; is_tsumo: boolean } }).Win;
       return payload.is_tsumo ? "自摸和牌" : "荣和";

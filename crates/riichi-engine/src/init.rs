@@ -28,6 +28,7 @@ impl GameState {
             history: Vec::new(),
             event_log: Vec::new(),
             round_start_points: [starting_points; 4],
+            round_start_sticks: 0,
             kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             pao_targets: [None; 4],
             phase: GamePhase::DrawPhase {
@@ -68,7 +69,16 @@ impl GameState {
         state.honba = honba;
         state.riichi_sticks = riichi_sticks;
         state.round_start_points = setup.initial_points;
+        state.round_start_sticks = riichi_sticks;
         state.round_end_reason = None;
+        // 场风与局数对应：round 1-4 = 东场, 5-8 = 南场, 9-12 = 西场。
+        state.wind = if round <= 4 {
+            TileType::EAST
+        } else if round <= 8 {
+            TileType::SOUTH
+        } else {
+            TileType::WEST
+        };
         let dealer = state.get_dealer();
         for (index, player) in state.players.iter_mut().enumerate() {
             player.points = setup.initial_points[index];

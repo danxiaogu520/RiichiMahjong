@@ -93,7 +93,8 @@ export interface PlayerView {
   discards: number[];
   melds: MeldView[];
   is_riichi: boolean;
-  riichi_declaration_tile: number | null;
+  /** 立直宣言牌在 discards 中的下标（宣言牌被鸣走时为立直后第一张入河的牌） */
+  riichi_declaration_index: number | null;
 }
 
 export interface MeldView {
@@ -152,12 +153,17 @@ export interface GameEventEnvelope {
 
 export type RoundEndReasonView =
   | { ExhaustiveDraw: null }
+  | "ExhaustiveDraw"
   | { Win: { winner: PlayerId; is_tsumo: boolean } }
   | { MultiWin: { winners: PlayerId[] } }
   | { KyuushuKyuuhai: null }
+  | "KyuushuKyuuhai"
   | { SuufonRenda: null }
+  | "SuufonRenda"
   | { SuuchaRiichi: null }
+  | "SuuchaRiichi"
   | { SuuKantsu: null }
+  | "SuuKantsu"
   | { Unknown: string };
 
 export interface RoundResultView {

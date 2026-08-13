@@ -41,10 +41,10 @@ sudo install -m 0644 deploy/server.env.example /etc/riichi-mahjong/server.env
 sudo install -m 0644 deploy/riichi-server.service /etc/systemd/system/riichi-server.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now riichi-server
-curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:13600/health
 ```
 
-服务默认只监听 `127.0.0.1:3000`，由 Nginx 对外提供 HTTPS 和 WSS。若没有反向代理，
+服务默认只监听 `127.0.0.1:13600`，由 Nginx 对外提供 HTTPS 和 WSS。若没有反向代理，
 可以在 `server.env` 中将 `RIICHI_SERVER_ADDR` 改为公开监听地址，但生产环境必须使用
 TLS 终止层保护房间 token 和 WebSocket 连接。
 

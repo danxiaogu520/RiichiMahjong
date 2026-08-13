@@ -197,7 +197,9 @@ pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option
         hand_counts,
         points,
         winds,
+        field_wind,
         is_riichi,
+        riichi_declaration_indices,
         discards,
         melds,
         dora,
@@ -232,12 +234,12 @@ pub fn state_update_to_wire(event: &SessionEvent, recipient: PlayerId) -> Option
             })
             .collect(),
         is_riichi: is_riichi[index],
-        riichi_declaration_tile: None,
+        riichi_declaration_index: riichi_declaration_indices[index],
     });
 
     Some(ServerMessage::StateUpdate(Box::new(GameStateView {
         players,
-        wind: winds[recipient.0],
+        wind: *field_wind,
         round: *round,
         honba: *honba,
         riichi_sticks: *riichi_sticks,
@@ -528,7 +530,9 @@ mod tests {
             hand_counts: [1; 4],
             points: [25000; 4],
             winds: [riichi_core::tile::TileType::EAST; 4],
+            field_wind: riichi_core::tile::TileType::SOUTH,
             is_riichi: [false; 4],
+            riichi_declaration_indices: [None; 4],
             discards: std::array::from_fn(|_| Vec::new()),
             melds_count: [0; 4],
             melds: std::array::from_fn(|_| Vec::new()),
@@ -556,6 +560,12 @@ mod tests {
                 drawn_tile: Some(tile),
             } if tile == Tile::from_raw(12)
         ));
+        // 视图里的 wind 是场风，不是收件人的自风。
+        assert_eq!(
+            view.wind,
+            riichi_core::tile::TileType::SOUTH,
+            "GameStateView.wind 应透传场风"
+        );
     }
 
     #[test]
@@ -705,7 +715,9 @@ mod tests {
             hand_counts: [0; 4],
             points: [25_000; 4],
             winds: [riichi_core::tile::TileType::EAST; 4],
+            field_wind: riichi_core::tile::TileType::EAST,
             is_riichi: [false; 4],
+            riichi_declaration_indices: [None; 4],
             discards: std::array::from_fn(|_| Vec::new()),
             melds_count: [0; 4],
             melds: std::array::from_fn(|_| Vec::new()),

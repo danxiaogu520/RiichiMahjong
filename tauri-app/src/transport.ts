@@ -6,7 +6,7 @@ import type {
   ServerEnvelope,
 } from "./protocol";
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 export interface TransportCallbacks {
   onMessage: (message: ServerEnvelope) => void;
@@ -34,6 +34,11 @@ export class ClientTransport {
       method: "POST",
       body: JSON.stringify({ nickname }),
     });
+  }
+
+  /** 查询房间当前状态（大厅轮询 / 断线后恢复用） */
+  async roomStatus(roomId: string): Promise<RoomInfo> {
+    return this.request<RoomInfo>(`/rooms/${encodeURIComponent(roomId)}`, { method: "GET" });
   }
 
   async setReady(roomId: string, token: string, ready: boolean): Promise<RoomInfo> {

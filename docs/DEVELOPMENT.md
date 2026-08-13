@@ -11,7 +11,7 @@ cargo fmt --all -- --check
 cargo check --workspace
 cargo test --workspace
 cd tauri-app && npm install && npm run build  # 浏览器/Tauri 前端构建
-node tauri-app/scripts/smoke-test.mjs  # 端到端冒烟：自动对局验证协议数据（需服务器端口 3000）
+node tauri-app/scripts/smoke-test.mjs  # 端到端冒烟：自动对局验证协议数据（需服务器端口 13600）
 node tauri-app/scripts/fetch-tiles.mjs  # 重新拉取公有领域牌面 SVG 素材
 ```
 

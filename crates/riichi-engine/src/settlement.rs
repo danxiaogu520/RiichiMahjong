@@ -327,4 +327,24 @@ mod tests {
         assert_eq!(state.riichi_sticks, 0);
         assert_eq!(state.players[0].points, 32_000);
     }
+
+    #[test]
+    fn carried_riichi_sticks_are_excluded_from_round_point_changes() {
+        // 上一局结转一根立直棒：赢家本局只应显示手牌收入（2600），
+        // 结转棒 1000 是上一局的点棒变化，不能算进放铳者的支付。
+        let mut state = GameState::new();
+        state.round_start_points = [25_000; 4];
+        state.round_start_sticks = 1;
+        state.players[0].points = 25_000 + 2_600 + 1_000;
+        state.players[2].points = 25_000 - 2_600;
+        state.round_end_reason = Some(riichi_core::game::RoundEndReason::Win {
+            winner: PlayerId(0),
+            is_tsumo: false,
+        });
+
+        let changes = state.round_point_changes();
+        assert_eq!(changes[0], 2_600, "赢家收益不应包含结转立直棒");
+        assert_eq!(changes[2], -2_600);
+        assert_eq!(changes.iter().sum::<i32>(), 0);
+    }
 }

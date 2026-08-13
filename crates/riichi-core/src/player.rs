@@ -87,6 +87,11 @@ pub struct Player {
     pub discards: Vec<Tile>,
     pub melds: Vec<Meld>,
     pub is_riichi: bool,
+    /// 立直宣言后第一张进入牌河的牌在 `discards` 中的下标。
+    ///
+    /// 规则上宣言牌被鸣走时以下一张入河的牌代替横置标记，
+    /// 因此只在弃牌真正进入牌河时记录一次。
+    pub riichi_declaration_index: Option<usize>,
     pub furiten: FuritenState,
     pub all_discarded_types: HashSet<TileType>,
 }
@@ -101,6 +106,7 @@ impl Player {
             melds: Vec::new(),
             points: 25000,
             is_riichi: false,
+            riichi_declaration_index: None,
             furiten: FuritenState::default(),
             all_discarded_types: HashSet::new(),
         }
