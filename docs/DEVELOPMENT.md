@@ -2,7 +2,7 @@
 
 ## 环境
 
-安装 Rust stable 和 Cargo。项目是 Cargo workspace，默认成员是 `riichi-debug`，所有 crate 可用 `--workspace` 一起处理。构建目录 `target/`、Python 虚拟环境和工具缓存不进入仓库。
+安装 Rust stable 和 Cargo。项目是 Cargo workspace，所有 crate 可用 `--workspace` 一起处理。构建目录 `target/`、Python 虚拟环境和工具缓存不进入仓库。
 
 ## 常用命令
 
@@ -10,7 +10,6 @@
 cargo fmt --all -- --check
 cargo check --workspace
 cargo test --workspace
-cargo run -p riichi-debug
 cd tauri-app && npm install && npm run build  # 浏览器/Tauri 前端构建
 node tauri-app/scripts/smoke-test.mjs  # 端到端冒烟：自动对局验证协议数据（需服务器端口 3000）
 node tauri-app/scripts/fetch-tiles.mjs  # 重新拉取公有领域牌面 SVG 素材

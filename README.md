@@ -1,6 +1,6 @@
 # RiichiMahjong
 
-一个以 Rust 编写的四人立直麻将引擎，包含规则状态机、和牌/计分算法、AI 决策、服务端回路和 ratatui 终端客户端。
+一个以 Rust 编写的四人立直麻将引擎，包含规则状态机、和牌/计分算法、AI 决策、服务端回路和浏览器/Tauri 客户端。
 
 项目已支持浏览器/Tauri 预览下的熟人房间联机：房主可以配置 0–3 个固定基础 AI，至少一名真人即可开局；真人断线 30 秒后由 AI 临时接管，重连后恢复真人控制。房间和连接状态目前保存在服务端内存中。浏览器前端提供 SVG 牌面、对局事件记录、听牌与牌效分析、和牌明细与终局排名展示；牌面素材来自 FluffyStuff/riichi-mahjong-tiles（公有领域）。规则口径和已知实现缺口见 [`docs/RULES.md`](docs/RULES.md)。
 
@@ -9,13 +9,12 @@
 需要 Rust stable 和 Cargo。首次构建会生成本地 `target/`，该目录已被忽略。
 
 ```bash
-cargo build                 # 构建默认客户端及其依赖
+cargo build                 # 构建整个 workspace
 cargo test --workspace      # 运行整个 workspace 的测试
-cargo run -p riichi-debug   # 启动终端调试客户端
 cd tauri-app && npm run build # 构建浏览器/Tauri 前端预览
 ```
 
-客户端默认启动一桌由 AI 控制的本地对局；终端交互需要可用的 TTY。纯算法和规则状态机也可以单独作为 crate 使用。
+纯算法和规则状态机也可以单独作为 crate 使用。
 
 ## Workspace
 
@@ -28,7 +27,6 @@ cd tauri-app && npm run build # 构建浏览器/Tauri 前端预览
 | `riichi-proto` | 客户端与服务端之间的序列化消息 |
 | `riichi-session` | 游戏会话、玩家命令和事件通道 |
 | `riichi-server` | 网络、房间和连接服务 |
-| `riichi-debug` | ratatui 终端调试界面 |
 
 依赖方向、主要数据流和牌编码见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 

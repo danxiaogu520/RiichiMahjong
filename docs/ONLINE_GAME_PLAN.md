@@ -20,7 +20,6 @@
 - `riichi-engine`：`GameState`、行动合法性、回合推进、响应窗口和结算。
 - `riichi-proto`：客户端/服务端消息、玩家视角状态和隐藏信息过滤。
 - `riichi-server`：网络、房间和连接边界，以及 session 到线协议的转换。
-- `riichi-debug`：终端调试客户端，提供本地 AI 填位模式。
 - `riichi-session`：传输无关的单房间游戏会话，承载 GameSession、内部命令和事件。
 
 当前主要缺口是：公网部署后的压力观测、完整半庄的产品级手工验收，以及 Tauri 原生依赖环境验证。
@@ -75,7 +74,7 @@ riichi-server ────► riichi-engine + riichi-proto
 riichi-engine ────► riichi-core + riichi-logic
 ```
 
-客户端不应依赖 `riichi-server` 或 `riichi-engine`。`riichi-debug` 通过 `riichi-session` 运行本地模式，未来网络模式只依赖协议和传输适配器。
+客户端不应依赖 `riichi-server` 或 `riichi-engine`，只依赖协议和传输适配器。
 
 ## 4. MVP 范围
 
@@ -128,7 +127,6 @@ riichi-engine ────► riichi-core + riichi-logic
 - 引入 `GameSession`，一个实例对应一个房间的一局游戏。
 - 保证一个 GameSession 只由一个异步任务顺序修改 `GameState`。
 - 抽象玩家命令输入和玩家事件输出。
-- 保留现有终端客户端作为适配器。
 
 建议接口：
 
@@ -207,7 +205,7 @@ pub struct ServerEnvelope {
 - 禁止从网络消息中信任 `PlayerId`。
 - 连接关闭时通知对应 Room/GameSession。
 
-验收标准：终端客户端或测试脚本可以通过网络完成一局游戏。
+验收标准：测试脚本可以通过网络完成一局游戏。
 
 ### 阶段 5：Tauri 客户端与 Web UI
 
