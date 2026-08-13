@@ -98,8 +98,8 @@ impl GameState {
     /// 立直后可用的暗杠选项
     ///
     /// 立直后暗杠必须满足：
-    /// 1. 暗杠的 4 张牌包含摸到的牌
-    /// 2. 暗杠后听牌种类不变
+    /// 1. 暗杠必须包含摸到的牌（送り槓不可）
+    /// 2. 暗杠后听牌种类与杠前完全相等
     ///
     /// 实现：比较暗杠前（13张手牌）的听牌与暗杠后（10张手牌）的听牌
     pub fn get_riichi_ankan_options(&self, player: PlayerId) -> Vec<Tile> {
@@ -118,20 +118,21 @@ impl GameState {
             return vec![];
         }
 
+        let Some(drawn) = self.drawn_tile() else {
+            return vec![];
+        };
+
         let mut options = Vec::new();
         for tt in (0..34u8).map(TileType) {
-            let hand_count = hand.count_type(tt);
-            let drawn_count = self.drawn_tile().is_some_and(|tile| tile.tile_type() == tt) as usize;
-            if hand_count + drawn_count < 4 {
+            // 送り槓不可：暗杠必须是“手中 3 张 + 刚摸到的第 4 张”。
+            if drawn.tile_type() != tt || hand.count_type(tt) < 3 {
                 continue;
             }
 
             let mut hand_after = hand.clone();
-            if let Some(drawn) = self.drawn_tile() {
-                hand_after
-                    .add(drawn)
-                    .expect("计算立直选项时手牌不应超过容量");
-            }
+            hand_after
+                .add(drawn)
+                .expect("计算立直选项时手牌不应超过容量");
             let mut removed = 0;
             for tile in hand_after.tiles().to_vec() {
                 if tile.tile_type() == tt && removed < 4 {
@@ -198,5 +199,68 @@ mod tests {
         let options = state.get_riichi_discard_options(PlayerId(0));
         assert!(options.contains(&Tile::from_raw(104)));
         assert!(!options.contains(&Tile::from_raw(0)));
+    }
+
+    #[test]
+    fn riichi_ankan_is_forbidden_when_the_kan_skips_the_drawn_tile() {
+        // 1111m 23m 456p 789p 5s + 摸 6s：手中已有 4 张 1m，但摸牌不是 1m —— 送り槓不可
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+        state.wall = Wall::new(&mut rng);
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(1),
+            Tile::from_raw(2),
+            Tile::from_raw(3), // 1111m
+            Tile::from_raw(4),
+            Tile::from_raw(8), // 23m
+            Tile::from_raw(36),
+            Tile::from_raw(40),
+            Tile::from_raw(44), // 456p
+            Tile::from_raw(48),
+            Tile::from_raw(52),
+            Tile::from_raw(56), // 789p
+            Tile::from_raw(88), // 5s
+        ]);
+        state.players[0].is_riichi = true;
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(92)), // 6s
+        };
+
+        assert!(state.get_riichi_ankan_options(PlayerId(0)).is_empty());
+    }
+
+    #[test]
+    fn riichi_ankan_is_allowed_when_the_drawn_tile_completes_the_kan() {
+        // 111m 23m 44m 456p 789p + 摸 1m：听 1m/4m；暗杠 1m 后仍听 1m/4m（听牌完全相等）
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+        state.wall = Wall::new(&mut rng);
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(1),
+            Tile::from_raw(2), // 111m
+            Tile::from_raw(4),
+            Tile::from_raw(8), // 23m
+            Tile::from_raw(12),
+            Tile::from_raw(13), // 44m
+            Tile::from_raw(48),
+            Tile::from_raw(52),
+            Tile::from_raw(56), // 456p
+            Tile::from_raw(60),
+            Tile::from_raw(64),
+            Tile::from_raw(68), // 789p
+        ]);
+        state.players[0].is_riichi = true;
+        state.phase = riichi_core::game::GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(3)), // 第 4 张 1m
+        };
+
+        let options = state.get_riichi_ankan_options(PlayerId(0));
+        assert!(options
+            .iter()
+            .any(|t| t.tile_type() == riichi_core::tile::TileType(0)));
     }
 }

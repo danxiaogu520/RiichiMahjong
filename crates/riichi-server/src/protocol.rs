@@ -472,7 +472,9 @@ fn phase_view(phase: &GamePhase, recipient: PlayerId) -> GamePhaseView {
             player: *player,
             discarded_tile: *discarded_tile,
         },
-        GamePhase::ChankanResponse { player, kan_tile } => GamePhaseView::ChankanResponse {
+        GamePhase::ChankanResponse {
+            player, kan_tile, ..
+        } => GamePhaseView::ChankanResponse {
             player: *player,
             kan_tile: *kan_tile,
         },

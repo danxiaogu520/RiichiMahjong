@@ -33,6 +33,8 @@ impl GameState {
         self.ranking_at_game_end = None;
         self.kuikae_forbidden = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
         self.pao_targets = [None; 4];
+        self.four_kan_abort_pending = false;
+        self.dora_reveal_at_discard = false;
 
         // 创建新牌山
         self.wall = Wall::new(rng);
@@ -324,6 +326,12 @@ impl GameState {
             return Err(GameError::InvalidAction(
                 "弃牌事件类型与当前状态不一致".to_string(),
             ));
+        }
+
+        // 明杠的宝牌在杠家下一次舍牌时翻开（与 Mortal 一致）
+        if self.dora_reveal_at_discard {
+            self.reveal_dora_indicator();
+            self.dora_reveal_at_discard = false;
         }
 
         // 进入响应阶段（等待其他人吃/碰/杠/荣和）

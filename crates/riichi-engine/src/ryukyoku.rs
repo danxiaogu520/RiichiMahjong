@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use riichi_core::game::{CallKind, GameEvent};
+use riichi_core::game::GameEvent;
+use riichi_core::meld::MeldKind;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::TileType;
 
@@ -117,7 +118,7 @@ impl GameState {
     ///
     /// 条件：
     /// 1. 总杠数 >= 4
-    /// 2. 至少有两位玩家开杠
+    /// 2. 至少有两位玩家开杠（一人四杠属于四槓子，不流局）
     pub fn check_four_kan_abort(&self) -> bool {
         // 检查总开杠数是否达到四个
         let total = self.get_kan_count();
@@ -125,27 +126,17 @@ impl GameState {
             return false;
         }
         // 检查是否至少有两位玩家开杠
-        self.events
+        self.players
             .iter()
-            .filter(|e| {
-                matches!(
-                    e,
-                    GameEvent::Call {
-                        kind: CallKind::Minkan | CallKind::Ankan | CallKind::Kakan,
-                        ..
-                    }
-                )
+            .filter(|player| {
+                player.melds.iter().any(|meld| {
+                    matches!(
+                        meld.kind,
+                        MeldKind::Minkan | MeldKind::Ankan | MeldKind::Kakan
+                    )
+                })
             })
-            .map(|e| match e {
-                GameEvent::Call {
-                    player,
-                    kind: CallKind::Minkan | CallKind::Ankan | CallKind::Kakan,
-                    ..
-                } => player,
-                _ => unreachable!(),
-            })
-            .collect::<HashSet<&PlayerId>>()
-            .len()
+            .count()
             >= 2
     }
 }

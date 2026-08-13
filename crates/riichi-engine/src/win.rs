@@ -1,4 +1,4 @@
-use riichi_core::game::GameEvent;
+use riichi_core::game::{CallKind, GameEvent, GamePhase};
 use riichi_core::hand::Hand;
 use riichi_core::player::PlayerId;
 use riichi_core::tile::{Tile, TileType};
@@ -11,7 +11,11 @@ fn is_call_event(event: &GameEvent) -> bool {
     matches!(event, GameEvent::Call { .. })
 }
 
-fn is_ippatsu_active(events: &[GameEvent], player: PlayerId) -> bool {
+/// 判断一发是否仍然有效。
+///
+/// `chankan_on_kakan` 为真表示本次和牌是抢加杠：加杠事件本身不打断一发，
+/// 一发在抢杠窗口内保持有效（窗口关闭后未抢杠才失效）。
+fn is_ippatsu_active(events: &[GameEvent], player: PlayerId, chankan_on_kakan: bool) -> bool {
     let Some(index) = events
         .iter()
         .rposition(|event| matches!(event, GameEvent::Riichi { player: pid } if *pid == player))
@@ -23,7 +27,18 @@ fn is_ippatsu_active(events: &[GameEvent], player: PlayerId) -> bool {
             &events[index - 1],
             GameEvent::Discard { player: pid, .. } if *pid == player
         );
-    let after = &events[index + 1..];
+    let mut after = &events[index + 1..];
+    if chankan_on_kakan
+        && matches!(
+            after.last(),
+            Some(GameEvent::Call {
+                kind: CallKind::Kakan,
+                ..
+            })
+        )
+    {
+        after = &after[..after.len() - 1];
+    }
     let own_discards_after = after
         .iter()
         .filter(|event| matches!(event, GameEvent::Discard { player: pid, .. } if *pid == player))
@@ -111,7 +126,19 @@ impl GameState {
 
         // 一发从立直宣言牌之后开始计算：立直宣言牌本身不打断一发，
         // 任何玩家的吃、碰、明杠、暗杠、加杠都会打断一发。
-        let is_ippatsu = is_ippatsu_active(&self.events, player);
+        // 例外：抢加杠时，加杠事件本身不打断一发（一发在抢杠窗口内保持有效）。
+        let is_ippatsu = is_ippatsu_active(
+            &self.events,
+            player,
+            is_chankan
+                && matches!(
+                    self.phase,
+                    GamePhase::ChankanResponse {
+                        kind: CallKind::Kakan,
+                        ..
+                    }
+                ),
+        );
 
         // 双立直必须发生在当前局第一巡：立直者在本局只打出宣言牌，
         // 且宣言前没有鸣牌、全桌弃牌数仍不超过一轮四张。
@@ -238,11 +265,13 @@ mod context_tests {
         let riichi = GameEvent::Riichi { player };
         assert!(is_ippatsu_active(
             &[discard(player), riichi.clone()],
-            player
+            player,
+            false
         ));
         assert!(!is_ippatsu_active(
             &[discard(player), riichi, discard(player)],
-            player
+            player,
+            false
         ));
     }
 
@@ -258,7 +287,62 @@ mod context_tests {
             from_player: Some(player),
             meld_index: None,
         };
-        assert!(!is_ippatsu_active(&[discard(player), riichi, call], player));
+        assert!(!is_ippatsu_active(
+            &[discard(player), riichi, call],
+            player,
+            false
+        ));
+    }
+
+    #[test]
+    fn ippatsu_survives_a_robbed_kakan_but_not_other_calls() {
+        let player = PlayerId(0);
+        let riichi = GameEvent::Riichi { player };
+        let kakan = GameEvent::Call {
+            player: PlayerId(1),
+            tiles: vec![Tile::from_raw(4)],
+            kind: riichi_core::game::CallKind::Kakan,
+            called_tile: Some(Tile::from_raw(4)),
+            from_player: None,
+            meld_index: Some(0),
+        };
+        let pon = GameEvent::Call {
+            player: PlayerId(2),
+            tiles: vec![Tile::from_raw(0); 2],
+            kind: riichi_core::game::CallKind::Pon,
+            called_tile: Some(Tile::from_raw(0)),
+            from_player: Some(player),
+            meld_index: None,
+        };
+        // 抢加杠：加杠事件本身不打断一发
+        assert!(is_ippatsu_active(
+            &[discard(player), riichi.clone(), kakan.clone()],
+            player,
+            true
+        ));
+        // 已有一发被其他鸣牌打断，抢杠也不能恢复
+        assert!(!is_ippatsu_active(
+            &[discard(player), riichi.clone(), pon, kakan],
+            player,
+            true
+        ));
+        // 普通（非抢杠）和牌时一发仍被加杠打断
+        assert!(!is_ippatsu_active(
+            &[
+                discard(player),
+                riichi,
+                GameEvent::Call {
+                    player: PlayerId(1),
+                    tiles: vec![Tile::from_raw(4)],
+                    kind: riichi_core::game::CallKind::Kakan,
+                    called_tile: Some(Tile::from_raw(4)),
+                    from_player: None,
+                    meld_index: Some(0),
+                }
+            ],
+            player,
+            false
+        ));
     }
 
     #[test]

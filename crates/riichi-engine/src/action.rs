@@ -1,13 +1,14 @@
 use riichi_core::game::{
-    CallOption, CallType, EventEnvelope, GameEvent, ResponseAction, RoundEndReason, TurnAction,
-    WinKind,
+    CallKind, CallOption, CallType, EventEnvelope, GameEvent, ResponseAction, RoundEndReason,
+    TurnAction, WinKind,
 };
 use riichi_core::meld::{Meld, MeldKind};
 use riichi_core::player::PlayerId;
 use riichi_core::tile::Tile;
-use riichi_logic::shape::analyze_wait_tiles;
+use riichi_logic::model::TileCounts;
+use riichi_logic::shape::{analyze_wait_tiles, is_kokushi};
 
-use crate::game::{GameError, GamePhase, GameState};
+use crate::game::{extract_kuikae_tiles, GameError, GamePhase, GameState};
 
 impl GameState {
     /// Resolve a turn command against a cloned state, then apply only the
@@ -165,6 +166,16 @@ impl GameState {
             // 打牌
             TurnAction::Discard(tile) => {
                 self.discard(tile)?;
+                // 四风连打检查：所有玩家的首巡弃牌（含普通弃牌）均参与判定
+                if matches!(self.phase, GamePhase::ResponsePhase { .. })
+                    && self.check_suufon_renda()
+                {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuufonRenda,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuufonRenda);
+                }
             }
 
             // 立直宣言 + 打牌
@@ -201,14 +212,14 @@ impl GameState {
                 if matches!(self.phase, GamePhase::ResponsePhase { .. })
                     && self.check_suufon_renda()
                 {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuufonRenda,
+                    });
                     self.resolve_round_end(RoundEndReason::SuufonRenda);
                 }
-                // 四家立直检查（第四家立直宣言后，且未被荣和取消）
-                else if matches!(self.phase, GamePhase::ResponsePhase { .. })
-                    && self.check_suucha_riichi()
-                {
-                    self.resolve_round_end(RoundEndReason::SuuchaRiichi);
-                }
+                // 四家立直在第四家立直被受理（宣言牌通过响应窗口或被鸣牌）后检查，
+                // 不再在宣言时立即流局，宣言牌被荣和时和牌优先。
             }
 
             // 自摸和
@@ -378,18 +389,32 @@ impl GameState {
             GamePhase::ChankanResponse {
                 kan_tile,
                 player: kakan_player,
-                ..
+                kind,
             } => {
-                // 抢杠荣和：仅检测荣和，不检测吃/碰/杠
+                // 抢杠荣和：仅检测荣和，不检测吃/碰/杠。
+                // 加杠可被任意和牌抢杠；暗杠只有国士无双可以抢（其他情况不允许）。
                 let mut options = Vec::new();
                 for idx in 0..4 {
                     let pid = PlayerId(idx);
                     if pid == kakan_player {
                         continue;
                     }
-                    if self
-                        .check_win(pid, false, kan_tile, Some(kakan_player), true)
-                        .is_some()
+                    let can_rob = match kind {
+                        CallKind::Kakan => true,
+                        CallKind::Ankan => {
+                            let p = &self.players[idx];
+                            p.melds.is_empty() && {
+                                let mut counts = TileCounts::from_tiles(p.hand.tiles());
+                                counts.inc(kan_tile.tile_type());
+                                is_kokushi(&counts)
+                            }
+                        }
+                        _ => false,
+                    };
+                    if can_rob
+                        && self
+                            .check_win(pid, false, kan_tile, Some(kakan_player), true)
+                            .is_some()
                     {
                         options.push(CallOption {
                             player: pid,
@@ -443,6 +468,19 @@ impl GameState {
                 discarded_tile,
                 player: discarder,
             } => {
+                // 四杠散了：第四杠后的舍牌只能被荣和；被鸣牌（吃/碰/明杠）时直接流局。
+                // 荣和与过牌分别在其流程内处理。
+                if self.four_kan_abort_pending
+                    && self.check_four_kan_abort()
+                    && !matches!(action, ResponseAction::Pass | ResponseAction::Ron)
+                {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuKantsu,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuKantsu);
+                    return Ok(new_events);
+                }
                 self.execute_response_call(
                     player,
                     action,
@@ -454,8 +492,16 @@ impl GameState {
             GamePhase::ChankanResponse {
                 kan_tile,
                 player: kakan_player,
+                kind,
             } => {
-                self.execute_chankan_call(player, action, kan_tile, kakan_player, &mut new_events)?;
+                self.execute_chankan_call(
+                    player,
+                    action,
+                    kan_tile,
+                    kakan_player,
+                    kind,
+                    &mut new_events,
+                )?;
             }
             _ => return Err(GameError::InvalidAction("不在响应阶段".to_string())),
         }
@@ -502,6 +548,28 @@ impl GameState {
                 }
 
                 self.update_all_discard_furiten();
+
+                // 四家立直：第四家立直宣言牌通过响应窗口后立直被受理，受理即流局。
+                // 最后一巡（剩余 0 张）时立直不会被受理，优先荒牌流局。
+                if self.check_suucha_riichi() && self.remaining_tiles() > 0 {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuchaRiichi,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuchaRiichi);
+                    return Ok(());
+                }
+
+                // 四杠散了：第四杠后的舍牌未被荣和时流局
+                if self.four_kan_abort_pending && self.check_four_kan_abort() {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuKantsu,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuKantsu);
+                    return Ok(());
+                }
+
                 self.advance_turn();
             }
             // 荣和
@@ -549,6 +617,7 @@ impl GameState {
             }
             // 碰
             ResponseAction::Pon { hand_tiles } => {
+                let forbidden;
                 {
                     let p = &mut self.players[player.0];
                     for &tile in &hand_tiles {
@@ -559,13 +628,14 @@ impl GameState {
                     let mut meld_tiles = hand_tiles.to_vec();
                     meld_tiles.push(discarded_tile);
                     let meld = Meld::pon(meld_tiles, discarded_tile, discarder);
+                    forbidden = extract_kuikae_tiles(&meld);
                     p.melds.push(meld);
                 }
                 self.phase = GamePhase::ActionPhase {
                     player,
                     drawn_tile: None,
                 };
-                self.kuikae_forbidden[player.0] = vec![discarded_tile.tile_type()];
+                self.kuikae_forbidden[player.0] = forbidden;
                 self.update_discard_furiten(player);
                 new_events.push(GameEvent::Call {
                     player,
@@ -576,9 +646,19 @@ impl GameState {
                     meld_index: None,
                 });
                 self.update_pao_after_open_call(player, discarder, discarded_tile);
+                // 第四家立直宣言牌被鸣牌时立直接被受理，受理后立即流局
+                if self.check_suucha_riichi() {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuchaRiichi,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuchaRiichi);
+                    return Ok(());
+                }
             }
             // 吃（仅下家可用）
             ResponseAction::Chi { hand_tiles } => {
+                let forbidden;
                 {
                     let p = &mut self.players[player.0];
                     for &tile in &hand_tiles {
@@ -589,13 +669,14 @@ impl GameState {
                     let mut meld_tiles = hand_tiles.to_vec();
                     meld_tiles.push(discarded_tile);
                     let meld = Meld::chi(meld_tiles, discarded_tile, discarder);
+                    forbidden = extract_kuikae_tiles(&meld);
                     p.melds.push(meld);
                 }
                 self.phase = GamePhase::ActionPhase {
                     player,
                     drawn_tile: None,
                 };
-                self.kuikae_forbidden[player.0] = vec![discarded_tile.tile_type()];
+                self.kuikae_forbidden[player.0] = forbidden;
                 self.update_discard_furiten(player);
                 new_events.push(GameEvent::Call {
                     player,
@@ -605,6 +686,15 @@ impl GameState {
                     from_player: Some(discarder),
                     meld_index: None,
                 });
+                // 第四家立直宣言牌被鸣牌时立直接被受理，受理后立即流局
+                if self.check_suucha_riichi() {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuchaRiichi,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuchaRiichi);
+                    return Ok(());
+                }
             }
             // 大明杠
             ResponseAction::Minkan { hand_tiles } => {
@@ -626,11 +716,8 @@ impl GameState {
                     p.melds
                         .push(Meld::minkan(meld_tiles, discarded_tile, discarder));
                 }
-                self.phase = GamePhase::ChankanResponse {
-                    player,
-                    kan_tile: discarded_tile,
-                };
-                new_events.push(GameEvent::Call {
+                // 大明杠不可被抢：杠立即成立，先记录鸣牌事件再翻宝牌并补摸岭上。
+                self.record_event(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
                     kind: riichi_core::game::CallKind::Minkan,
@@ -638,10 +725,27 @@ impl GameState {
                     from_player: Some(discarder),
                     meld_index: None,
                 });
+                self.phase = GamePhase::DrawPhase {
+                    player,
+                    position: riichi_core::game::DrawPosition::Rinshan,
+                };
+                // 明杠的宝牌不在杠成立时翻开：与 Mortal 一致，
+                // 延迟到杠家下一次舍牌时翻开（岭上自摸和牌不计该宝牌）。
+                self.dora_reveal_at_discard = true;
+                self.draw_rinshan()?;
                 self.update_pao_after_open_call(player, discarder, discarded_tile);
-                // 四杠散了检查
+                // 四杠散了：第四杠成立后挂起，待下一次舍牌未被荣和时才流局
                 if self.check_four_kan_abort() {
-                    self.resolve_round_end(RoundEndReason::SuuKantsu);
+                    self.four_kan_abort_pending = true;
+                }
+                // 第四家立直宣言牌被明杠时立直接被受理，受理后立即流局
+                if self.check_suucha_riichi() {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuchaRiichi,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuchaRiichi);
+                    return Ok(());
                 }
             }
         }
@@ -656,6 +760,7 @@ impl GameState {
         action: ResponseAction,
         kakan_tile: Tile,
         kakan_player: PlayerId,
+        kan_kind: CallKind,
         new_events: &mut Vec<GameEvent>,
     ) -> Result<(), GameError> {
         match action {
@@ -665,30 +770,28 @@ impl GameState {
                     player: kakan_player,
                     position: riichi_core::game::DrawPosition::Rinshan,
                 };
-                // 加杠只有在抢杠窗口结束后才正式成立；此时才翻开杠宝牌。
-                self.reveal_dora_indicator();
+                // 暗杠的宝牌在杠成立时已翻开；加杠只有在抢杠窗口结束后才翻开。
+                if kan_kind == CallKind::Kakan {
+                    self.reveal_dora_indicator();
+                }
                 self.draw_rinshan()?;
 
+                // 四杠散了：第四杠成立后挂起，待下一次舍牌未被荣和时才流局
                 if self.check_four_kan_abort() {
-                    self.resolve_round_end(RoundEndReason::SuuKantsu);
-                } else {
-                    // draw_rinshan transitions to ActionPhase
+                    self.four_kan_abort_pending = true;
                 }
             }
             // 抢杠荣和
             ResponseAction::Ron => {
-                // 此杠不成立，副露恢复为碰
                 let meld_index = self.players[kakan_player.0]
                     .melds
                     .iter()
                     .position(|meld| {
-                        matches!(
-                            meld.kind,
-                            MeldKind::Ankan | MeldKind::Kakan | MeldKind::Minkan
-                        ) && meld
-                            .tiles
-                            .iter()
-                            .any(|tile| tile.tile_type() == kakan_tile.tile_type())
+                        matches!(meld.kind, MeldKind::Ankan | MeldKind::Kakan)
+                            && meld
+                                .tiles
+                                .iter()
+                                .any(|tile| tile.tile_type() == kakan_tile.tile_type())
                     })
                     .ok_or_else(|| GameError::InvalidAction("找不到待抢杠副露".to_string()))?;
                 let meld = self.players[kakan_player.0].melds.remove(meld_index);
@@ -703,13 +806,17 @@ impl GameState {
                             from_player: meld.from_player,
                         });
                     }
-                    MeldKind::Ankan | MeldKind::Minkan => {
+                    MeldKind::Ankan => {
                         for tile in meld.tiles {
                             self.players[kakan_player.0]
                                 .hand
                                 .add(tile)
                                 .map_err(|error| GameError::InvalidAction(error.to_string()))?;
                         }
+                        // 被抢的暗杠不成立：回滚杠成立时立即翻开的宝牌指示牌
+                        self.dora.pop();
+                        self.dora_indicators.pop();
+                        self.ura_dora_indicators.pop();
                     }
                     _ => unreachable!(),
                 }
@@ -860,9 +967,12 @@ impl GameState {
             meld_index: None,
         }];
 
+        // 暗杠的宝牌在杠成立时立即翻开；若被国士无双抢杠，抢杠时回滚。
+        self.reveal_dora_indicator();
         self.phase = GamePhase::ChankanResponse {
             player,
             kan_tile: tile,
+            kind: riichi_core::game::CallKind::Ankan,
         };
 
         Ok(new_events)
@@ -968,11 +1078,12 @@ impl GameState {
             meld_index: Some(meld_index),
         }];
 
-        // 进入抢杠荣和响应阶段。抢杠成立时，杠宝牌才会翻开，
-        // 因此这里不能提前调用 reveal_dora_indicator。
+        // 进入抢杠荣和响应窗口。加杠只有抢杠窗口关闭后才正式成立，
+        // 因此杠宝牌在窗口关闭时翻开；若被抢杠则恢复为碰。
         self.phase = GamePhase::ChankanResponse {
             player,
             kan_tile: tile,
+            kind: riichi_core::game::CallKind::Kakan,
         };
 
         Ok(new_events)
@@ -1020,6 +1131,7 @@ mod tests {
                 ResponseAction::Pass,
                 tile,
                 PlayerId(0),
+                CallKind::Kakan,
                 &mut events,
             )
             .unwrap();
@@ -1213,5 +1325,319 @@ mod tests {
             .round_win_details
             .iter()
             .any(|detail| detail.contains("翻")));
+    }
+
+    #[test]
+    fn chankan_on_ankan_is_only_for_kokushi() {
+        use riichi_core::hand::Hand;
+        use riichi_core::meld::Meld;
+        use riichi_core::tile::Tile;
+
+        let mut state = GameState::new();
+        // 0 家暗杠 1m，进入抢杠窗口
+        state.players[0].melds.push(Meld::ankan(vec![
+            Tile::from_raw(0),
+            Tile::from_raw(1),
+            Tile::from_raw(2),
+            Tile::from_raw(3),
+        ]));
+        state.phase = GamePhase::ChankanResponse {
+            player: PlayerId(0),
+            kan_tile: Tile::from_raw(0),
+            kind: CallKind::Ankan,
+        };
+        // 1 家国士十三面听牌（13 张单张幺九），暗杠牌 1m 正好补成雀头
+        state.players[1].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(68),
+            Tile::from_raw(72),
+            Tile::from_raw(104),
+            Tile::from_raw(108),
+            Tile::from_raw(112),
+            Tile::from_raw(116),
+            Tile::from_raw(120),
+            Tile::from_raw(124),
+            Tile::from_raw(128),
+            Tile::from_raw(132),
+        ]);
+        // 2 家普通听牌：23m 456p 789p 55s 中中中 听 1m/4m，且有役（中刻）
+        state.players[2].hand = Hand::from_tiles(&[
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(36),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+            Tile::from_raw(48),
+            Tile::from_raw(52),
+            Tile::from_raw(56),
+            Tile::from_raw(88),
+            Tile::from_raw(89),
+            Tile::from_raw(132),
+            Tile::from_raw(133),
+            Tile::from_raw(134),
+        ]);
+
+        let options = state.get_call_options();
+        assert!(options
+            .iter()
+            .any(|o| o.player == PlayerId(1) && matches!(o.call_type, CallType::Ron)));
+        assert!(!options
+            .iter()
+            .any(|o| o.player == PlayerId(2) && matches!(o.call_type, CallType::Ron)));
+    }
+
+    #[test]
+    fn daiminkan_has_no_chankan_window_and_delays_dora_to_discard() {
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        use riichi_core::hand::Hand;
+        use riichi_core::wall::Wall;
+
+        let mut state = GameState::new();
+        let mut rng = StdRng::seed_from_u64(7);
+        state.wall = Wall::new(&mut rng);
+        // 1 家手中有 3 张 1m
+        state.players[1].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(1),
+            Tile::from_raw(2),
+            Tile::from_raw(36),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+            Tile::from_raw(48),
+            Tile::from_raw(52),
+            Tile::from_raw(56),
+            Tile::from_raw(88),
+            Tile::from_raw(89),
+            Tile::from_raw(92),
+            Tile::from_raw(96),
+        ]);
+        state.phase = GamePhase::ResponsePhase {
+            player: PlayerId(0),
+            discarded_tile: Tile::from_raw(3),
+        };
+
+        let initial_dora = state.dora.len();
+        let options = state.get_call_options();
+        let minkan = options
+            .iter()
+            .find(|o| o.player == PlayerId(1) && matches!(o.call_type, CallType::Minkan { .. }))
+            .expect("1 家应能明杠 1m");
+        let CallType::Minkan { hand_tiles } = minkan.call_type else {
+            unreachable!()
+        };
+        state
+            .execute_call(PlayerId(1), ResponseAction::Minkan { hand_tiles })
+            .unwrap();
+
+        // 明杠立即成立：无抢杠窗口，直接进入行动阶段并补摸岭上；
+        // 宝牌按 Mortal 延迟到杠家下一次舍牌时翻开。
+        assert!(matches!(state.phase, GamePhase::ActionPhase { .. }));
+        assert!(state.get_call_options().is_empty());
+        assert_eq!(state.dora.len(), initial_dora, "明杠的宝牌不应立即翻开");
+
+        // 杠家摸切岭上牌后宝牌才翻开
+        let drawn = state.drawn_tile().expect("岭上补摸后应有自摸牌");
+        state.execute_action(TurnAction::Discard(drawn)).unwrap();
+        assert_eq!(state.dora.len(), initial_dora + 1);
+    }
+
+    #[test]
+    fn suucha_riichi_aborts_after_the_fourth_declaration_discard_passes() {
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        use riichi_core::wall::Wall;
+
+        let mut state = GameState::new();
+        let mut rng = StdRng::seed_from_u64(11);
+        state.wall = Wall::new(&mut rng);
+        for pid in 0..4 {
+            state.events.push(GameEvent::Riichi {
+                player: PlayerId(pid),
+            });
+        }
+        state.phase = GamePhase::ResponsePhase {
+            player: PlayerId(3),
+            discarded_tile: Tile::from_raw(4),
+        };
+
+        state.complete_response_pass().unwrap();
+        assert_eq!(state.round_end_reason, Some(RoundEndReason::SuuchaRiichi));
+    }
+
+    #[test]
+    fn suucha_riichi_does_not_abort_at_the_fourth_declaration() {
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        use riichi_core::hand::Hand;
+        use riichi_core::wall::Wall;
+
+        let mut state = GameState::new();
+        let mut rng = StdRng::seed_from_u64(23);
+        state.wall = Wall::new(&mut rng);
+        for pid in 0..3 {
+            state.events.push(GameEvent::Riichi {
+                player: PlayerId(pid),
+            });
+        }
+        // 第四家摸东后打东能听牌（123456789m 1123p）
+        state.players[3].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(37),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+        ]);
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(3),
+            drawn_tile: Some(Tile::from_raw(104)),
+        };
+
+        state
+            .execute_action(TurnAction::RiichiDiscard(Tile::from_raw(104)))
+            .unwrap();
+        // 宣言后仍处于响应阶段：宣言牌可被荣和/鸣牌，立直尚未被受理
+        assert!(matches!(state.phase, GamePhase::ResponsePhase { .. }));
+        assert_eq!(state.round_end_reason, None);
+    }
+
+    #[test]
+    fn suufon_renda_triggers_on_a_plain_fourth_wind_discard() {
+        use riichi_core::hand::Hand;
+
+        let mut state = GameState::new();
+        // 前三家首巡各打东
+        for pid in 0..3 {
+            state.events.push(GameEvent::Discard {
+                player: PlayerId(pid),
+                tile: Tile::from_raw(108),
+                kind: riichi_core::game::DiscardKind::Tedashi,
+            });
+        }
+        // 第四家普通弃牌（非立直宣言）打出东
+        state.players[3].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+            Tile::from_raw(40),
+            Tile::from_raw(44),
+            Tile::from_raw(48),
+        ]);
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(3),
+            drawn_tile: Some(Tile::from_raw(108)),
+        };
+
+        state
+            .execute_action(TurnAction::Discard(Tile::from_raw(108)))
+            .unwrap();
+        assert_eq!(state.round_end_reason, Some(RoundEndReason::SuufonRenda));
+    }
+
+    #[test]
+    fn four_kan_aborts_after_the_following_discard_passes() {
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        use riichi_core::meld::Meld;
+        use riichi_core::wall::Wall;
+
+        let mut state = GameState::new();
+        let mut rng = StdRng::seed_from_u64(13);
+        state.wall = Wall::new(&mut rng);
+        // 四个杠分布在两家
+        let ankan = |t: u8| {
+            Meld::ankan(vec![
+                Tile::from_raw(t * 4),
+                Tile::from_raw(t * 4 + 1),
+                Tile::from_raw(t * 4 + 2),
+                Tile::from_raw(t * 4 + 3),
+            ])
+        };
+        state.players[0].melds.push(ankan(0));
+        state.players[0].melds.push(ankan(1));
+        state.players[1].melds.push(ankan(2));
+        state.players[1].melds.push(ankan(3));
+        state.four_kan_abort_pending = true;
+        state.phase = GamePhase::ResponsePhase {
+            player: PlayerId(0),
+            discarded_tile: Tile::from_raw(8),
+        };
+
+        state.complete_response_pass().unwrap();
+        assert_eq!(state.round_end_reason, Some(RoundEndReason::SuuKantsu));
+    }
+
+    #[test]
+    fn four_kan_abort_yields_to_ron() {
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        use riichi_core::hand::Hand;
+        use riichi_core::meld::Meld;
+        use riichi_core::wall::Wall;
+
+        let mut state = GameState::new();
+        let mut rng = StdRng::seed_from_u64(17);
+        state.wall = Wall::new(&mut rng);
+        let ankan = |t: u8| {
+            Meld::ankan(vec![
+                Tile::from_raw(t * 4),
+                Tile::from_raw(t * 4 + 1),
+                Tile::from_raw(t * 4 + 2),
+                Tile::from_raw(t * 4 + 3),
+            ])
+        };
+        state.players[0].melds.push(ankan(0));
+        state.players[0].melds.push(ankan(1));
+        state.players[1].melds.push(ankan(2));
+        state.players[1].melds.push(ankan(3));
+        state.four_kan_abort_pending = true;
+        // 2 家白板碰 + 123456789m 11p，荣和 1p（白板役牌）
+        let white = Tile::from_raw(124);
+        state.players[2].melds.push(Meld::pon(
+            vec![white, Tile::from_raw(125), Tile::from_raw(126)],
+            white,
+            PlayerId(0),
+        ));
+        state.players[2].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(36),
+        ]);
+        state.phase = GamePhase::ResponsePhase {
+            player: PlayerId(0),
+            discarded_tile: Tile::from_raw(37),
+        };
+
+        state
+            .execute_call(PlayerId(2), ResponseAction::Ron)
+            .unwrap();
+        assert!(matches!(
+            state.round_end_reason,
+            Some(RoundEndReason::Win { .. })
+        ));
     }
 }

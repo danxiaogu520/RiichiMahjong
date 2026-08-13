@@ -31,6 +31,8 @@ impl GameState {
             round_start_sticks: 0,
             kuikae_forbidden: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             pao_targets: [None; 4],
+            four_kan_abort_pending: false,
+            dora_reveal_at_discard: false,
             phase: GamePhase::DrawPhase {
                 player: PlayerId(0),
                 position: DrawPosition::LiveWall,

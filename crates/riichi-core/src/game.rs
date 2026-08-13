@@ -19,8 +19,9 @@ pub enum WinKind {
     Tsumo,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum CallKind {
+    #[default]
     Chi,
     Pon,
     Minkan,
@@ -112,6 +113,9 @@ pub enum GamePhase {
     ChankanResponse {
         player: PlayerId,
         kan_tile: Tile,
+        /// 被抢杠的杠种类：暗杠仅允许国士无双抢杠；加杠任意和牌可抢。
+        #[serde(default)]
+        kind: CallKind,
     },
     RoundOver,
 }
@@ -234,7 +238,9 @@ pub fn extract_kuikae_tiles(meld: &Meld) -> Vec<TileType> {
     let mut forbidden = vec![called_type];
 
     // 吃两面搭子时还禁止打出另一张筋牌：
-    // 23 吃 1 禁 1、4；34 吃 2 禁 2、5；……；78 吃 9 禁 9、6。
+    // 23 吃 1（123）禁 1、4；34 吃 2（234）禁 2、5；……；78 吃 9（789）禁 9、6。
+    // 规则：所吃的牌与手中两张弃牌若还能组成另一组顺子，则该牌禁止立刻打出。
+    // 低吃（如 56 吃 4）时另一张筋牌是 X+3（7）；高吃（56 吃 7）时是 X-3（4）；
     // 边张和坎张没有额外的筋食替，因此只禁止现物。
     if meld.kind == MeldKind::Chi {
         let mut hand_tiles: Vec<TileType> = meld
@@ -254,10 +260,12 @@ pub fn extract_kuikae_tiles(meld: &Meld) -> Vec<TileType> {
             let first = hand_tiles[0].rank().0;
             let last = hand_tiles[1].rank().0;
             let called_rank = called_type.rank().0;
-            if called_rank == first.saturating_sub(1) && first >= 2 {
-                forbidden.push(TileType(called_type.0.saturating_sub(1)));
-            } else if called_rank == last + 1 && last <= 8 {
-                forbidden.push(TileType(called_type.0 + 1));
+            if called_rank == first - 1 && last < 9 {
+                // 低吃：如 56 吃 4，与手中 56 再组顺子的只有 7（X+3）
+                forbidden.push(TileType(called_type.0 + 3));
+            } else if called_rank == last + 1 && first > 1 {
+                // 高吃：如 56 吃 7，与手中 56 再组顺子的只有 4（X-3）
+                forbidden.push(TileType(called_type.0 - 3));
             }
         }
     }
@@ -265,4 +273,63 @@ pub fn extract_kuikae_tiles(meld: &Meld) -> Vec<TileType> {
     forbidden.sort_by_key(|tile| tile.0);
     forbidden.dedup();
     forbidden
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_kuikae_tiles;
+    use crate::meld::Meld;
+    use crate::player::PlayerId;
+    use crate::tile::Tile;
+
+    // 索子 raw：1s=72.., 4s=84.., 5s=88.., 6s=92.., 7s=96.., 8s=100.., 9s=104..
+    fn s(rank: u8) -> Tile {
+        Tile::from_raw((17 + rank) * 4)
+    }
+
+    fn chi(tiles: Vec<Tile>, called: Tile) -> Meld {
+        Meld::chi(tiles, called, PlayerId(0))
+    }
+
+    fn assert_forbidden(meld: &Meld, expected: &[u8]) {
+        let mut got: Vec<u8> = extract_kuikae_tiles(meld)
+            .into_iter()
+            .map(|t| t.rank().0)
+            .collect();
+        got.sort_unstable();
+        assert_eq!(got, expected, "meld {}", meld);
+    }
+
+    #[test]
+    fn low_chi_forbids_called_and_one_above_the_meld() {
+        // 56s 吃 4s（456）：禁 4、7
+        assert_forbidden(&chi(vec![s(5), s(6), s(4)], s(4)), &[4, 7]);
+        // 34s 吃 2s（234）：禁 2、5
+        assert_forbidden(&chi(vec![s(3), s(4), s(2)], s(2)), &[2, 5]);
+        // 78s 吃 6s（678）：禁 6、9
+        assert_forbidden(&chi(vec![s(7), s(8), s(6)], s(6)), &[6, 9]);
+        // 89s 吃 7s（789）：9 之上没有牌，只禁现物
+        assert_forbidden(&chi(vec![s(8), s(9), s(7)], s(7)), &[7]);
+    }
+
+    #[test]
+    fn high_chi_forbids_called_and_one_below_the_meld() {
+        // 56s 吃 7s（567）：禁 7、4
+        assert_forbidden(&chi(vec![s(5), s(6), s(7)], s(7)), &[4, 7]);
+        // 67s 吃 8s（678）：禁 8、5
+        assert_forbidden(&chi(vec![s(6), s(7), s(8)], s(8)), &[5, 8]);
+        // 12s 吃 3s（123）：1 之下没有牌，只禁现物
+        assert_forbidden(&chi(vec![s(1), s(2), s(3)], s(3)), &[3]);
+    }
+
+    #[test]
+    fn mid_chi_and_kanchan_chi_only_forbid_the_called_tile() {
+        // 46s 吃 5s（456 中张）：禁 5
+        assert_forbidden(&chi(vec![s(4), s(6), s(5)], s(5)), &[5]);
+        // 35s 吃 4s（345 中张）：禁 4
+        assert_forbidden(&chi(vec![s(3), s(5), s(4)], s(4)), &[4]);
+        // 碰只禁现物
+        let pon = Meld::pon(vec![s(5), s(5), s(5)], s(5), PlayerId(0));
+        assert_forbidden(&pon, &[5]);
+    }
 }

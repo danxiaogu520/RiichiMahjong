@@ -58,6 +58,13 @@ pub struct GameState {
     pub kuikae_forbidden: [Vec<TileType>; 4],
     /// 大三元/大四喜的责任支付者，按和了者座位记录。
     pub pao_targets: [Option<usize>; 4],
+    /// 四杠散了挂起标记：第四杠成立后，待下一次舍牌未被荣和时才流局。
+    #[serde(default)]
+    pub(crate) four_kan_abort_pending: bool,
+    /// 明杠的宝牌延迟到杠家下一次舍牌时翻开（与 Mortal 一致）：
+    /// 明杠后杠家岭上自摸和牌时不计该杠宝牌。
+    #[serde(default)]
+    pub(crate) dora_reveal_at_discard: bool,
     /// 当前游戏阶段（摸牌/行动/响应/局结束）
     pub phase: GamePhase,
     /// 终局时、剩余立直棒加入前确定的最终排名。

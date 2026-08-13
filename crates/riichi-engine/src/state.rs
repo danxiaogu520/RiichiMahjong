@@ -145,14 +145,27 @@ impl GameState {
         }
         let result = match &envelope.event {
             GameEvent::Draw { player, tile } => {
-                let result = match self.draw_position() {
-                    Some(riichi_core::game::DrawPosition::Rinshan) => {
-                        self.apply_rinshan_draw_event(*player, *tile)
+                // 杠成立（明杠/加杠/暗杠通过抢杠窗口后）时引擎已内部补摸岭上并
+                // 进入行动阶段；重放时对应的 Draw 事件已被内部消费，幂等跳过。
+                let already_consumed = matches!(
+                    &self.phase,
+                    GamePhase::ActionPhase {
+                        drawn_tile: Some(drawn),
+                        ..
+                    } if *drawn == *tile
+                );
+                let result = if already_consumed {
+                    Ok(())
+                } else {
+                    match self.draw_position() {
+                        Some(riichi_core::game::DrawPosition::Rinshan) => {
+                            self.apply_rinshan_draw_event(*player, *tile)
+                        }
+                        _ => self.apply_draw_event(*player, *tile),
                     }
-                    _ => self.apply_draw_event(*player, *tile),
-                }
-                .map_err(|error| error.to_string());
-                if result.is_ok() {
+                    .map_err(|error| error.to_string())
+                };
+                if result.is_ok() && !already_consumed {
                     self.record_event(envelope.event.clone());
                 }
                 result
@@ -262,6 +275,14 @@ impl GameState {
                 };
                 if result.is_ok() && matches!(kind, CallKind::Ankan | CallKind::Kakan) {
                     self.record_event(envelope.event.clone());
+                    // 抢杠窗口无人可抢时（live 流程由 session 直接完成窗口），
+                    // 重放时在此自动完成：翻宝牌并补摸岭上。
+                    if matches!(self.phase, GamePhase::ChankanResponse { .. })
+                        && self.get_call_options().is_empty()
+                    {
+                        self.complete_response_pass()
+                            .map_err(|error| error.to_string())?;
+                    }
                 }
                 result
             }
@@ -433,6 +454,231 @@ mod replay_tests {
         assert_eq!(
             format!("{:?}", replayed.phase),
             format!("{:?}", original.phase)
+        );
+    }
+
+    /// 明杠全流程重放：事件流 [Draw, Discard, Call(Minkan), Draw(岭上), Discard]。
+    /// 明杠事件执行时引擎内部已补摸岭上，重放对应的 Draw 事件必须幂等跳过。
+    #[test]
+    fn minkan_round_replays_consistently() {
+        use riichi_core::game::{CallType, ResponseAction, TurnAction};
+        use riichi_core::tile::{Tile, TileType};
+        use riichi_core::wall::Wall;
+
+        // 手动构造牌山：0 家（庄家）第一摸 = 1m 第 4 张（raw 3），
+        // 1 家配牌 = 3×1m（raw 0,1,2）+ 其他；保证 live 与重放配牌一致。
+        // 1 家配牌位置：4-7, 20-23, 36-39, 49；0 家第一摸 = 52。
+        let mut tiles: Vec<Tile> = Tile::all_tiles();
+        let target_positions = [4usize, 5, 6, 52];
+        let displaced: Vec<Tile> = target_positions.iter().map(|&p| tiles[p]).collect();
+        for (i, &p) in target_positions.iter().enumerate() {
+            tiles[p] = Tile::from_raw(i as u8); // 0,1,2 → 1 家配牌位；3 → 0 家第一摸位
+        }
+        for (i, &p) in [0usize, 1, 2, 3].iter().enumerate() {
+            tiles[p] = displaced[i];
+        }
+        let setup = RoundSetup {
+            round: 1,
+            honba: 0,
+            riichi_sticks: 0,
+            event_start_id: 1,
+            initial_points: [25000; 4],
+            wall: tiles.clone(),
+        };
+        let mut original = GameState::from_round_setup(&setup, 1, 0, 0);
+        // 0 家摸 1m 并打出
+        original.draw().unwrap();
+        let tile = original.drawn_tile().unwrap();
+        assert_eq!(tile.tile_type(), TileType(0));
+        original.execute_action(TurnAction::Discard(tile)).unwrap();
+        // 1 家明杠
+        let options = original.get_call_options();
+        let minkan = options
+            .iter()
+            .find(|o| {
+                o.player == riichi_core::player::PlayerId(1)
+                    && matches!(o.call_type, CallType::Minkan { .. })
+            })
+            .expect("1 家应能明杠 1m");
+        let CallType::Minkan { hand_tiles } = minkan.call_type else {
+            unreachable!()
+        };
+        original
+            .execute_call(
+                riichi_core::player::PlayerId(1),
+                ResponseAction::Minkan { hand_tiles },
+            )
+            .unwrap();
+        // 杠家摸切岭上牌（宝牌此时翻开）
+        let drawn = original.drawn_tile().expect("岭上补摸");
+        original.execute_action(TurnAction::Discard(drawn)).unwrap();
+        // 模拟 session：完成响应窗口（重放侧在无人响应时会自动完成）
+        let responders: Vec<_> = original
+            .get_call_options()
+            .into_iter()
+            .map(|option| option.player)
+            .collect();
+        for player in responders {
+            original.record_response_pass(player).unwrap();
+        }
+        original.complete_response_pass().unwrap();
+
+        let events = original.event_log().to_vec();
+        assert!(events.iter().any(|e| matches!(
+            e.event,
+            riichi_core::game::GameEvent::Call {
+                kind: riichi_core::game::CallKind::Minkan,
+                ..
+            }
+        )));
+        let mut replayed = GameState::from_round_setup(&setup, 1, 0, 0);
+        for event in &events {
+            replayed.apply_event(event).unwrap();
+        }
+
+        assert_eq!(replayed.event_log().len(), 0);
+        assert_eq!(
+            format!("{:?}", replayed.phase),
+            format!("{:?}", original.phase)
+        );
+        assert_eq!(replayed.players[1].melds.len(), 1);
+        assert_eq!(
+            replayed.players[1].hand.tiles(),
+            original.players[1].hand.tiles()
+        );
+        assert_eq!(replayed.remaining_tiles(), original.remaining_tiles());
+        assert_eq!(replayed.dora.len(), original.dora.len());
+        assert_eq!(
+            replayed.dora_indicators, original.dora_indicators,
+            "明杠宝牌应在舍牌时翻开，重放保持一致"
+        );
+    }
+
+    /// 加杠全流程重放：0 家碰 86 → 摸到第 4 张 87 → 加杠 → 抢杠窗口无人可抢
+    /// 自动完成 → 摸岭上 → 舍牌。事件流含 Draw(岭上)，重放必须幂等跳过。
+    #[test]
+    fn kakan_round_replays_consistently() {
+        use riichi_core::game::{CallType, ResponseAction, TurnAction};
+        use riichi_core::player::PlayerId;
+        use riichi_core::tile::{Tile, TileType};
+
+        // round 2 → 庄家 = 1 家，第一摸 = 位置 52。
+        // 1 家摸 86 打出 → 0 家碰（配牌 84,85，位置 0,1）→ 0 家打牌 →
+        // 1/2/3 家各摸打一张 → 0 家摸（位置 56）= 87 → 加杠。
+        let mut tiles: Vec<Tile> = Tile::all_tiles();
+        let target_positions = [0usize, 1, 52, 56]; // 0 家配牌 84,85；1 家摸 86；0 家摸 87
+        let raws = [84u8, 85, 86, 87];
+        let displaced: Vec<Tile> = target_positions.iter().map(|&p| tiles[p]).collect();
+        for (i, &p) in target_positions.iter().enumerate() {
+            tiles[p] = Tile::from_raw(raws[i]);
+        }
+        for (i, &p) in raws.iter().enumerate() {
+            tiles[p as usize] = displaced[i];
+        }
+        let setup = RoundSetup {
+            round: 2,
+            honba: 0,
+            riichi_sticks: 0,
+            event_start_id: 1,
+            initial_points: [25000; 4],
+            wall: tiles.clone(),
+        };
+        let mut original = GameState::from_round_setup(&setup, 2, 0, 0);
+        // 辅助：摸切并完成响应窗口
+        fn tsumogiri_and_close(state: &mut GameState) {
+            let t = state.drawn_tile().expect("行动阶段应有自摸牌");
+            state.execute_action(TurnAction::Discard(t)).unwrap();
+            let responders: Vec<_> = state
+                .get_call_options()
+                .into_iter()
+                .map(|option| option.player)
+                .collect();
+            for player in responders {
+                state.record_response_pass(player).unwrap();
+            }
+            state.complete_response_pass().unwrap();
+        }
+        // 1 家（庄家）摸 86 打出
+        original.draw().unwrap();
+        let first = original.drawn_tile().unwrap();
+        assert_eq!(first.tile_type(), TileType(21));
+        original.execute_action(TurnAction::Discard(first)).unwrap();
+        // 0 家碰
+        let options = original.get_call_options();
+        let pon = options
+            .iter()
+            .find(|o| o.player == PlayerId(0) && matches!(o.call_type, CallType::Pon { .. }))
+            .expect("0 家应能碰 4s");
+        let CallType::Pon { hand_tiles } = pon.call_type else {
+            unreachable!()
+        };
+        original
+            .execute_call(PlayerId(0), ResponseAction::Pon { hand_tiles })
+            .unwrap();
+        // 0 家打出手牌中的一张
+        let x = original.players[0].hand.tiles()[0];
+        original.execute_action(TurnAction::Discard(x)).unwrap();
+        let responders: Vec<_> = original
+            .get_call_options()
+            .into_iter()
+            .map(|option| option.player)
+            .collect();
+        for player in responders {
+            original.record_response_pass(player).unwrap();
+        }
+        original.complete_response_pass().unwrap();
+        // 1、2、3 家各摸切一张
+        for _ in 0..3 {
+            original.draw().unwrap();
+            tsumogiri_and_close(&mut original);
+        }
+        // 0 家摸（位置 56 = 87）并加杠
+        original.draw().unwrap();
+        let fourth = original.drawn_tile().unwrap();
+        assert_eq!(fourth.tile_type(), TileType(21));
+        original
+            .execute_action(TurnAction::Kakan(0, fourth))
+            .unwrap();
+        // 抢杠窗口无人可抢，直接完成（live 流程与重放自动完成路径一致）
+        original.complete_response_pass().unwrap();
+        let drawn = original.drawn_tile().expect("岭上补摸");
+        original.execute_action(TurnAction::Discard(drawn)).unwrap();
+        // 模拟 session：完成响应窗口
+        let responders: Vec<_> = original
+            .get_call_options()
+            .into_iter()
+            .map(|option| option.player)
+            .collect();
+        for player in responders {
+            original.record_response_pass(player).unwrap();
+        }
+        original.complete_response_pass().unwrap();
+
+        let events = original.event_log().to_vec();
+        let mut replayed = GameState::from_round_setup(&setup, 2, 0, 0);
+        for event in &events {
+            replayed.apply_event(event).unwrap();
+        }
+
+        assert_eq!(replayed.event_log().len(), 0);
+        assert_eq!(
+            format!("{:?}", replayed.phase),
+            format!("{:?}", original.phase)
+        );
+        assert_eq!(replayed.players[0].melds.len(), 1);
+        assert_eq!(
+            replayed.players[0].melds[0].kind,
+            riichi_core::meld::MeldKind::Kakan
+        );
+        assert_eq!(
+            replayed.players[0].hand.tiles(),
+            original.players[0].hand.tiles()
+        );
+        assert_eq!(replayed.remaining_tiles(), original.remaining_tiles());
+        assert_eq!(replayed.dora.len(), original.dora.len());
+        assert_eq!(
+            replayed.dora_indicators, original.dora_indicators,
+            "加杠宝牌应在窗口关闭后翻开，重放保持一致"
         );
     }
 }

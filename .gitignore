@@ -24,3 +24,6 @@ Thumbs.db
 
 # Agent
 .mimocode/
+
+# 规则审计参考仓库（Mortal 克隆，仅本地使用）
+mortal-ref/
