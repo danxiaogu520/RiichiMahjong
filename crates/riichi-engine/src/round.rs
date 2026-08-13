@@ -58,6 +58,8 @@ impl GameState {
             player.discards.clear();
             player.melds.clear();
             player.is_riichi = false;
+            player.riichi_declared = false;
+            player.double_riichi = false;
             player.riichi_declaration_index = None;
             player.furiten = FuritenState::default();
             player.all_discarded_types.clear();
@@ -149,7 +151,6 @@ impl GameState {
                 tile, actual
             )));
         }
-        self.update_discard_furiten(player);
         self.phase = GamePhase::ActionPhase {
             player,
             drawn_tile: Some(tile),
@@ -196,7 +197,6 @@ impl GameState {
                 tile, actual
             )));
         }
-        self.update_discard_furiten(player);
         self.phase = GamePhase::ActionPhase {
             player,
             drawn_tile: Some(tile),
@@ -316,6 +316,10 @@ impl GameState {
         player.all_discarded_types.insert(tile.tile_type()); // 记录舍牌类型
         player.furiten.clear_round(); // 清除本轮振听
         self.kuikae_forbidden[cp].clear();
+
+        // 打牌后立即更新舍牌振听（与 Mortal 一致）：弃牌是本人的待牌时
+        // 马上进入振听，不必等到下一次摸牌。
+        self.update_discard_furiten(current_player);
 
         let expected_kind = if Some(tile) == drawn_tile {
             DiscardKind::Tsumogiri

@@ -22,12 +22,14 @@ pub(crate) fn detect_yaku(
     hand: &WinningHand,
     situation: &WinSituation,
     melds: &[Meld],
+    concealed_tiles: &[Tile],
     winning_tile: Tile,
     placement: WinningTilePlacement,
 ) -> Vec<YakuResult> {
     detect_yaku_inner(
         hand,
         &YakuContext { situation, melds },
+        concealed_tiles,
         winning_tile,
         placement,
     )
@@ -172,6 +174,7 @@ fn collect_all_tiles(hand: &WinningHand, melds: &[Meld]) -> Vec<TileType> {
 fn detect_yaku_inner(
     hand: &WinningHand,
     ctx: &YakuContext<'_>,
+    concealed_tiles: &[Tile],
     winning_tile: Tile,
     placement: WinningTilePlacement,
 ) -> Vec<YakuResult> {
@@ -223,18 +226,16 @@ fn detect_yaku_inner(
     }
 
     if matches!(hand, WinningHand::Kokushi { .. }) {
-        // 十三面只能在“和了牌正好把唯一缺少的重复牌补成雀头”时成立。
-        // 不能因为牌型中存在若干张单张幺九牌就直接判成十三面。
-        let winning_type = winning_tile.tile_type();
+        // 十三面只能在“听牌时 13 张手牌恰好是 13 种幺九各一张”时成立：
+        // 单骑听（12 种 + 1 对）即使和了牌补成雀头也只是一倍役满。
         let thirteen_wait = ctx.melds.is_empty()
-            && winning_type.is_yaochuuhai()
+            && concealed_tiles.len() == 13
             && TileType::YAOCHUUHAI.iter().all(|&tt| {
-                let count = all_tiles.iter().filter(|&&tile| tile == tt).count();
-                if tt == winning_type {
-                    count == 2
-                } else {
-                    count == 1
-                }
+                concealed_tiles
+                    .iter()
+                    .filter(|&&tile| tile.tile_type() == tt)
+                    .count()
+                    == 1
             });
         if thirteen_wait {
             yaku.push(YakuResult::new(YakuName::Kokushi13, 26));

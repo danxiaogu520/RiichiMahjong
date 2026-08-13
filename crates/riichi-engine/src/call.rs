@@ -10,13 +10,18 @@ use riichi_core::tile::{Tile, TileType};
 /// - 大明杠
 /// - 碰
 /// - 吃（仅下家可用，仅数牌）
+///
+/// `remaining_tiles` 为当前牌山剩余数：河底牌（剩余 0）只能荣和或过，
+/// 不能吃/碰/大明杠（与 Mortal 的 `dahai` 一致）。
 pub fn detect_calls(
     players: &[Player; 4],
     discarded_tile: Tile,
     discarder: PlayerId,
+    remaining_tiles: usize,
 ) -> Vec<CallOption> {
     let mut options = Vec::new();
     let tt = discarded_tile.tile_type();
+    let is_houtei = remaining_tiles == 0;
 
     for (idx, player) in players.iter().enumerate().take(4) {
         let pid = PlayerId(idx);
@@ -42,7 +47,8 @@ pub fn detect_calls(
         }
 
         // 立直后仍可荣和，但不能再进行吃、碰、大明杠。
-        if !player.is_riichi {
+        // 河底牌（牌山剩余 0）同样不能吃、碰、大明杠，只能荣和或过。
+        if !player.is_riichi && !is_houtei {
             // 大明杠检测：手中有 3 张相同牌
             let count = hand.count_type(tt);
             if count >= 3 {
@@ -196,13 +202,59 @@ mod tests {
             Tile::from_raw(73),
         ]);
 
-        let options = detect_calls(&players, Tile::from_raw(34), PlayerId(0));
+        let options = detect_calls(&players, Tile::from_raw(34), PlayerId(0), 10);
         assert!(options
             .iter()
             .any(|option| matches!(option.call_type, CallType::Ron)));
         assert!(options
             .iter()
             .any(|option| matches!(option.call_type, CallType::Pon { .. })));
+    }
+
+    #[test]
+    fn houtei_discard_cannot_be_called_but_can_be_ronned() {
+        let mut players = [
+            Player::new(PlayerId(0), riichi_core::tile::TileType::EAST),
+            Player::new(PlayerId(1), riichi_core::tile::TileType::SOUTH),
+            Player::new(PlayerId(2), riichi_core::tile::TileType::WEST),
+            Player::new(PlayerId(3), riichi_core::tile::TileType::NORTH),
+        ];
+        // 下家手牌 34p 555p 678p 234s 99s：对 5p 同时可荣和/大明杠/碰/吃
+        players[3].hand = riichi_core::hand::Hand::from_tiles(&[
+            Tile::from_raw(44), // 3p
+            Tile::from_raw(48), // 4p
+            Tile::from_raw(52), // 5p
+            Tile::from_raw(53),
+            Tile::from_raw(54),
+            Tile::from_raw(56),  // 6p
+            Tile::from_raw(60),  // 7p
+            Tile::from_raw(64),  // 8p
+            Tile::from_raw(76),  // 2s
+            Tile::from_raw(80),  // 3s
+            Tile::from_raw(84),  // 4s
+            Tile::from_raw(104), // 9s
+            Tile::from_raw(105),
+        ]);
+
+        // 牌山尚有剩余：可以鸣牌
+        let options = detect_calls(&players, Tile::from_raw(55), PlayerId(0), 3);
+        assert!(options.iter().any(|option| {
+            matches!(
+                option.call_type,
+                CallType::Minkan { .. } | CallType::Pon { .. } | CallType::Chi { .. }
+            )
+        }));
+        // 河底（牌山剩余 0）：只能荣和或过
+        let houtei_options = detect_calls(&players, Tile::from_raw(55), PlayerId(0), 0);
+        assert!(houtei_options.iter().all(|option| {
+            !matches!(
+                option.call_type,
+                CallType::Minkan { .. } | CallType::Pon { .. } | CallType::Chi { .. }
+            )
+        }));
+        assert!(houtei_options
+            .iter()
+            .any(|option| matches!(option.call_type, CallType::Ron)));
     }
 
     #[test]
@@ -233,7 +285,7 @@ mod tests {
         ];
         players[1].melds.push(Meld::ankan(east.to_vec()));
 
-        let options = detect_calls(&players, Tile::from_raw(37), PlayerId(0));
+        let options = detect_calls(&players, Tile::from_raw(37), PlayerId(0), 10);
         assert!(options.iter().any(
             |option| option.player == PlayerId(1) && matches!(option.call_type, CallType::Ron)
         ));

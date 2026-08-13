@@ -6,6 +6,7 @@ use riichi_logic::shanten::ShantenCalculator;
 use riichi_logic::shape::analyze_wait_tiles_with_open_melds;
 
 use crate::game::{GameError, GameState};
+use crate::win::can_declare_double_riichi;
 
 impl GameState {
     /// 获取玩家的听牌列表（手牌 13 张时调用）
@@ -71,28 +72,48 @@ impl GameState {
 
     /// 宣告立直（仅宣告，不打牌）
     ///
-    /// 扣除 1000 点，设置立直标记，放置立直棒
+    /// 宣告本身不扣除点数；宣言牌通过响应窗口（未被荣和）后
+    /// 由受理流程扣除 1000 点并放置立直棒。
     pub fn execute_riichi(&mut self, player: PlayerId) -> Result<(), GameError> {
         if !self.can_declare_riichi(player) {
             return Err(GameError::InvalidAction("不满足立直条件".to_string()));
         }
         self.apply_riichi_event(player)?;
         self.record_event(GameEvent::Riichi { player });
+        // 无宣言牌的独立宣告没有响应窗口，宣告即受理。
+        self.accept_riichi(player);
         Ok(())
     }
 
+    /// 应用立直宣告事件（仅标记，不扣分）。
+    ///
+    /// 与 Mortal 的 `reach()` 对应：记录宣告状态，并在宣告时捕获
+    /// 双立直条件（之后宣言牌被鸣走或发生其他事件不影响该判定）。
     pub(crate) fn apply_riichi_event(&mut self, player: PlayerId) -> Result<(), GameError> {
-        if self.players[player.0].is_riichi {
+        if self.players[player.0].riichi_declared || self.players[player.0].is_riichi {
             return Err(GameError::InvalidAction("玩家已经立直".to_string()));
         }
         if self.players[player.0].points < 1000 {
             return Err(GameError::InvalidAction("立直点数不足".to_string()));
         }
+        // 双立直在宣告时捕获：无任何鸣牌且这是本人的第一打。
+        self.players[player.0].double_riichi = can_declare_double_riichi(&self.events, player);
+        self.players[player.0].riichi_declared = true;
+        Ok(())
+    }
+
+    /// 立直受理：宣言牌通过响应窗口（未被荣和）时扣除 1000 点并放置立直棒。
+    ///
+    /// 与 Mortal 的 `reach_accepted()` 一致：宣告本身不扣分不放棒，
+    /// 宣言牌被荣和或途中流局时立直不成立。
+    pub(crate) fn accept_riichi(&mut self, player: PlayerId) {
         let p = &mut self.players[player.0];
+        if p.is_riichi || !p.riichi_declared {
+            return;
+        }
         p.points -= 1000;
         p.is_riichi = true;
         self.riichi_sticks += 1;
-        Ok(())
     }
 
     /// 立直后可用的暗杠选项

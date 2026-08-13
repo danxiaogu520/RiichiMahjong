@@ -88,6 +88,7 @@ fn evaluate_candidate(
         hand,
         input.situation,
         input.melds,
+        input.concealed_tiles,
         input.winning_tile,
         placement,
     );

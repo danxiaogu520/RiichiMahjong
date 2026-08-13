@@ -116,8 +116,9 @@ impl GameState {
             .map(PlayerId)
             .filter(|&player| {
                 let discards = &self.players[player.0].discards;
-                !discards.is_empty()
-                    && discards.iter().all(|tile| tile.is_yaochuuhai())
+                // 与 Mortal 一致：没有打出过非幺九牌（含从未打牌的副露玩家），
+                // 且没有玩家的河牌被鸣走。
+                discards.iter().all(|tile| tile.is_yaochuuhai())
                     && !self.events.iter().any(|event| match event {
                         GameEvent::Call {
                             from_player: Some(from_player),
@@ -153,7 +154,12 @@ impl GameState {
             self.honba += 1;
         } else {
             self.round += 1;
-            self.honba = 0;
+            // 过庄时：和了清零本场；荒牌流局过庄本场 +1（与 Mortal 一致）
+            if matches!(reason, RoundEndReason::ExhaustiveDraw) {
+                self.honba += 1;
+            } else {
+                self.honba = 0;
+            }
             // 场风更新：round 1-4 = 东场, 5-8 = 南场
             self.wind = if self.round <= 4 {
                 TileType::EAST
@@ -173,8 +179,23 @@ impl GameState {
             || (self.round == 12 && self.dealer_has_passed())
     }
 
+    /// 与 Mortal（天凤规则）一致的终局判定：
+    /// - 西入（round >= 9）后过庄且任何家 >= 30000：终局（连庄优先，不提前终局）；
+    /// - 南四（round >= 8）起庄家连庄：仅当庄家 >= 30000 且为最高分（同分按座位序）才终局。
     fn is_all_last_target_met(&self) -> bool {
-        self.round >= 8 && self.players.iter().any(|p| p.points >= 30_000)
+        if self.round >= 9
+            && self.dealer_has_passed()
+            && self.players.iter().any(|p| p.points >= 30_000)
+        {
+            return true;
+        }
+        if self.round >= 8 && !self.dealer_has_passed() {
+            let dealer = self.get_dealer().0;
+            if self.players[dealer].points >= 30_000 && self.final_ranking()[0] == dealer {
+                return true;
+            }
+        }
+        false
     }
 
     fn dealer_has_passed(&self) -> bool {
@@ -240,6 +261,10 @@ mod tests {
     fn nagashi_mangan_requires_only_terminal_honor_discards() {
         let mut state = GameState::new();
         state.players[0].discards = vec![Tile::from_raw(0), Tile::from_raw(108)];
+        // 其余玩家打出过非幺九牌，不满足流局满贯（空河玩家也会被排除）。
+        for player in 1..4 {
+            state.players[player].discards = vec![Tile::from_raw(4)];
+        }
         assert_eq!(state.get_nagashi_mangan_candidates(), vec![PlayerId(0)]);
 
         state.players[0].discards.push(Tile::from_raw(4));
@@ -247,10 +272,28 @@ mod tests {
     }
 
     #[test]
+    fn nagashi_mangan_includes_players_without_any_discards() {
+        // 与 Mortal 一致：从未打牌的副露玩家也算流局满贯候选。
+        let mut state = GameState::new();
+        state.players[0].discards = vec![Tile::from_raw(0), Tile::from_raw(108)];
+        for player in 2..4 {
+            state.players[player].discards = vec![Tile::from_raw(4)];
+        }
+        assert_eq!(
+            state.get_nagashi_mangan_candidates(),
+            vec![PlayerId(0), PlayerId(1)]
+        );
+    }
+
+    #[test]
     fn multiple_nagashi_mangan_winners_are_settled_independently() {
         let mut state = GameState::new();
         state.players[0].discards = vec![Tile::from_raw(0), Tile::from_raw(108)];
         state.players[1].discards = vec![Tile::from_raw(1), Tile::from_raw(109)];
+        // 其余玩家打出过非幺九牌，不参与流局满贯。
+        for player in 2..4 {
+            state.players[player].discards = vec![Tile::from_raw(4)];
+        }
 
         state.resolve_exhaustive_draw();
 

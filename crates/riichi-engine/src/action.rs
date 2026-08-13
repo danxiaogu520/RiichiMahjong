@@ -374,8 +374,12 @@ impl GameState {
                 discarded_tile,
                 player: discarder,
             } => {
-                let mut options =
-                    crate::call::detect_calls(&self.players, discarded_tile, discarder);
+                let mut options = crate::call::detect_calls(
+                    &self.players,
+                    discarded_tile,
+                    discarder,
+                    self.remaining_tiles(),
+                );
                 // 仅完成牌型不代表可以荣和：还必须满足振听、至少一役和
                 // 当前副露上下文。候选动作必须与真正结算使用同一判定入口。
                 options.retain(|option| {
@@ -522,6 +526,20 @@ impl GameState {
         match action {
             // 过：将牌放入舍牌区，更新振听，进入摸牌阶段
             ResponseAction::Pass => {
+                // 四杠散了：第四杠后的舍牌未被荣和时流局。
+                // 与 Mortal 一致，该判定优先于立直受理（四家立直）。
+                if self.four_kan_abort_pending && self.check_four_kan_abort() {
+                    new_events.push(GameEvent::AbortiveDraw {
+                        player: None,
+                        reason: RoundEndReason::SuuKantsu,
+                    });
+                    self.resolve_round_end(RoundEndReason::SuuKantsu);
+                    return Ok(());
+                }
+
+                // 立直受理：宣言牌通过响应窗口未被荣和时扣立直棒（与 Mortal 一致）。
+                self.accept_riichi(discarder);
+
                 let river_index = self.players[discarder.0].discards.len();
                 self.players[discarder.0].discards.push(discarded_tile);
                 // 立直宣言牌被鸣走时，以立直后第一张入河的牌代替横置标记。
@@ -560,16 +578,6 @@ impl GameState {
                     return Ok(());
                 }
 
-                // 四杠散了：第四杠后的舍牌未被荣和时流局
-                if self.four_kan_abort_pending && self.check_four_kan_abort() {
-                    new_events.push(GameEvent::AbortiveDraw {
-                        player: None,
-                        reason: RoundEndReason::SuuKantsu,
-                    });
-                    self.resolve_round_end(RoundEndReason::SuuKantsu);
-                    return Ok(());
-                }
-
                 self.advance_turn();
             }
             // 荣和
@@ -604,6 +612,8 @@ impl GameState {
                     });
                 } else {
                     // 荣和不成立（振听/无役等），将牌放入舍牌区
+                    // 宣言牌未被有效荣和，立直照常受理。
+                    self.accept_riichi(discarder);
                     let river_index = self.players[discarder.0].discards.len();
                     self.players[discarder.0].discards.push(discarded_tile);
                     if self.players[discarder.0].is_riichi
@@ -637,6 +647,8 @@ impl GameState {
                 };
                 self.kuikae_forbidden[player.0] = forbidden;
                 self.update_discard_furiten(player);
+                // 立直宣言牌被碰时立直接被受理（与 Mortal 一致）
+                self.accept_riichi(discarder);
                 new_events.push(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
@@ -678,6 +690,8 @@ impl GameState {
                 };
                 self.kuikae_forbidden[player.0] = forbidden;
                 self.update_discard_furiten(player);
+                // 立直宣言牌被吃时立直接被受理（与 Mortal 一致）
+                self.accept_riichi(discarder);
                 new_events.push(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
@@ -717,6 +731,8 @@ impl GameState {
                         .push(Meld::minkan(meld_tiles, discarded_tile, discarder));
                 }
                 // 大明杠不可被抢：杠立即成立，先记录鸣牌事件再翻宝牌并补摸岭上。
+                // 立直宣言牌被明杠时立直接被受理（与 Mortal 一致）。
+                self.accept_riichi(discarder);
                 self.record_event(GameEvent::Call {
                     player,
                     tiles: hand_tiles.to_vec(),
@@ -1100,6 +1116,138 @@ mod tests {
     use riichi_core::tile::TileType;
 
     #[test]
+    fn riichi_is_accepted_and_stick_deducted_when_declaration_discard_is_called() {
+        // 双立直宣言牌被碰走后：立直接被受理（扣 1000、放棒），
+        // 且双立直标记在宣言时捕获，不受之后鸣牌影响（与 Mortal 一致）。
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+        state.start_round(&mut rng);
+        // 庄家 123m 456m 789m 11p 34s + 摸 2s，打 2s 立直听 2s/5s。
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(44),
+            Tile::from_raw(45),
+            Tile::from_raw(80),
+            Tile::from_raw(84),
+        ]);
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(79)),
+        };
+
+        state
+            .execute_action(TurnAction::RiichiDiscard(Tile::from_raw(79)))
+            .unwrap();
+        // 宣言时捕获双立直条件：无鸣牌且是庄家第一打。
+        assert!(state.players[0].double_riichi);
+        assert!(!state.players[0].is_riichi);
+
+        // 下家碰走宣言牌：立直被受理。
+        state.players[1].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(76),
+            Tile::from_raw(77),
+            Tile::from_raw(78),
+            Tile::from_raw(84),
+        ]);
+        state
+            .execute_call(
+                PlayerId(1),
+                ResponseAction::Pon {
+                    hand_tiles: [Tile::from_raw(76), Tile::from_raw(77)],
+                },
+            )
+            .unwrap();
+        assert!(state.players[0].is_riichi);
+        assert_eq!(state.players[0].points, 24_000);
+        assert_eq!(state.riichi_sticks, 1);
+
+        // 之后自摸 5s 和牌：双立直仍然成立（鸣牌不影响已捕获的判定）。
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(88)), // 5s
+        };
+        let (_, yaku_names) = state
+            .check_tsumo(PlayerId(0))
+            .expect("双立直自摸应当能和牌");
+        assert!(yaku_names.iter().any(|name| name.contains("DoubleRiichi")));
+    }
+
+    #[test]
+    fn riichi_is_not_accepted_when_declaration_discard_is_ronned() {
+        // 宣言牌被荣和：立直不成立，不扣立直棒（与 Mortal 一致）。
+        let mut state = GameState::new();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(23);
+        state.start_round(&mut rng);
+        state.players[0].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(44),
+            Tile::from_raw(48),
+            Tile::from_raw(52),
+            Tile::from_raw(78),
+        ]);
+        state.phase = GamePhase::ActionPhase {
+            player: PlayerId(0),
+            drawn_tile: Some(Tile::from_raw(79)),
+        };
+        state
+            .execute_action(TurnAction::RiichiDiscard(Tile::from_raw(79)))
+            .unwrap();
+        assert!(!state.players[0].is_riichi);
+
+        // 下家 123m 456m 789m 234s 2s 单骑听 2s（一杯口无，一色三顺……
+        // 实际役：一气通贯 123m 456m 789m），荣和宣言牌。
+        state.players[1].hand = Hand::from_tiles(&[
+            Tile::from_raw(0),
+            Tile::from_raw(4),
+            Tile::from_raw(8),
+            Tile::from_raw(12),
+            Tile::from_raw(16),
+            Tile::from_raw(20),
+            Tile::from_raw(24),
+            Tile::from_raw(28),
+            Tile::from_raw(32),
+            Tile::from_raw(78),
+            Tile::from_raw(80),
+            Tile::from_raw(84),
+            Tile::from_raw(88),
+        ]);
+        state
+            .execute_call(PlayerId(1), ResponseAction::Ron)
+            .unwrap();
+
+        // 宣言者未被扣立直棒：支出仅为荣和点数（本局 4 翻 40 符 = 8000）。
+        assert!(!state.players[0].is_riichi);
+        assert_eq!(25_000 - state.players[0].points, 8_000);
+        assert_eq!(state.riichi_sticks, 0);
+        assert!(matches!(state.phase, GamePhase::RoundOver));
+    }
+
+    #[test]
     fn kakan_does_not_reveal_dora_before_chankan_passes() {
         let mut state = GameState::new();
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
@@ -1204,11 +1352,19 @@ mod tests {
         state
             .execute_action(TurnAction::RiichiDiscard(Tile::from_raw(104)))
             .unwrap();
-        assert!(state.players[0].is_riichi);
+        // 宣告本身不扣分：立直棒在宣言牌通过响应窗口后扣除。
+        assert!(!state.players[0].is_riichi);
+        assert!(state.players[0].riichi_declared);
+        assert_eq!(state.players[0].points, 25_000);
+        assert_eq!(state.riichi_sticks, 0);
         assert_eq!(state.players[0].riichi_declaration_index, None);
 
-        // 宣言牌未被鸣走，进入牌河第 0 位。
+        // 宣言牌未被鸣走，通过响应窗口后受理：扣 1000 点、放置立直棒，
+        // 宣言牌进入牌河第 0 位。
         state.complete_response_pass().unwrap();
+        assert!(state.players[0].is_riichi);
+        assert_eq!(state.players[0].points, 24_000);
+        assert_eq!(state.riichi_sticks, 1);
         assert_eq!(state.players[0].riichi_declaration_index, Some(0));
         assert_eq!(state.players[0].discards[0], Tile::from_raw(104));
 

@@ -87,6 +87,17 @@ pub struct Player {
     pub discards: Vec<Tile>,
     pub melds: Vec<Meld>,
     pub is_riichi: bool,
+    /// 是否已宣告立直（宣言牌尚未通过响应窗口）。
+    ///
+    /// 与 Mortal 的 `riichi_declared` 对应：宣告本身不扣分不放棒，
+    /// 宣言牌通过响应窗口（未被荣和）时由受理流程扣除 1000 点。
+    #[serde(default)]
+    pub riichi_declared: bool,
+    /// 是否以双立直条件宣告（宣言时捕获，与 Mortal 的 `is_w_riichi` 对应）。
+    ///
+    /// 宣告牌之后被鸣走或发生其他事件不影响该判定。
+    #[serde(default)]
+    pub double_riichi: bool,
     /// 立直宣言后第一张进入牌河的牌在 `discards` 中的下标。
     ///
     /// 规则上宣言牌被鸣走时以下一张入河的牌代替横置标记，
@@ -106,6 +117,8 @@ impl Player {
             melds: Vec::new(),
             points: 25000,
             is_riichi: false,
+            riichi_declared: false,
+            double_riichi: false,
             riichi_declaration_index: None,
             furiten: FuritenState::default(),
             all_discarded_types: HashSet::new(),

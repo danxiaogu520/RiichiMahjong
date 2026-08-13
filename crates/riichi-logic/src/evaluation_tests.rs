@@ -86,7 +86,26 @@ fn detect_yaku(
     hand.winning_tile_placements(winning_tile.tile_type())
         .into_iter()
         .map(|placement| {
-            crate::yaku::detect_yaku(hand, &ctx.situation, &ctx.melds, winning_tile, placement)
+            // 与引擎一致：concealed_tiles 是不含和牌张的 13 张手牌
+            let mut concealed: Vec<_> = hand
+                .all_tiles()
+                .into_iter()
+                .map(|tt| tt.with_copy(0))
+                .collect();
+            if let Some(index) = concealed
+                .iter()
+                .rposition(|tile| tile.tile_type() == winning_tile.tile_type())
+            {
+                concealed.remove(index);
+            }
+            crate::yaku::detect_yaku(
+                hand,
+                &ctx.situation,
+                &ctx.melds,
+                &concealed,
+                winning_tile,
+                placement,
+            )
         })
         .max_by_key(|results| results.iter().map(|result| result.han).sum::<u8>())
         .unwrap_or_default()

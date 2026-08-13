@@ -51,19 +51,16 @@ fn is_ippatsu_active(events: &[GameEvent], player: PlayerId, chankan_on_kakan: b
         }
 }
 
-fn is_double_riichi_active(events: &[GameEvent], player: PlayerId) -> bool {
-    let has_riichi = events
-        .iter()
-        .any(|event| matches!(event, GameEvent::Riichi { player: pid } if *pid == player));
-    let discard_count = events
-        .iter()
-        .filter(|event| matches!(event, GameEvent::Discard { .. }))
-        .count();
-    let own_discard_count = events
-        .iter()
-        .filter(|event| matches!(event, GameEvent::Discard { player: pid, .. } if *pid == player))
-        .count();
-    has_riichi && discard_count <= 4 && own_discard_count == 1 && !events.iter().any(is_call_event)
+/// 判断宣告时是否满足双立直条件。
+///
+/// 与 Mortal 的 `can_w_riichi` 对应：无任何鸣牌（吃/碰/明杠/暗杠），
+/// 且这是本人的第一打。判定发生在立直宣告时，此后宣言牌被鸣走或
+/// 发生其他事件都不影响双立直是否成立。
+pub(crate) fn can_declare_double_riichi(events: &[GameEvent], player: PlayerId) -> bool {
+    !events.iter().any(is_call_event)
+        && !events
+            .iter()
+            .any(|event| matches!(event, GameEvent::Discard { player: pid, .. } if *pid == player))
 }
 
 impl GameState {
@@ -140,9 +137,8 @@ impl GameState {
                 ),
         );
 
-        // 双立直必须发生在当前局第一巡：立直者在本局只打出宣言牌，
-        // 且宣言前没有鸣牌、全桌弃牌数仍不超过一轮四张。
-        let is_double_riichi = is_double_riichi_active(&self.events, player);
+        // 双立直在宣告时捕获并持久保存；被鸣走等后续事件不影响判定。
+        let is_double_riichi = p.double_riichi && p.is_riichi;
 
         let has_call = self
             .events
@@ -246,7 +242,7 @@ impl GameState {
 
 #[cfg(test)]
 mod context_tests {
-    use super::{is_double_riichi_active, is_ippatsu_active};
+    use super::{can_declare_double_riichi, is_ippatsu_active};
     use riichi_core::game::GameEvent;
     use riichi_core::player::PlayerId;
     use riichi_core::tile::Tile;
@@ -346,21 +342,36 @@ mod context_tests {
     }
 
     #[test]
-    fn double_riichi_requires_the_first_discard_cycle() {
+    fn double_riichi_requires_first_discard_and_no_calls_before_declaration() {
         let player = PlayerId(0);
-        let riichi = GameEvent::Riichi { player };
-        assert!(is_double_riichi_active(
-            &[discard(player), riichi.clone()],
-            player
+        // 无鸣牌且无本人先前的弃牌 → 满足双立直条件（庄家/各家第一打）
+        assert!(can_declare_double_riichi(&[], player));
+        assert!(can_declare_double_riichi(
+            &[discard(PlayerId(1))],
+            PlayerId(2)
         ));
-        assert!(!is_double_riichi_active(
+        assert!(can_declare_double_riichi(
             &[
-                discard(player),
+                discard(PlayerId(0)),
                 discard(PlayerId(1)),
-                discard(player),
-                riichi
+                discard(PlayerId(2))
             ],
-            player
+            PlayerId(3)
+        ));
+        // 已有本人的弃牌 → 不是双立直（第二巡起）
+        assert!(!can_declare_double_riichi(&[discard(player)], player));
+        // 有任何鸣牌 → 不是双立直
+        let call = GameEvent::Call {
+            player: PlayerId(1),
+            tiles: vec![Tile::from_raw(0); 3],
+            kind: riichi_core::game::CallKind::Pon,
+            called_tile: Some(Tile::from_raw(0)),
+            from_player: Some(player),
+            meld_index: None,
+        };
+        assert!(!can_declare_double_riichi(
+            &[discard(PlayerId(0)), call],
+            PlayerId(1)
         ));
     }
 }
